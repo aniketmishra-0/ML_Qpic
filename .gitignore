@@ -1,0 +1,17 @@
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+.hypothesis/
+.venv/
+venv/
+.env
+temp/
+
+# Desktop build artifacts (PyInstaller)
+build/
+dist/
+*.spec.bak
+
+# Vendored Tesseract (populated at build time by scripts/vendor_tesseract.py)
+vendor/

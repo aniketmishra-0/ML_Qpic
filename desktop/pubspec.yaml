@@ -1,0 +1,38 @@
+name: qpic_desktop
+description: "Qpic native desktop client (macOS + Windows) for the Qpic FastAPI engine."
+# Prevents accidental publishing to pub.dev — this is an application, not a package.
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # HTTP client used by ApiClient to talk to the localhost sidecar engine.
+  dio: ^5.7.0
+  # Native open / save-as dialogs (macOS + Windows).
+  file_selector: ^1.0.3
+  # Drag-and-drop file targets for the tool zones.
+  desktop_drop: ^0.5.0
+  # Desktop window lifecycle / close-intercept handling.
+  window_manager: ^0.4.3
+  # Persists theme-mode and other lightweight settings.
+  shared_preferences: ^2.3.3
+  # Path joining utilities (cross-platform).
+  path: ^1.9.0
+  # Per-OS writable application-support / temp directory resolution.
+  path_provider: ^2.1.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  # Recommended Flutter lint rule set; configured via analysis_options.yaml.
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

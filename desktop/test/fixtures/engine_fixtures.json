@@ -1,0 +1,341 @@
+{
+  "_comment": "Representative engine JSON fixtures captured from app/models/schemas.py (Pydantic model_dump shapes the FastAPI engine emits). Field names are the exact snake_case keys the engine sends/accepts; nullable fields are emitted explicitly as null (Pydantic includes defaults). These fixtures are the source of truth for the DTO round-trip identity test in dto_roundtrip_test.dart. The Flutter app NEVER computes these values in Dart; it only carries them verbatim.",
+
+  "QuestionSegment": {
+    "page": 3,
+    "y_start_pct": 12.5,
+    "y_end_pct": 47.25,
+    "x_start_pct": 0.0,
+    "x_end_pct": 50.0
+  },
+
+  "CropResponse": {
+    "job_id": "9f1c2a7e-0b3d-4c11-9d2e-5a6b7c8d9e0f",
+    "total_questions": 24,
+    "stitched_questions": 22,
+    "method_used": "text",
+    "download_url": "/api/crop/download/9f1c2a7e?kind=combined",
+    "questions_download_url": "/api/crop/download/9f1c2a7e?kind=questions",
+    "solutions_download_url": null,
+    "questions_count": 22,
+    "solutions_count": 0,
+    "answer_sheet_included": true,
+    "answers_count": 22
+  },
+
+  "PageInfo": {
+    "page": 1,
+    "width_pt": 595.32,
+    "height_pt": 841.92,
+    "preview_url": "/api/analyze/9f1c2a7e/page/1"
+  },
+
+  "AnalyzedItem": {
+    "q_num": "12",
+    "is_solution": false,
+    "segments": [
+      {
+        "page": 2,
+        "y_start_pct": 30.0,
+        "y_end_pct": 55.5,
+        "x_start_pct": 0.0,
+        "x_end_pct": 100.0
+      },
+      {
+        "page": 3,
+        "y_start_pct": 0.0,
+        "y_end_pct": 18.75,
+        "x_start_pct": 0.0,
+        "x_end_pct": 100.0
+      }
+    ],
+    "source": "auto",
+    "flagged": true,
+    "flag_reason": "cut-off: continues on next page"
+  },
+
+  "ReviewNote": {
+    "kind": "incomplete",
+    "message": "Q12 looks cut off at the bottom of page 2.",
+    "q_num": "12",
+    "page": 2,
+    "is_solution": false
+  },
+
+  "AnalyzeResponse": {
+    "job_id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "total_pages": 4,
+    "method_used": "ocr",
+    "pages": [
+      {
+        "page": 1,
+        "width_pt": 595.32,
+        "height_pt": 841.92,
+        "preview_url": "/api/analyze/1a2b3c4d/page/1"
+      },
+      {
+        "page": 2,
+        "width_pt": 595.32,
+        "height_pt": 841.92,
+        "preview_url": "/api/analyze/1a2b3c4d/page/2"
+      }
+    ],
+    "items": [
+      {
+        "q_num": "1",
+        "is_solution": false,
+        "segments": [
+          {
+            "page": 1,
+            "y_start_pct": 8.0,
+            "y_end_pct": 22.0,
+            "x_start_pct": 0.0,
+            "x_end_pct": 100.0
+          }
+        ],
+        "source": "auto",
+        "flagged": false,
+        "flag_reason": null
+      }
+    ],
+    "notes": [
+      {
+        "kind": "low_confidence",
+        "message": "Detection confidence was low on page 2.",
+        "q_num": null,
+        "page": 2,
+        "is_solution": false
+      }
+    ],
+    "needs_review": true,
+    "answer_key_count": 24
+  },
+
+  "SnapRequest": {
+    "job_id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "page": 2,
+    "x_start_pct": 5.0,
+    "x_end_pct": 95.0,
+    "y_start_pct": 30.0,
+    "y_end_pct": 60.0
+  },
+
+  "SnapResponse": {
+    "x_start_pct": 6.25,
+    "x_end_pct": 93.75,
+    "y_start_pct": 31.5,
+    "y_end_pct": 58.25
+  },
+
+  "FinalizeItem": {
+    "q_num": "3",
+    "is_solution": true,
+    "segments": [
+      {
+        "page": 5,
+        "y_start_pct": 10.0,
+        "y_end_pct": 40.0,
+        "x_start_pct": 0.0,
+        "x_end_pct": 100.0
+      }
+    ],
+    "source": "manual"
+  },
+
+  "FinalizeRequest": {
+    "job_id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "items": [
+      {
+        "q_num": "1",
+        "is_solution": false,
+        "segments": [
+          {
+            "page": 1,
+            "y_start_pct": 8.0,
+            "y_end_pct": 22.0,
+            "x_start_pct": 0.0,
+            "x_end_pct": 100.0
+          }
+        ],
+        "source": "auto"
+      }
+    ],
+    "dpi": 200,
+    "padding": 20,
+    "question_prefix": "Q",
+    "solution_prefix": "S",
+    "start_number": 1,
+    "image_format": "png",
+    "jpg_quality": 90,
+    "answer_sheet": true
+  },
+
+  "HealthResponse": {
+    "status": "ok",
+    "tesseract_available": true,
+    "ai_available": false,
+    "version": "1.0.0",
+    "ai_provider": null,
+    "ai_model": null
+  },
+
+  "RenamePlanItem": {
+    "original": "scan_0001.jpg",
+    "renamed": "Page-001.jpg"
+  },
+
+  "RenamePreviewResponse": {
+    "count": 2,
+    "items": [
+      { "original": "scan_0001.jpg", "renamed": "Page-001.jpg" },
+      { "original": "scan_0002.jpg", "renamed": "Page-002.jpg" }
+    ]
+  },
+
+  "PdfImageItem": {
+    "name": "page-1.png",
+    "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "width": 1654,
+    "height": 2339,
+    "size": 84213
+  },
+
+  "PdfToImagesResponse": {
+    "count": 1,
+    "images": [
+      {
+        "name": "page-1.png",
+        "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "width": 1654,
+        "height": 2339,
+        "size": 84213
+      }
+    ]
+  },
+
+  "RenameSessionResponse": {
+    "session_id": "8c7b6a5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d"
+  },
+
+  "RenameUploadResponse": {
+    "session_id": "8c7b6a5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+    "received": 200,
+    "total": 600
+  },
+
+  "RenameFinalizeResponse": {
+    "session_id": "8c7b6a5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
+    "count": 600,
+    "download_url": "/api/rename/session/8c7b6a5d/download"
+  },
+
+  "CompressResponse": {
+    "job_id": "c0mpr3ss-1234-5678-9abc-def012345678",
+    "original_size": 10485760,
+    "compressed_size": 3145728,
+    "ratio": 0.7,
+    "level": "balanced",
+    "target_met": null,
+    "note": "",
+    "download_url": "/api/tools/compress/download/c0mpr3ss"
+  },
+
+  "EditableSpanModel": {
+    "id": "span-12-3",
+    "page": 1,
+    "text": "Question 1.",
+    "bbox": [72.0, 700.5, 250.25, 715.75],
+    "font": "Helvetica",
+    "size": 11.0,
+    "color": 0,
+    "bold": false,
+    "italic": false
+  },
+
+  "EditPageModel": {
+    "page": 1,
+    "width": 595.32,
+    "height": 841.92,
+    "preview_url": "/api/tools/edit/abc123/page/1"
+  },
+
+  "EditExtractResponse": {
+    "job_id": "ed1700pen-1111-2222-3333-444455556666",
+    "has_text": true,
+    "pages": [
+      {
+        "page": 1,
+        "width": 595.32,
+        "height": 841.92,
+        "preview_url": "/api/tools/edit/ed1700pen/page/1"
+      }
+    ],
+    "spans": [
+      {
+        "id": "span-1-0",
+        "page": 1,
+        "text": "Hello world",
+        "bbox": [72.0, 700.5, 250.25, 715.75],
+        "font": "Helvetica",
+        "size": 11.0,
+        "color": 0,
+        "bold": false,
+        "italic": false
+      }
+    ]
+  },
+
+  "PreflightResponse": {
+    "verdict": "warn",
+    "page_count": 3,
+    "page_sizes": ["A4", "A4", "Letter"],
+    "file_size": 2048576,
+    "is_encrypted": false,
+    "has_text_layer": true,
+    "checks": [
+      {
+        "id": "page_sizes",
+        "title": "Uniform page size",
+        "status": "warn",
+        "detail": "Document mixes A4 and Letter pages."
+      }
+    ],
+    "fonts": [
+      {
+        "name": "ABCDEE+Helvetica",
+        "type": "TrueType",
+        "embedded": true,
+        "subset": true
+      }
+    ],
+    "images": [
+      {
+        "page": 1,
+        "width": 1200,
+        "height": 800,
+        "dpi": 150.0,
+        "colorspace": "DeviceRGB",
+        "bpc": 8
+      }
+    ],
+    "metadata": {
+      "title": "Sample",
+      "author": "Qpic"
+    },
+    "distinct_page_sizes": ["A4", "Letter"],
+    "mixed_page_sizes": true,
+    "page_details": [
+      {
+        "page": 1,
+        "w_mm": 210.0,
+        "h_mm": 297.0,
+        "w_pt": 595.32,
+        "h_pt": 841.92,
+        "w_px": 1654,
+        "h_px": 2339,
+        "format": "A4",
+        "orientation": "Portrait"
+      }
+    ]
+  }
+}

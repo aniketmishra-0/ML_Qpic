@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Starter entitlements for the Qpic macOS runner.
+
+  Rationale (see design "Packaging & Installers — macOS"):
+  - The app spawns the PyInstaller sidecar as a child process.
+  - All sidecar traffic is loopback-only (127.0.0.1); no inbound server role
+    is required from the app sandbox's perspective for the client.
+
+  This file is a reference copy. When the real runner is generated via
+  `flutter create --platforms=macos .`, merge these keys into
+  macos/Runner/DebugProfile.entitlements and Release.entitlements as needed.
+-->
+<plist version="1.0">
+<dict>
+	<!-- Allow outbound localhost connections to the sidecar engine. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Read/write user-selected files for native open/save-as flows. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+</dict>
+</plist>

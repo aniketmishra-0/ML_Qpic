@@ -1,0 +1,16 @@
+# Lint rules for the Qpic Flutter desktop client.
+# Uses the recommended Flutter lint set; later tasks may tighten specific rules.
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Encourage const usage for cheaper widget rebuilds on the canvas.
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    # Keep import ordering predictable across the growing feature tree.
+    directives_ordering: true
+
+analyzer:
+  exclude:
+    - "**/*.g.dart"
+    - "build/**"

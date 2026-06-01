@@ -1,0 +1,23 @@
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+pubspec.lock
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Generated native ephemeral
+**/Flutter/ephemeral/
+**/flutter/ephemeral/
+macos/Pods/
+macos/Flutter/Flutter-Generated.xcconfig
+
+# macOS
+.DS_Store
