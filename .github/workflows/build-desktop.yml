@@ -151,8 +151,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          ./build_desktop_flutter.ps1 -Installer msix -Langs eng,hin,osd
-          ./build_desktop_flutter.ps1 -Installer nsis -SkipFlutterBuild -Langs eng,hin,osd
+          ./build_desktop_flutter.ps1 -Installer msix -Langs "eng,hin,osd"
+          ./build_desktop_flutter.ps1 -Installer nsis -SkipFlutterBuild -Langs "eng,hin,osd"
 
       # ---- Upload + release ------------------------------------------------
       - name: Upload build artifact

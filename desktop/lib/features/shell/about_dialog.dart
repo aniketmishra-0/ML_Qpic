@@ -156,11 +156,6 @@ class _QpicAboutDialogState extends State<QpicAboutDialog> with SingleTickerProv
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[brand, brandMagenta],
-              ),
               borderRadius: BorderRadius.circular(20),
               boxShadow: <BoxShadow>[
                 BoxShadow(
@@ -170,7 +165,13 @@ class _QpicAboutDialogState extends State<QpicAboutDialog> with SingleTickerProv
                 ),
               ],
             ),
-            child: const Icon(Icons.crop_rounded, color: Colors.white, size: 38),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Image.asset(
+                'assets/logo.png',
+                fit: BoxFit.cover,
+              ),
+            ),
           ),
           const SizedBox(height: 16),
           // App Title

@@ -235,11 +235,6 @@ class _QpicBrandMark extends StatelessWidget {
       width: 42,
       height: 42,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[brand, brandMagenta],
-        ),
         borderRadius: BorderRadius.circular(12),
         boxShadow: <BoxShadow>[
           BoxShadow(
@@ -249,7 +244,13 @@ class _QpicBrandMark extends StatelessWidget {
           ),
         ],
       ),
-      child: const Icon(Icons.crop_rounded, color: Colors.white, size: 22),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset(
+          'assets/logo.png',
+          fit: BoxFit.cover,
+        ),
+      ),
     );
   }
 }

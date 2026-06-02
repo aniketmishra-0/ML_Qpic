@@ -52,6 +52,8 @@ InstallDirRegKey HKLM "Software\${APP_NAME}" "InstallDir"
 RequestExecutionLevel admin
 
 ; ---- UI ------------------------------------------------------------------
+!define MUI_ICON "app_icon.ico"
+!define MUI_UNICON "app_icon.ico"
 !define MUI_ABORTWARNING
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
