@@ -135,7 +135,7 @@ void main() {
         find.byKey(const ValueKey('tool-title-Rename Batch')),
         findsNothing,
       );
-      expect(find.byKey(const ValueKey('tool-title-Tools')), findsNothing);
+      expect(find.byKey(const ValueKey('tool-title-PDF Enhancer')), findsNothing);
     });
 
     testWidgets(
@@ -177,14 +177,14 @@ void main() {
         const <String>[
           'tool-title-Auto Crop',
           'tool-title-Rename Batch',
-          'tool-title-Tools',
+          'tool-title-PDF Enhancer',
         ],
       );
 
       await selectAndExpect(
         'tool-tab-tools',
         QpicTool.tools.index,
-        'tool-title-Tools',
+        'tool-title-PDF Enhancer',
         const <String>[
           'tool-title-Auto Crop',
           'tool-title-Manual Crop',
@@ -199,7 +199,7 @@ void main() {
         const <String>[
           'tool-title-Manual Crop',
           'tool-title-Rename Batch',
-          'tool-title-Tools',
+          'tool-title-PDF Enhancer',
         ],
       );
     });

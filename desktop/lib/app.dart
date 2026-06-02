@@ -21,7 +21,7 @@ import 'features/shell/document_zoom_controller.dart';
 import 'features/shell/document_zoom_scope.dart';
 import 'features/shell/platform_menu_bar.dart';
 import 'features/shell/startup_gate.dart';
-import 'features/shell/tool_placeholder.dart';
+import 'features/tools/pdf_enhancer_view.dart';
 import 'models/analyze.dart';
 import 'widgets/pdf_preview_dialog.dart';
 
@@ -68,6 +68,10 @@ class _QpicAppState extends State<QpicApp> {
   /// opened through the MaterialApp's navigator even though the menu bar sits
   /// above it (avoids the PlatformMenuBar context-lock assertion).
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+  /// Key for programmatic tab switching from tool views (e.g. PDF Enhancer's
+  /// "Send to Auto Crop" action).
+  final GlobalKey<AppShellState> _shellKey = GlobalKey<AppShellState>();
 
   /// Backs the Auto Crop form (Requirement 5). Owned by the app so the form
   /// retains its state across tab switches (the shell keeps every tool view
@@ -418,9 +422,25 @@ class _QpicAppState extends State<QpicApp> {
           },
         );
       case QpicTool.tools:
-        return ToolPlaceholder(
-          key: ValueKey<String>('tool-view-${tool.name}'),
-          label: tool.label,
+        return AnimatedBuilder(
+          animation: _autoCropController,
+          builder: (context, _) {
+            return PdfEnhancerView(
+              key: const ValueKey<String>('tool-view-tools'),
+              apiClient: _autoCropController.apiClient,
+              downloadService: _autoCropController.downloadService,
+              autoCropController: _autoCropController,
+              manualCropController: _manualCropController,
+              themeController: _controller,
+              onSwitchTab: (index) {
+                if (index == 0) {
+                  _shellKey.currentState?.selectTool(QpicTool.autoCrop);
+                } else if (index == 1) {
+                  _shellKey.currentState?.selectTool(QpicTool.manualCrop);
+                }
+              },
+            );
+          },
         );
     }
   }
@@ -479,6 +499,7 @@ class _QpicAppState extends State<QpicApp> {
     return DocumentZoomScope(
       registry: _zoomRegistry,
       child: AppShell(
+        key: _shellKey,
         themeController: _controller,
         sidecarBootstrap: widget.sidecarBootstrap,
         toolViewBuilder: _buildToolView,

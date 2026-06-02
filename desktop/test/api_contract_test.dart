@@ -714,6 +714,7 @@ const Set<String> _segmentKeys = {
   'x_start_pct',
   'x_end_pct',
   'x_offset_pct',
+  'y_offset_pct',
 };
 
 // POST /api/rename/session/{id}/finalize — finalize_rename_session form fields.

@@ -625,6 +625,47 @@ class ApiClient {
   }
 
   // ===========================================================================
+  //  Tools — Enhance
+  // ===========================================================================
+
+  /// `POST /api/tools/enhance` — enhance PDF page-by-page.
+  Future<EnhanceResponse> enhance({
+    required List<int> fileBytes,
+    required String filename,
+    bool binarize = false,
+    double contrast = 1.0,
+    double brightness = 1.0,
+    int watermarkThreshold = 255,
+    int dpi = 200,
+  }) {
+    return _guard(() async {
+      final form = FormData();
+      form.fields
+        ..add(MapEntry('binarize', binarize.toString()))
+        ..add(MapEntry('contrast', contrast.toString()))
+        ..add(MapEntry('brightness', brightness.toString()))
+        ..add(MapEntry('watermark_threshold', watermarkThreshold.toString()))
+        ..add(MapEntry('dpi', dpi.toString()));
+      form.files.add(
+        MapEntry(
+          'file',
+          MultipartFile.fromBytes(
+            fileBytes,
+            filename: filename,
+            contentType: _pdfMediaType,
+          ),
+        ),
+      );
+
+      final res = await _dio.post<Map<String, dynamic>>(
+        '$_api/tools/enhance',
+        data: form,
+      );
+      return EnhanceResponse.fromJson(res.data!);
+    });
+  }
+
+  // ===========================================================================
   //  Download / preview URL builders (binary endpoints)
   // ===========================================================================
   //
@@ -690,6 +731,33 @@ class ApiClient {
   /// `GET /api/tools/edit/download/{job_id}` — the edited / OCR'd PDF.
   Uri editDownloadUri(String jobId) {
     return baseUrl.replace(path: '$_api/tools/edit/download/$jobId');
+  }
+
+  /// `GET /api/tools/enhance/download/{job_id}` — the enhanced PDF.
+  Uri enhanceDownloadUri(String jobId) {
+    return baseUrl.replace(path: '$_api/tools/enhance/download/$jobId');
+  }
+
+  /// `GET /api/tools/enhance/{job_id}/page/{page_no}` — live preview of enhanced page.
+  Uri enhancePagePreviewUri(
+    String jobId,
+    int pageNo, {
+    bool binarize = false,
+    double contrast = 1.0,
+    double brightness = 1.0,
+    int watermarkThreshold = 255,
+    int dpi = 150,
+  }) {
+    return baseUrl.replace(
+      path: '$_api/tools/enhance/$jobId/page/$pageNo',
+      queryParameters: <String, String>{
+        'binarize': binarize.toString(),
+        'contrast': contrast.toString(),
+        'brightness': brightness.toString(),
+        'watermark_threshold': watermarkThreshold.toString(),
+        'dpi': dpi.toString(),
+      },
+    );
   }
 
   /// Streaming GET helper for binary endpoints. Returns the raw bytes for an

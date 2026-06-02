@@ -719,3 +719,41 @@ class PreflightFixResponse {
     };
   }
 }
+
+// ============================================================================
+//  Enhance
+// ============================================================================
+
+/// Result of a PDF enhancement job.
+class EnhanceResponse {
+  const EnhanceResponse({
+    required this.jobId,
+    required this.pagesTotal,
+    required this.downloadUrl,
+    this.note = '',
+  });
+
+  final String jobId;
+  final int pagesTotal;
+  final String downloadUrl;
+  final String note;
+
+  factory EnhanceResponse.fromJson(Map<String, dynamic> json) {
+    return EnhanceResponse(
+      jobId: json['job_id'] as String,
+      pagesTotal: (json['pages_total'] as num).toInt(),
+      downloadUrl: json['download_url'] as String,
+      note: json['note'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'job_id': jobId,
+      'pages_total': pagesTotal,
+      'download_url': downloadUrl,
+      'note': note,
+    };
+  }
+}
+

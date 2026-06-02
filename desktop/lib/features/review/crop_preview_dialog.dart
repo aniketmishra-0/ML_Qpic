@@ -96,7 +96,8 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
     // If the item already carries manual nudges (re-opening the popup), start
     // in manual mode so the user sees and keeps their adjustments.
     _manualMode =
-        widget.controller.offsetsFor(widget.itemIndex).any((double o) => o != 0.0);
+        widget.controller.offsetsFor(widget.itemIndex).any((double o) => o != 0.0) ||
+        widget.controller.yOffsetsFor(widget.itemIndex).any((double o) => o != 0.0);
     _render();
   }
 
@@ -165,7 +166,19 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
     widget.controller.setSegmentOffset(
       widget.itemIndex,
       segmentIndex,
-      xOffsetPct,
+      xOffsetPct: xOffsetPct,
+    );
+    setState(() {});
+    _renderDebounced();
+  }
+
+  /// Nudges part [segmentIndex] to [yOffsetPct] (% of page height) and re-renders
+  /// (debounced). The choice is committed onto the item so Finalize matches.
+  void _setYOffset(int segmentIndex, double yOffsetPct) {
+    widget.controller.setSegmentOffset(
+      widget.itemIndex,
+      segmentIndex,
+      yOffsetPct: yOffsetPct,
     );
     setState(() {});
     _renderDebounced();
@@ -201,6 +214,7 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
     final int partCount = item?.segments.length ?? 0;
     final bool multiPart = partCount > 1;
     final List<double> offsets = widget.controller.offsetsFor(widget.itemIndex);
+    final List<double> yOffsets = widget.controller.yOffsetsFor(widget.itemIndex);
 
     return Dialog(
       key: const ValueKey<String>('crop-preview-dialog'),
@@ -240,7 +254,9 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
               _ManualAlignBar(
                 key: const ValueKey<String>('crop-preview-manual-bar'),
                 offsets: offsets,
+                yOffsets: yOffsets,
                 onChanged: _setOffset,
+                onYChanged: _setYOffset,
                 onReset: _resetOffsets,
                 text: text,
                 muted: muted,
@@ -407,15 +423,17 @@ class _AlignBar extends StatelessWidget {
 }
 
 /// Per-part manual alignment controls (the "Manual align" mode). Each stitched
-/// part gets a slider that nudges it left/right (as a signed % of page width),
-/// applied on top of the automatic alignment. The nudge rides into the
-/// preview and the finalize payload, so "Done"/Finalize reproduce the exact
-/// alignment shown here.
+/// part gets a slider that nudges it left/right (as a signed % of page width)
+/// or up/down (as a signed % of page height), applied on top of the automatic
+/// alignment. The nudges ride into the preview and the finalize payload,
+/// so "Done"/Finalize reproduce the exact alignment shown here.
 class _ManualAlignBar extends StatelessWidget {
   const _ManualAlignBar({
     super.key,
     required this.offsets,
+    required this.yOffsets,
     required this.onChanged,
+    required this.onYChanged,
     required this.onReset,
     required this.text,
     required this.muted,
@@ -423,24 +441,29 @@ class _ManualAlignBar extends StatelessWidget {
     required this.border,
   });
 
-  /// Current nudge per part (% of page width), in segment order.
+  /// Current horizontal nudge per part (% of page width), in segment order.
   final List<double> offsets;
+
+  /// Current vertical nudge per part (% of page height), in segment order.
+  final List<double> yOffsets;
 
   /// Called with (segmentIndex, newOffsetPct) as the user drags a slider.
   final void Function(int segmentIndex, double xOffsetPct) onChanged;
+  final void Function(int segmentIndex, double yOffsetPct) onYChanged;
   final VoidCallback onReset;
   final Color text;
   final Color muted;
   final Color brand;
   final Color border;
 
-  /// Largest nudge in either direction, as a % of page width. A part can be
-  /// pushed up to a quarter of the page; plenty for column-split fine-tuning.
+  /// Largest nudge in either direction, as a % of page dimension. A part can be
+  /// pushed up to a quarter of the page.
   static const double _range = 25.0;
 
   @override
   Widget build(BuildContext context) {
-    final bool anyNudge = offsets.any((double o) => o.abs() > 1e-6);
+    final bool anyNudge = offsets.any((double o) => o.abs() > 1e-6) ||
+        yOffsets.any((double o) => o.abs() > 1e-6);
     return Container(
       key: const ValueKey<String>('crop-preview-manual-controls'),
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
@@ -456,7 +479,7 @@ class _ManualAlignBar extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: Text(
-                  'Manual align — drag a part left or right to line it up.',
+                  'Manual align — drag a part left/right or up/down to line it up.',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -479,35 +502,83 @@ class _ManualAlignBar extends StatelessWidget {
             ],
           ),
           for (int i = 0; i < offsets.length; i++)
-            Row(
+            Column(
               key: ValueKey<String>('crop-preview-part-$i'),
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                SizedBox(
-                  width: 56,
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
                   child: Text(
                     'Part ${i + 1}',
-                    style: TextStyle(fontSize: 12, color: text),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: text,
+                    ),
                   ),
                 ),
-                Expanded(
-                  child: Slider(
-                    key: ValueKey<String>('crop-preview-part-slider-$i'),
-                    min: -_range,
-                    max: _range,
-                    value: offsets[i].clamp(-_range, _range),
-                    activeColor: brand,
-                    onChanged: (double v) => onChanged(i, v),
-                  ),
+                Row(
+                  children: <Widget>[
+                    SizedBox(
+                      width: 80,
+                      child: Text(
+                        'Horizontal',
+                        style: TextStyle(fontSize: 12, color: muted),
+                      ),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        key: ValueKey<String>('crop-preview-part-slider-x-$i'),
+                        min: -_range,
+                        max: _range,
+                        value: offsets[i].clamp(-_range, _range),
+                        activeColor: brand,
+                        onChanged: (double v) => onChanged(i, v),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 44,
+                      child: Text(
+                        '${offsets[i] >= 0 ? '+' : ''}'
+                        '${offsets[i].toStringAsFixed(0)}%',
+                        textAlign: TextAlign.end,
+                        style: TextStyle(fontSize: 12, color: muted),
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(
-                  width: 44,
-                  child: Text(
-                    '${offsets[i] >= 0 ? '+' : ''}'
-                    '${offsets[i].toStringAsFixed(0)}%',
-                    textAlign: TextAlign.end,
-                    style: TextStyle(fontSize: 12, color: muted),
-                  ),
+                Row(
+                  children: <Widget>[
+                    SizedBox(
+                      width: 80,
+                      child: Text(
+                        'Vertical',
+                        style: TextStyle(fontSize: 12, color: muted),
+                      ),
+                    ),
+                    Expanded(
+                      child: Slider(
+                        key: ValueKey<String>('crop-preview-part-slider-y-$i'),
+                        min: -_range,
+                        max: _range,
+                        value: yOffsets[i].clamp(-_range, _range),
+                        activeColor: brand,
+                        onChanged: (double v) => onYChanged(i, v),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 44,
+                      child: Text(
+                        '${yOffsets[i] >= 0 ? '+' : ''}'
+                        '${yOffsets[i].toStringAsFixed(0)}%',
+                        textAlign: TextAlign.end,
+                        style: TextStyle(fontSize: 12, color: muted),
+                      ),
+                    ),
+                  ],
                 ),
+                if (i != offsets.length - 1)
+                  const Divider(height: 16),
               ],
             ),
         ],

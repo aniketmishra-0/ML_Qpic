@@ -40,6 +40,7 @@ class ReviewItemsPanel extends StatelessWidget {
     required this.controller,
     this.questionPrefix = 'Q',
     this.solutionPrefix = 'S',
+    this.searchQuery = '',
   });
 
   /// The session controller exposing [ReviewController.items] and the
@@ -50,6 +51,9 @@ class ReviewItemsPanel extends StatelessWidget {
   final String questionPrefix;
   final String solutionPrefix;
 
+  /// The search filter query entered by the user.
+  final String searchQuery;
+
   @override
   Widget build(BuildContext context) {
     final QpicPalette palette =
@@ -58,33 +62,56 @@ class ReviewItemsPanel extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (BuildContext context, Widget? _) {
-        final List<AnalyzedItem> items = controller.items;
+        final List<AnalyzedItem> allItems = controller.items;
+
+        // Associate items with their original indices to ensure correct callbacks.
+        final List<MapEntry<int, AnalyzedItem>> indexedItems = <MapEntry<int, AnalyzedItem>>[];
+        for (int i = 0; i < allItems.length; i++) {
+          final AnalyzedItem item = allItems[i];
+          final String prefix = item.isSolution ? solutionPrefix : questionPrefix;
+          final String label = (prefix + item.qNum).toLowerCase();
+          final String kind = item.isSolution ? 'solution' : 'question';
+          final String sub = _ItemRow._subLine(
+            item,
+            item.isSolution ? 'Solution' : 'Question',
+            item.segments.length > 1,
+          ).toLowerCase();
+
+          final String query = searchQuery.toLowerCase();
+          if (searchQuery.isEmpty ||
+              label.contains(query) ||
+              sub.contains(query) ||
+              kind.contains(query)) {
+            indexedItems.add(MapEntry<int, AnalyzedItem>(i, item));
+          }
+        }
+
         return Column(
           key: const ValueKey<String>('review-items-panel'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            _ItemsHeader(palette: palette, count: items.length),
+            _ItemsHeader(palette: palette, count: indexedItems.length),
             const SizedBox(height: 8),
-            if (items.isEmpty)
+            if (indexedItems.isEmpty)
               _EmptyItems(palette: palette)
             else
-              for (int i = 0; i < items.length; i++)
+              for (int i = 0; i < indexedItems.length; i++)
                 Padding(
                   padding: EdgeInsets.only(top: i == 0 ? 0 : 6),
                   child: _ItemRow(
-                    key: ValueKey<String>('review-item-$i'),
+                    key: ValueKey<String>('review-item-${indexedItems[i].key}'),
                     palette: palette,
-                    item: items[i],
-                    index: i,
-                    editing: controller.editingIndex == i,
+                    item: indexedItems[i].value,
+                    index: indexedItems[i].key,
+                    editing: controller.editingIndex == indexedItems[i].key,
                     questionPrefix: questionPrefix,
                     solutionPrefix: solutionPrefix,
-                    onPreview: () => _openPreview(context, i),
-                    onReselect: () => controller.startReselectForItem(i),
-                    onDelete: () => controller.deleteItem(i),
-                    onMoveUp: (int seg) => controller.moveSegment(i, seg, -1),
-                    onMoveDown: (int seg) => controller.moveSegment(i, seg, 1),
+                    onPreview: () => _openPreview(context, indexedItems[i].key),
+                    onReselect: () => controller.startReselectForItem(indexedItems[i].key),
+                    onDelete: () => _confirmDelete(context, indexedItems[i].value, indexedItems[i].key),
+                    onMoveUp: (int seg) => controller.moveSegment(indexedItems[i].key, seg, -1),
+                    onMoveDown: (int seg) => controller.moveSegment(indexedItems[i].key, seg, 1),
                   ),
                 ),
           ],
@@ -104,6 +131,54 @@ class ReviewItemsPanel extends StatelessWidget {
       questionPrefix: questionPrefix,
       solutionPrefix: solutionPrefix,
     );
+  }
+
+  /// Prompt the user with a confirmation dialog before deleting an item.
+  Future<void> _confirmDelete(BuildContext context, AnalyzedItem item, int index) async {
+    final String prefix = item.isSolution ? solutionPrefix : questionPrefix;
+    final String label = '$prefix${item.qNum}';
+    final String itemType = item.isSolution ? 'Solution' : 'Question';
+
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        final QpicPalette palette =
+            Theme.of(context).extension<QpicPalette>() ?? QpicPalette.dark;
+        return AlertDialog(
+          backgroundColor: palette.panel,
+          title: Text(
+            'Confirm Delete',
+            style: TextStyle(color: palette.text, fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Are you sure you want to delete $itemType no. $label?',
+            style: TextStyle(color: palette.text, fontSize: 14),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: palette.muted, fontWeight: FontWeight.w600),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.danger,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm == true) {
+      controller.deleteItem(index);
+    }
   }
 }
 

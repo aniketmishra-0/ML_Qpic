@@ -560,7 +560,7 @@ class _FinalizeDownloadBar extends StatelessWidget {
 /// Right-hand sidebar hosting the review notes panel and the detected-items
 /// list (Req 10). Collapses to a zero-width strip with a smooth animation when
 /// [open] is false so the canvas can take the full width.
-class _NotesSidebar extends StatelessWidget {
+class _NotesSidebar extends StatefulWidget {
   const _NotesSidebar({
     required this.controller,
     required this.palette,
@@ -576,32 +576,105 @@ class _NotesSidebar extends StatelessWidget {
   final String solutionPrefix;
 
   @override
+  State<_NotesSidebar> createState() => _NotesSidebarState();
+}
+
+class _NotesSidebarState extends State<_NotesSidebar> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.trim();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedSize(
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutCubic,
       child: SizedBox(
-        width: open ? 320 : 0,
-        child: open
+        width: widget.open ? 320 : 0,
+        child: widget.open
             ? Container(
                 decoration: BoxDecoration(
-                  color: palette.panel,
-                  border: Border(left: BorderSide(color: palette.border)),
+                  color: widget.palette.panel,
+                  border: Border(left: BorderSide(color: widget.palette.border)),
                 ),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      ReviewNotesPanel(controller: controller),
-                      const SizedBox(height: 16),
-                      ReviewItemsPanel(
-                        controller: controller,
-                        questionPrefix: questionPrefix,
-                        solutionPrefix: solutionPrefix,
+                child: Column(
+                  children: <Widget>[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                      child: TextField(
+                        controller: _searchController,
+                        style: TextStyle(color: widget.palette.text, fontSize: 13),
+                        decoration: InputDecoration(
+                          hintText: 'Search detections and errors...',
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            size: 18,
+                            color: widget.palette.mutedAlt,
+                          ),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  icon: Icon(
+                                    Icons.clear_rounded,
+                                    size: 16,
+                                    color: widget.palette.muted,
+                                  ),
+                                  onPressed: () => _searchController.clear(),
+                                )
+                              : null,
+                          suffixIconConstraints: const BoxConstraints(
+                            minWidth: 28,
+                            minHeight: 28,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          isDense: true,
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            ReviewNotesPanel(
+                              controller: widget.controller,
+                              searchQuery: _searchQuery,
+                            ),
+                            const SizedBox(height: 16),
+                            ReviewItemsPanel(
+                              controller: widget.controller,
+                              questionPrefix: widget.questionPrefix,
+                              solutionPrefix: widget.solutionPrefix,
+                              searchQuery: _searchQuery,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               )
             : const SizedBox.shrink(),

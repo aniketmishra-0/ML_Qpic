@@ -291,8 +291,9 @@ def crop_and_stitch(
         page_img = ensure_rgb(page_images[page_index])
         width, height = page_img.size
 
-        y0 = int((seg.y_start_pct / 100.0) * height)
-        y1 = int((seg.y_end_pct / 100.0) * height)
+        y_offset = float(getattr(seg, "y_offset_pct", 0.0) or 0.0)
+        y0 = int(((seg.y_start_pct + y_offset) / 100.0) * height)
+        y1 = int(((seg.y_end_pct + y_offset) / 100.0) * height)
         if y1 <= y0:
             continue
 
@@ -412,8 +413,9 @@ def crop_and_stitch_hires(
         pad_top = pad_y_pct if idx == 0 else 0.0
         pad_bottom = pad_y_pct if idx == seg_count - 1 else 0.0
 
-        y_start = max(0.0, seg.y_start_pct - pad_top)
-        y_end = min(100.0, seg.y_end_pct + pad_bottom)
+        y_offset = float(getattr(seg, "y_offset_pct", 0.0) or 0.0)
+        y_start = max(0.0, seg.y_start_pct + y_offset - pad_top)
+        y_end = min(100.0, seg.y_end_pct + y_offset + pad_bottom)
         if y_end <= y_start:
             continue
 

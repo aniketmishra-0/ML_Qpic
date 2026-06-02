@@ -15,7 +15,7 @@ enum QpicTool {
   autoCrop('Auto Crop', Icons.crop_rounded),
   manualCrop('Manual Crop', Icons.crop_free_rounded),
   renameBatch('Rename Batch', Icons.drive_file_rename_outline_rounded),
-  tools('Tools', Icons.build_rounded);
+  tools('PDF Enhancer', Icons.auto_awesome_rounded);
 
   const QpicTool(this.label, this.icon);
 
@@ -35,7 +35,7 @@ enum QpicTool {
       case QpicTool.renameBatch:
         return 'Rename';
       case QpicTool.tools:
-        return 'Tools';
+        return 'Enhance';
     }
   }
 }
@@ -79,12 +79,16 @@ class AppShell extends StatefulWidget {
   final bool enabled;
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  State<AppShell> createState() => AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class AppShellState extends State<AppShell> {
   // Default selected tool is Auto Crop (index 0) per Requirement 4.4.
   QpicTool _selected = QpicTool.autoCrop;
+
+  /// Programmatically switches the active tab. Exposed so the host can drive
+  /// tab navigation from outside (e.g. the PDF Enhancer's "Send to Crop").
+  void selectTool(QpicTool tool) => _selectTool(tool);
 
   void _selectTool(QpicTool tool) {
     if (tool == _selected) return;

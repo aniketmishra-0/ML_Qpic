@@ -84,6 +84,7 @@ class _Harness {
     final dio = Dio()..httpClientAdapter = adapter;
     final apiClient = ApiClient(Uri.parse('http://127.0.0.1:54321'), dio: dio);
     controller = AutoCropController(apiClient: apiClient)
+      ..smartMode = false
       // A PDF is loaded so the only thing that can block a crop is the guard
       // under test, not a missing file.
       ..setFile(bytes: const <int>[1, 2, 3], filename: 'paper.pdf');

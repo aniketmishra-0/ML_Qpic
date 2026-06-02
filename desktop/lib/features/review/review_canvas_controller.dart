@@ -536,20 +536,21 @@ class ReviewCanvasController extends ChangeNotifier {
     _bump();
   }
 
-  /// Sets the manual horizontal nudge ([QuestionSegment.xOffsetPct], a signed
-  /// percentage of the page width) for part [segmentIndex] of item [itemIndex]
-  /// (the review "Manual align" controls). Applied only when the part is
-  /// stitched into a multi-part crop, and carried into the preview/finalize
+  /// Sets the manual horizontal or vertical nudge for part [segmentIndex] of item
+  /// [itemIndex] (the review "Manual align" controls). Applied only when the
+  /// part is stitched into a multi-part crop, and carried into the preview/finalize
   /// payload so the downloaded crop lines up exactly like the approved preview.
   /// A no-op when the index is out of range or the value is unchanged.
-  void setSegmentOffset(int itemIndex, int segmentIndex, double xOffsetPct) {
+  void setSegmentOffset(int itemIndex, int segmentIndex, {double? xOffsetPct, double? yOffsetPct}) {
     if (itemIndex < 0 || itemIndex >= _items.length) return;
     final AnalyzedItem it = _items[itemIndex];
     if (segmentIndex < 0 || segmentIndex >= it.segments.length) return;
     final QuestionSegment seg = it.segments[segmentIndex];
-    if ((seg.xOffsetPct - xOffsetPct).abs() < 1e-6) return;
+    final double nextX = xOffsetPct ?? seg.xOffsetPct;
+    final double nextY = yOffsetPct ?? seg.yOffsetPct;
+    if ((seg.xOffsetPct - nextX).abs() < 1e-6 && (seg.yOffsetPct - nextY).abs() < 1e-6) return;
     final List<QuestionSegment> next = List<QuestionSegment>.of(it.segments);
-    next[segmentIndex] = seg.copyWithOffset(xOffsetPct);
+    next[segmentIndex] = seg.copyWithOffset(xOffsetPct: nextX, yOffsetPct: nextY);
     _items[itemIndex] = AnalyzedItem(
       qNum: it.qNum,
       isSolution: it.isSolution,
@@ -567,10 +568,10 @@ class ReviewCanvasController extends ChangeNotifier {
   void resetSegmentOffsets(int itemIndex) {
     if (itemIndex < 0 || itemIndex >= _items.length) return;
     final AnalyzedItem it = _items[itemIndex];
-    final bool any = it.segments.any((QuestionSegment s) => s.xOffsetPct != 0.0);
+    final bool any = it.segments.any((QuestionSegment s) => s.xOffsetPct != 0.0 || s.yOffsetPct != 0.0);
     if (!any) return;
     final List<QuestionSegment> next = <QuestionSegment>[
-      for (final QuestionSegment s in it.segments) s.copyWithOffset(0.0),
+      for (final QuestionSegment s in it.segments) s.copyWithOffset(xOffsetPct: 0.0, yOffsetPct: 0.0),
     ];
     _items[itemIndex] = AnalyzedItem(
       qNum: it.qNum,

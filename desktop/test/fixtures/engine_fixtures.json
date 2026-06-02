@@ -7,7 +7,8 @@
     "y_end_pct": 47.25,
     "x_start_pct": 0.0,
     "x_end_pct": 50.0,
-    "x_offset_pct": 0.0
+    "x_offset_pct": 0.0,
+    "y_offset_pct": 0.0
   },
 
   "CropResponse": {
@@ -41,7 +42,8 @@
         "y_end_pct": 55.5,
         "x_start_pct": 0.0,
         "x_end_pct": 100.0,
-        "x_offset_pct": 0.0
+        "x_offset_pct": 0.0,
+        "y_offset_pct": 0.0
       },
       {
         "page": 3,
@@ -49,7 +51,8 @@
         "y_end_pct": 18.75,
         "x_start_pct": 0.0,
         "x_end_pct": 100.0,
-        "x_offset_pct": 0.0
+        "x_offset_pct": 0.0,
+        "y_offset_pct": 0.0
       }
     ],
     "source": "auto",
@@ -94,7 +97,8 @@
             "y_end_pct": 22.0,
             "x_start_pct": 0.0,
             "x_end_pct": 100.0,
-            "x_offset_pct": 0.0
+            "x_offset_pct": 0.0,
+            "y_offset_pct": 0.0
           }
         ],
         "source": "auto",
@@ -141,7 +145,8 @@
         "y_end_pct": 40.0,
         "x_start_pct": 0.0,
         "x_end_pct": 100.0,
-        "x_offset_pct": 0.0
+        "x_offset_pct": 0.0,
+        "y_offset_pct": 0.0
       }
     ],
     "source": "manual",
@@ -159,7 +164,8 @@
         "y_end_pct": 55.5,
         "x_start_pct": 0.0,
         "x_end_pct": 100.0,
-        "x_offset_pct": 0.0
+        "x_offset_pct": 0.0,
+        "y_offset_pct": 0.0
       }
     ],
     "source": "manual",
@@ -183,7 +189,8 @@
             "y_end_pct": 22.0,
             "x_start_pct": 0.0,
             "x_end_pct": 100.0,
-            "x_offset_pct": 0.0
+            "x_offset_pct": 0.0,
+            "y_offset_pct": 0.0
           }
         ],
         "source": "auto",

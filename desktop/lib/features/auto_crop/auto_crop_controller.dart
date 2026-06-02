@@ -156,6 +156,9 @@ class AutoCropController extends ChangeNotifier {
   /// The bound API client, or null before the engine is ready.
   ApiClient? get apiClient => _apiClient;
 
+  /// The bound DownloadService, or null before the engine is ready.
+  DownloadService? get downloadService => _downloadService;
+
   /// Whether the engine-backed services are bound (the sidecar is ready).
   bool get engineReady => _apiClient != null && _downloadService != null;
 

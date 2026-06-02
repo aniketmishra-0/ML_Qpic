@@ -33,6 +33,7 @@ class QuestionSegment {
     this.xStartPct = 0.0,
     this.xEndPct = 100.0,
     this.xOffsetPct = 0.0,
+    this.yOffsetPct = 0.0,
   });
 
   final int page;
@@ -41,15 +42,17 @@ class QuestionSegment {
   final double xStartPct;
   final double xEndPct;
   final double xOffsetPct;
+  final double yOffsetPct;
 
-  /// Returns a copy with [xOffsetPct] replaced, preserving the region.
-  QuestionSegment copyWithOffset(double xOffsetPct) => QuestionSegment(
+  /// Returns a copy with [xOffsetPct] and [yOffsetPct] replaced, preserving the region.
+  QuestionSegment copyWithOffset({double? xOffsetPct, double? yOffsetPct}) => QuestionSegment(
         page: page,
         yStartPct: yStartPct,
         yEndPct: yEndPct,
         xStartPct: xStartPct,
         xEndPct: xEndPct,
-        xOffsetPct: xOffsetPct,
+        xOffsetPct: xOffsetPct ?? this.xOffsetPct,
+        yOffsetPct: yOffsetPct ?? this.yOffsetPct,
       );
 
   factory QuestionSegment.fromJson(Map<String, dynamic> json) {
@@ -60,6 +63,7 @@ class QuestionSegment {
       xStartPct: (json['x_start_pct'] as num?)?.toDouble() ?? 0.0,
       xEndPct: (json['x_end_pct'] as num?)?.toDouble() ?? 100.0,
       xOffsetPct: (json['x_offset_pct'] as num?)?.toDouble() ?? 0.0,
+      yOffsetPct: (json['y_offset_pct'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -71,6 +75,7 @@ class QuestionSegment {
       'x_start_pct': xStartPct,
       'x_end_pct': xEndPct,
       'x_offset_pct': xOffsetPct,
+      'y_offset_pct': yOffsetPct,
     };
   }
 }

@@ -27,6 +27,12 @@ class QuestionSegment(BaseModel):
     # which both stitch the same segments — line the parts up identically.
     # Defaults to 0.0 so single-column and auto-detected crops are untouched.
     x_offset_pct: float = 0.0
+    # Manual vertical nudge for this part when stitched into a multi-part
+    # crop, as a signed percentage of the page height (positive shifts the part
+    # down, negative up). Set from the review "Manual align" controls and
+    # applied only during stitching.
+    # Defaults to 0.0 so single-column and auto-detected crops are untouched.
+    y_offset_pct: float = 0.0
 
 
 class DetectedQuestion(BaseModel):
@@ -464,3 +470,13 @@ class PreflightFixResponse(BaseModel):
     pages_changed: int
     note: str
     download_url: str
+
+
+class EnhanceResponse(BaseModel):
+    """Result of a PDF enhancement job."""
+
+    job_id: str
+    pages_total: int
+    note: str = ""
+    download_url: str
+

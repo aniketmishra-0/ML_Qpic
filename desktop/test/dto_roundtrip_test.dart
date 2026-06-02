@@ -403,6 +403,7 @@ _JsonMap _genSegment(math.Random r) => <String, dynamic>{
       'x_start_pct': _d(r),
       'x_end_pct': _d(r),
       'x_offset_pct': _d(r, maxv: 50),
+      'y_offset_pct': _d(r, maxv: 50),
     };
 
 List<_JsonMap> _segList(math.Random r) =>
@@ -725,6 +726,7 @@ const Set<String> _kQuestionSegment = {
   'x_start_pct',
   'x_end_pct',
   'x_offset_pct',
+  'y_offset_pct',
 };
 
 const Set<String> _kDetectedQuestion = {

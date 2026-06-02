@@ -485,19 +485,19 @@ class ReviewController extends ChangeNotifier {
   void setItemAlign(int itemIndex, bool? align) =>
       _canvas.setItemAlign(itemIndex, align);
 
-  /// Sets the manual horizontal nudge for part [segmentIndex] of item
-  /// [itemIndex] (the review "Manual align" controls), a signed percentage of
-  /// the page width. Carried into the preview and the finalize payload so the
-  /// downloaded crop lines up exactly like the approved preview.
-  void setSegmentOffset(int itemIndex, int segmentIndex, double xOffsetPct) =>
-      _canvas.setSegmentOffset(itemIndex, segmentIndex, xOffsetPct);
+  /// Sets the manual horizontal or vertical nudge for part [segmentIndex] of item
+  /// [itemIndex] (the review "Manual align" controls). Carried into the preview
+  /// and the finalize payload so the downloaded crop lines up exactly like the
+  /// approved preview.
+  void setSegmentOffset(int itemIndex, int segmentIndex, {double? xOffsetPct, double? yOffsetPct}) =>
+      _canvas.setSegmentOffset(itemIndex, segmentIndex, xOffsetPct: xOffsetPct, yOffsetPct: yOffsetPct);
 
   /// Clears every manual nudge on item [itemIndex] back to 0.
   void resetSegmentOffsets(int itemIndex) =>
       _canvas.resetSegmentOffsets(itemIndex);
 
-  /// The manual nudges (`xOffsetPct` per part) for item [itemIndex], in segment
-  /// order. Empty when the index is out of range.
+  /// The manual horizontal nudges (`xOffsetPct` per part) for item [itemIndex], in
+  /// segment order. Empty when the index is out of range.
   List<double> offsetsFor(int itemIndex) {
     final List<AnalyzedItem> current = _canvas.items;
     if (itemIndex < 0 || itemIndex >= current.length) {
@@ -505,6 +505,18 @@ class ReviewController extends ChangeNotifier {
     }
     return <double>[
       for (final QuestionSegment s in current[itemIndex].segments) s.xOffsetPct,
+    ];
+  }
+
+  /// The manual vertical nudges (`yOffsetPct` per part) for item [itemIndex], in
+  /// segment order. Empty when the index is out of range.
+  List<double> yOffsetsFor(int itemIndex) {
+    final List<AnalyzedItem> current = _canvas.items;
+    if (itemIndex < 0 || itemIndex >= current.length) {
+      return const <double>[];
+    }
+    return <double>[
+      for (final QuestionSegment s in current[itemIndex].segments) s.yOffsetPct,
     ];
   }
 
