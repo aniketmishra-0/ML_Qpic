@@ -250,10 +250,15 @@ class _ReadyState extends StatelessWidget {
                   page: page,
                   previewUri: controller.previewUri(page),
                   spans: controller.spansForPage(page.page),
+                  vectorObjects: controller.vectorObjectsForPage(page.page),
                   selectedSpanId: controller.selectedSpanId,
+                  selectedVectorObjectId: controller.selectedVectorObjectId,
                   onSpanTap: controller.selectSpan,
+                  onVectorObjectTap: controller.selectVectorObject,
+                  onDeleteVectorObject: controller.deleteVectorObject,
                   textForSpan: controller.effectiveText,
                   isEdited: controller.isSpanEdited,
+                  isVectorObjectDeleted: controller.isVectorObjectDeleted,
                   onCommitSpanText: controller.setSpanText,
                   interactive: controller.hasText,
                 );
@@ -630,10 +635,15 @@ class _EditPage extends StatelessWidget {
     required this.page,
     required this.previewUri,
     required this.spans,
+    required this.vectorObjects,
     required this.selectedSpanId,
+    required this.selectedVectorObjectId,
     required this.onSpanTap,
+    required this.onVectorObjectTap,
+    required this.onDeleteVectorObject,
     required this.textForSpan,
     required this.isEdited,
+    required this.isVectorObjectDeleted,
     required this.onCommitSpanText,
     required this.interactive,
   });
@@ -641,10 +651,15 @@ class _EditPage extends StatelessWidget {
   final EditPageModel page;
   final Uri previewUri;
   final List<EditableSpanModel> spans;
+  final List<VectorObjectModel> vectorObjects;
   final String? selectedSpanId;
+  final String? selectedVectorObjectId;
   final ValueChanged<String?> onSpanTap;
+  final ValueChanged<String?> onVectorObjectTap;
+  final ValueChanged<String> onDeleteVectorObject;
   final String Function(EditableSpanModel span) textForSpan;
   final bool Function(String id) isEdited;
+  final bool Function(String id) isVectorObjectDeleted;
   final void Function(String id, String text) onCommitSpanText;
 
   /// Whether spans are clickable/editable. False for a scanned PDF (no text).
@@ -694,6 +709,20 @@ class _EditPage extends StatelessWidget {
                     onTap: () => onSpanTap(span.id),
                     onCommit: (value) => onCommitSpanText(span.id, value),
                     onDismiss: () => onSpanTap(null),
+                  ),
+                // Clickable / deletable vector object overlays.
+                for (final vec in vectorObjects)
+                  _VectorObjectBox(
+                    vec: vec,
+                    rect: vectorObjectRectForPage(
+                      vec: vec,
+                      page: page,
+                      displaySize: display,
+                    ),
+                    selected: vec.id == selectedVectorObjectId,
+                    deleted: isVectorObjectDeleted(vec.id),
+                    onTap: () => onVectorObjectTap(vec.id),
+                    onDelete: () => onDeleteVectorObject(vec.id),
                   ),
               ],
             ),
@@ -870,4 +899,134 @@ class _SpanEditorState extends State<_SpanEditor> {
       ),
     );
   }
+}
+
+/// A box overlay for selectable vector graphics and images.
+class _VectorObjectBox extends StatelessWidget {
+  const _VectorObjectBox({
+    required this.vec,
+    required this.rect,
+    required this.selected,
+    required this.deleted,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final VectorObjectModel vec;
+  final Rect rect;
+  final bool selected;
+  final bool deleted;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+
+    // Green for images, Blue for vector paths. Selected is primary/brand color.
+    // Deleted turns red.
+    final Color accent = selected
+        ? (palette?.brand ?? theme.colorScheme.primary)
+        : (deleted
+            ? (palette?.danger ?? theme.colorScheme.error)
+            : (vec.type == 'image'
+                ? const Color(0xFF4CAF50)
+                : const Color(0xFF2196F3)));
+
+    final Border border = Border.all(
+      color: accent.withAlpha(selected ? 255 : (deleted ? 200 : 120)),
+      width: selected ? 2.0 : (deleted ? 1.5 : 1.0),
+    );
+
+    final Color bg = accent.withAlpha(selected ? 25 : (deleted ? 40 : 12));
+
+    return Positioned(
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      child: Focus(
+        onKeyEvent: (node, event) {
+          if (selected && event is KeyDownEvent) {
+            if (event.logicalKey == LogicalKeyboardKey.delete ||
+                event.logicalKey == LogicalKeyboardKey.backspace) {
+              onDelete();
+              return KeyEventResult.handled;
+            }
+          }
+          return KeyEventResult.ignored;
+        },
+        child: GestureDetector(
+          key: ValueKey<String>('edit-vector-${vec.id}'),
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          onDoubleTap: onDelete, // Double click deletes immediately (Acrobat parity)
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                // Box background & border
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: bg,
+                      border: border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: deleted
+                        ? CustomPaint(
+                            painter: _StrikethroughPainter(color: accent),
+                          )
+                        : null,
+                  ),
+                ),
+                // Floating delete button (trash can) when selected
+                if (selected)
+                  Positioned(
+                    right: -12,
+                    top: -12,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: onDelete,
+                        child: CircleAvatar(
+                          radius: 12,
+                          backgroundColor: palette?.danger ?? theme.colorScheme.error,
+                          child: const Icon(
+                            Icons.delete,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Custom painter to draw a crossed strikethrough showing pending deletion.
+class _StrikethroughPainter extends CustomPainter {
+  const _StrikethroughPainter({required this.color});
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withAlpha(200)
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(Offset.zero, Offset(size.width, size.height), paint);
+    canvas.drawLine(Offset(size.width, 0), Offset(0, size.height), paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

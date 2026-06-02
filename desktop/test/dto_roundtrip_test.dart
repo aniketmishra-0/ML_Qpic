@@ -600,11 +600,19 @@ _JsonMap _genEditPageModel(math.Random r) => <String, dynamic>{
       'preview_url': _str(r),
     };
 
+_JsonMap _genVectorObjectModel(math.Random r) => <String, dynamic>{
+      'id': _str(r),
+      'page': _int(r, min: 1, max: 50),
+      'type': _pick(r, ['image', 'vector']),
+      'bbox': _bbox(r),
+    };
+
 _JsonMap _genEditExtractResponse(math.Random r) => <String, dynamic>{
       'job_id': _str(r),
       'has_text': _b(r),
       'pages': List.generate(r.nextInt(4), (_) => _genEditPageModel(r)),
       'spans': List.generate(r.nextInt(4), (_) => _genEditableSpanModel(r)),
+      'vector_objects': List.generate(r.nextInt(4), (_) => _genVectorObjectModel(r)),
     };
 
 _JsonMap _genEditOpModel(math.Random r) => <String, dynamic>{
@@ -919,6 +927,7 @@ const Set<String> _kEditExtractResponse = {
   'has_text',
   'pages',
   'spans',
+  'vector_objects',
 };
 
 const Set<String> _kEditOpModel = {

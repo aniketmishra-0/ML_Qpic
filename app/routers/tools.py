@@ -32,6 +32,7 @@ from ..models.schemas import (
     EditExtractResponse,
     EditPageModel,
     EditableSpanModel,
+    VectorObjectModel,
     OcrResponse,
     PreflightFixResponse,
     PreflightResponse,
@@ -404,11 +405,18 @@ async def edit_open(
             )
             for s in extracted.spans
         ]
+        vector_models = [
+            VectorObjectModel(
+                id=v.id, page=v.page, type=v.type, bbox=list(v.bbox)
+            )
+            for v in extracted.vector_objects
+        ]
         return EditExtractResponse(
             job_id=job_id,
             has_text=extracted.has_text,
             pages=page_models,
             spans=span_models,
+            vector_objects=vector_models,
         )
     except HTTPException:
         if job_dir is not None:
@@ -468,11 +476,18 @@ async def edit_state(
         )
         for s in extracted.spans
     ]
+    vector_models = [
+        VectorObjectModel(
+            id=v.id, page=v.page, type=v.type, bbox=list(v.bbox)
+        )
+        for v in extracted.vector_objects
+    ]
     return EditExtractResponse(
         job_id=job_id,
         has_text=extracted.has_text,
         pages=page_models,
         spans=span_models,
+        vector_objects=vector_models,
     )
 
 

@@ -320,6 +320,15 @@ class EditableSpanModel(BaseModel):
     italic: bool = False
 
 
+class VectorObjectModel(BaseModel):
+    """One selectable vector graphic or image object on a page."""
+
+    id: str
+    page: int
+    type: str  # "image" or "vector"
+    bbox: list[float]  # [x0, y0, x1, y1] in PDF points
+
+
 class EditPageModel(BaseModel):
     """Geometry + preview for one page in the editor."""
 
@@ -336,6 +345,7 @@ class EditExtractResponse(BaseModel):
     has_text: bool
     pages: list[EditPageModel]
     spans: list[EditableSpanModel]
+    vector_objects: list[VectorObjectModel] = []
 
 
 class EditOpModel(BaseModel):

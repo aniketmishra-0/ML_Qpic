@@ -159,6 +159,41 @@ class EditPageModel {
   }
 }
 
+/// One selectable vector graphic or image object on a page.
+class VectorObjectModel {
+  const VectorObjectModel({
+    required this.id,
+    required this.page,
+    required this.type,
+    required this.bbox,
+  });
+
+  final String id;
+  final int page;
+  final String type; // "image" or "vector"
+  final List<double> bbox;
+
+  factory VectorObjectModel.fromJson(Map<String, dynamic> json) {
+    return VectorObjectModel(
+      id: json['id'] as String,
+      page: (json['page'] as num).toInt(),
+      type: json['type'] as String,
+      bbox: (json['bbox'] as List<dynamic>)
+          .map((e) => (e as num).toDouble())
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'id': id,
+      'page': page,
+      'type': type,
+      'bbox': bbox,
+    };
+  }
+}
+
 /// All editable text spans for a PDF opened in the editor.
 class EditExtractResponse {
   const EditExtractResponse({
@@ -166,12 +201,14 @@ class EditExtractResponse {
     required this.hasText,
     required this.pages,
     required this.spans,
+    this.vectorObjects = const <VectorObjectModel>[],
   });
 
   final String jobId;
   final bool hasText;
   final List<EditPageModel> pages;
   final List<EditableSpanModel> spans;
+  final List<VectorObjectModel> vectorObjects;
 
   factory EditExtractResponse.fromJson(Map<String, dynamic> json) {
     return EditExtractResponse(
@@ -183,6 +220,9 @@ class EditExtractResponse {
       spans: (json['spans'] as List<dynamic>)
           .map((e) => EditableSpanModel.fromJson(e as Map<String, dynamic>))
           .toList(),
+      vectorObjects: ((json['vector_objects'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((e) => VectorObjectModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -192,6 +232,7 @@ class EditExtractResponse {
       'has_text': hasText,
       'pages': pages.map((e) => e.toJson()).toList(),
       'spans': spans.map((e) => e.toJson()).toList(),
+      'vector_objects': vectorObjects.map((e) => e.toJson()).toList(),
     };
   }
 }

@@ -319,7 +319,8 @@
         "bold": false,
         "italic": false
       }
-    ]
+    ],
+    "vector_objects": []
   },
 
   "PreflightResponse": {

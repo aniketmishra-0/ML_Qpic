@@ -82,6 +82,16 @@ class EditableSpan:
 
 
 @dataclass
+class VectorObject:
+    """One selectable vector graphic or image object on a page."""
+
+    id: str
+    page: int
+    type: str  # "image" or "vector"
+    bbox: tuple[float, float, float, float]  # x0, y0, x1, y1 in PDF points
+
+
+@dataclass
 class PageGeometry:
     page: int
     width: float
@@ -92,6 +102,7 @@ class PageGeometry:
 class ExtractResult:
     pages: list[PageGeometry] = field(default_factory=list)
     spans: list[EditableSpan] = field(default_factory=list)
+    vector_objects: list[VectorObject] = field(default_factory=list)
     has_text: bool = True
 
 
@@ -143,6 +154,44 @@ def extract_text_spans(file_bytes: bytes) -> ExtractResult:
                             bold=bool(flags & _FLAG_BOLD),
                             italic=bool(flags & _FLAG_ITALIC),
                         ))
+
+            # --- Extract images ---
+            try:
+                for img_idx, img_info in enumerate(page.get_images(full=True)):
+                    xref = img_info[0]
+                    rects = page.get_image_rects(xref)
+                    for r_idx, r in enumerate(rects):
+                        if r.width < 5 or r.height < 5:
+                            continue
+                        result.vector_objects.append(VectorObject(
+                            id=f"p{pno + 1}_img_{xref}_{r_idx}",
+                            page=pno + 1,
+                            type="image",
+                            bbox=(round(r.x0, 2), round(r.y0, 2), round(r.x1, 2), round(r.y1, 2)),
+                        ))
+            except Exception as e:
+                logger.warning("Failed to extract images on page %d: %s", pno + 1, str(e))
+
+            # --- Extract vector drawings/shapes ---
+            try:
+                drawings = page.get_drawings()
+                for draw_idx, drawing in enumerate(drawings):
+                    r = drawing.get("rect")
+                    if not r or r.is_empty:
+                        continue
+                    # Filter: watermarks/logos are typically larger graphic blocks
+                    area = r.width * r.height
+                    if area < 100 or r.width < 10 or r.height < 10:
+                        continue
+                    result.vector_objects.append(VectorObject(
+                        id=f"p{pno + 1}_vec_{draw_idx}",
+                        page=pno + 1,
+                        type="vector",
+                        bbox=(round(r.x0, 2), round(r.y0, 2), round(r.x1, 2), round(r.y1, 2)),
+                    ))
+            except Exception as e:
+                logger.warning("Failed to extract drawings on page %d: %s", pno + 1, str(e))
+
         result.has_text = total_chars > 0
         return result
     finally:
@@ -309,9 +358,10 @@ def apply_operations(file_bytes: bytes, ops: list[Operation]) -> bytes:
             original = page.get_text("dict")
             span_lookup = _index_spans_by_bbox(original)
 
-            # Pass 1 — redact the regions of all text edits + erases up front.
+            # Pass 1 — redact the regions of all text edits + erases + vector object deletions up front.
             edit_text_ops = [o for o in page_ops if o.type == "edit_text"]
             erase_ops = [o for o in page_ops if o.type == "erase"]
+            delete_vector_ops = [o for o in page_ops if o.type == "delete_vector_object"]
             src_for_edit: dict[int, dict] = {}
             for o in edit_text_ops:
                 src_for_edit[id(o)] = _match_span(span_lookup, o.bbox) or {}
@@ -319,8 +369,11 @@ def apply_operations(file_bytes: bytes, ops: list[Operation]) -> bytes:
             for o in erase_ops:
                 fill = fitz.sRGB_to_pdf(o.fill if o.fill is not None else 0xFFFFFF)
                 page.add_redact_annot(fitz.Rect(*o.bbox), fill=fill)
-            if edit_text_ops or erase_ops:
-                # text=0 removes glyphs in the edit boxes; erase boxes are filled.
+            for o in delete_vector_ops:
+                # Add redact annotation without fill color so it removes content cleanly
+                page.add_redact_annot(fitz.Rect(*o.bbox), fill=None)
+            if edit_text_ops or erase_ops or delete_vector_ops:
+                # text=0 removes glyphs in the edit boxes; erase boxes are filled; delete_vector_ops remove graphics/images.
                 page.apply_redactions(images=2, graphics=1, text=0)
 
             # Pass 2 — paint every insertion on top.

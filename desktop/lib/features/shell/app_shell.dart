@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme_controller.dart';
 import '../../core/sidecar_bootstrap.dart';
+import '../../core/theme_controller.dart';
 import '../../widgets/settings_dialog.dart';
 import 'app_credit.dart';
 import 'help_screen.dart';
@@ -15,7 +15,8 @@ enum QpicTool {
   autoCrop('Auto Crop', Icons.crop_rounded),
   manualCrop('Manual Crop', Icons.crop_free_rounded),
   renameBatch('Rename Batch', Icons.drive_file_rename_outline_rounded),
-  tools('PDF Enhancer', Icons.auto_awesome_rounded);
+  pdfEnhancer('PDF Enhancer', Icons.auto_awesome_rounded),
+  tools('PDF Tools', Icons.build_rounded);
 
   const QpicTool(this.label, this.icon);
 
@@ -34,8 +35,10 @@ enum QpicTool {
         return 'Manual';
       case QpicTool.renameBatch:
         return 'Rename';
-      case QpicTool.tools:
+      case QpicTool.pdfEnhancer:
         return 'Enhance';
+      case QpicTool.tools:
+        return 'Tools';
     }
   }
 }
@@ -245,7 +248,6 @@ class _QpicBrandMark extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final brand = palette?.brand ?? theme.colorScheme.primary;
-    final brandMagenta = palette?.brandMagenta ?? theme.colorScheme.tertiary;
 
     return Container(
       key: const ValueKey<String>('shell-brand'),
