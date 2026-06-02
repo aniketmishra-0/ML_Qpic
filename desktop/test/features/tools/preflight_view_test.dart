@@ -99,7 +99,12 @@ class _CapturingAdapter implements HttpClientAdapter {
 Widget _host(PreflightController controller) {
   return MaterialApp(
     theme: QpicTheme.light,
-    home: Scaffold(body: PreflightView(controller: controller)),
+    home: Scaffold(
+      body: PreflightView(
+        controller: controller,
+        initiallyExpanded: true,
+      ),
+    ),
   );
 }
 

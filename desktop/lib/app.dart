@@ -21,7 +21,6 @@ import 'features/shell/document_zoom_controller.dart';
 import 'features/shell/document_zoom_scope.dart';
 import 'features/shell/platform_menu_bar.dart';
 import 'features/shell/startup_gate.dart';
-import 'features/tools/pdf_enhancer_view.dart';
 import 'features/tools/pdf_tools_view.dart';
 import 'models/analyze.dart';
 import 'widgets/pdf_preview_dialog.dart';
@@ -419,27 +418,6 @@ class _QpicAppState extends State<QpicApp> {
                   : null,
               previewUrlResolver:
                   apiClient != null ? (url) => apiClient.resolveUri(url).toString() : null,
-            );
-          },
-        );
-      case QpicTool.pdfEnhancer:
-        return AnimatedBuilder(
-          animation: _autoCropController,
-          builder: (context, _) {
-            return PdfEnhancerView(
-              key: const ValueKey<String>('tool-view-pdfEnhancer'),
-              apiClient: _autoCropController.apiClient,
-              downloadService: _autoCropController.downloadService,
-              autoCropController: _autoCropController,
-              manualCropController: _manualCropController,
-              themeController: _controller,
-              onSwitchTab: (index) {
-                if (index == 0) {
-                  _shellKey.currentState?.selectTool(QpicTool.autoCrop);
-                } else if (index == 1) {
-                  _shellKey.currentState?.selectTool(QpicTool.manualCrop);
-                }
-              },
             );
           },
         );

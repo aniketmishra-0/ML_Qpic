@@ -293,6 +293,15 @@ class RenameFinalizeResponse(BaseModel):
 # --- PDF power tools: Compress / Edit / Preflight ----------------------------
 
 
+class EditPageModel(BaseModel):
+    """Geometry + preview for one page in the editor."""
+
+    page: int
+    width: float
+    height: float
+    preview_url: str
+
+
 class CompressResponse(BaseModel):
     """Result of a PDF compression job."""
 
@@ -304,6 +313,7 @@ class CompressResponse(BaseModel):
     target_met: Optional[bool] = None
     note: str = ""
     download_url: str
+    pages: list[EditPageModel] = []
 
 
 class EditableSpanModel(BaseModel):
@@ -329,13 +339,6 @@ class VectorObjectModel(BaseModel):
     bbox: list[float]  # [x0, y0, x1, y1] in PDF points
 
 
-class EditPageModel(BaseModel):
-    """Geometry + preview for one page in the editor."""
-
-    page: int
-    width: float
-    height: float
-    preview_url: str
 
 
 class EditExtractResponse(BaseModel):
@@ -467,6 +470,8 @@ class PreflightResponse(BaseModel):
     mixed_page_sizes: bool = False
     # Per-page detailed geometry for the Preflight Check modal table.
     page_details: list[PreflightPageDetail] = []
+    job_id: Optional[str] = None
+    pages: list[EditPageModel] = []
 
 
 class PreflightFixResponse(BaseModel):
@@ -480,6 +485,7 @@ class PreflightFixResponse(BaseModel):
     pages_changed: int
     note: str
     download_url: str
+    pages: list[EditPageModel] = []
 
 
 class EnhanceResponse(BaseModel):

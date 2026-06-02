@@ -56,6 +56,9 @@ class PreflightController extends ChangeNotifier {
   final ApiClient _apiClient;
   final DownloadService _downloadService;
 
+  /// Expose apiClient for UI image resolution
+  ApiClient get apiClient => _apiClient;
+
   // --- Inputs ---------------------------------------------------------------
 
   List<int>? _fileBytes;
@@ -145,6 +148,19 @@ class PreflightController extends ChangeNotifier {
   }
 
   // --- Actions --------------------------------------------------------------
+
+  /// Resets the controller state, clearing the selected file and any results/errors.
+  void clear() {
+    _fileBytes = null;
+    _fileName = null;
+    _result = null;
+    _fixResult = null;
+    _errorText = null;
+    _target = 'auto';
+    _fillMode = FillMode.fit;
+    _skipPages = '';
+    notifyListeners();
+  }
 
   /// Loads a PDF into the panel, clearing any prior result/error so the panel
   /// reflects the new selection.

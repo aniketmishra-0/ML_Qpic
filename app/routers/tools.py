@@ -153,6 +153,21 @@ async def compress_endpoint(
         out_path = job_dir / _COMPRESSED_PDF
         await asyncio.to_thread(out_path.write_bytes, result.data)
 
+        # Write to source.pdf to support lazy page previews
+        source_path = job_dir / _SOURCE_PDF
+        await asyncio.to_thread(source_path.write_bytes, result.data)
+
+        geometry = await asyncio.to_thread(_page_geometry, result.data)
+        page_models = [
+            EditPageModel(
+                page=p,
+                width=w,
+                height=h,
+                preview_url=f"/api/tools/edit/{job_id}/page/{p}",
+            )
+            for (p, w, h) in geometry
+        ]
+
         logger.info(
             "request_id=%s job_id=%s stage=compress_done level=%s original=%s compressed=%s ratio=%.3f",
             request_id, job_id, result.level, result.original_size,
@@ -168,6 +183,7 @@ async def compress_endpoint(
             target_met=result.target_met,
             note=result.note,
             download_url=f"/api/tools/compress/download/{job_id}",
+            pages=page_models,
         )
     except HTTPException:
         if job_dir is not None:
@@ -205,6 +221,7 @@ async def compress_download(
 
 @router.post("/preflight", response_model=PreflightResponse)
 async def preflight_endpoint(
+    request: Request,
     file: UploadFile = File(..., description="The PDF to inspect."),
     settings: Settings = Depends(get_settings),
 ) -> PreflightResponse:
@@ -212,6 +229,23 @@ async def preflight_endpoint(
 
     file_bytes = await _read_pdf_upload(file, settings)
     report = await asyncio.to_thread(preflight_pdf, file_bytes)
+
+    job_id = generate_job_id()
+    temp_root = _get_temp_root(request, settings)
+    job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
+    source_path = job_dir / _SOURCE_PDF
+    await asyncio.to_thread(source_path.write_bytes, file_bytes)
+
+    geometry = await asyncio.to_thread(_page_geometry, file_bytes)
+    page_models = [
+        EditPageModel(
+            page=p,
+            width=w,
+            height=h,
+            preview_url=f"/api/tools/edit/{job_id}/page/{p}",
+        )
+        for (p, w, h) in geometry
+    ]
 
     return PreflightResponse(
         verdict=report.verdict,
@@ -227,6 +261,8 @@ async def preflight_endpoint(
         distinct_page_sizes=report.distinct_page_sizes,
         mixed_page_sizes=report.mixed_page_sizes,
         page_details=report.page_details,
+        job_id=job_id,
+        pages=page_models,
     )
 
 
@@ -300,6 +336,21 @@ async def preflight_fix_page_sizes(
         out_path = job_dir / _NORMALIZED_PDF
         await asyncio.to_thread(out_path.write_bytes, result.data)
 
+        # Write to source.pdf to support lazy page previews
+        source_path = job_dir / _SOURCE_PDF
+        await asyncio.to_thread(source_path.write_bytes, result.data)
+
+        geometry = await asyncio.to_thread(_page_geometry, result.data)
+        page_models = [
+            EditPageModel(
+                page=p,
+                width=w,
+                height=h,
+                preview_url=f"/api/tools/edit/{job_id}/page/{p}",
+            )
+            for (p, w, h) in geometry
+        ]
+
         logger.info(
             "request_id=%s job_id=%s stage=preflight_fix_done target=%s changed=%s/%s",
             request_id, job_id, result.target_label, result.pages_changed, result.pages_total,
@@ -314,6 +365,7 @@ async def preflight_fix_page_sizes(
             pages_changed=result.pages_changed,
             note=result.note,
             download_url=f"/api/tools/preflight/download/{job_id}",
+            pages=page_models,
         )
     except HTTPException:
         if job_dir is not None:

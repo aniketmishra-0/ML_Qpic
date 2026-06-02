@@ -71,6 +71,9 @@ class CompressController extends ChangeNotifier {
   final ApiClient _apiClient;
   final DownloadService _downloadService;
 
+  /// Expose apiClient for UI image resolution
+  ApiClient get apiClient => _apiClient;
+
   // --- Inputs ---------------------------------------------------------------
 
   CompressLevel _level = CompressLevel.balanced;
@@ -145,6 +148,18 @@ class CompressController extends ChangeNotifier {
 
   /// Whether a finished result is available to download.
   bool get canDownload => _result != null && !_busy;
+
+  /// Resets the controller state, clearing the selected file and any results/errors.
+  void clear() {
+    _fileBytes = null;
+    _fileName = null;
+    _result = null;
+    _errorText = null;
+    _level = CompressLevel.balanced;
+    _useTarget = false;
+    _targetMbText = _formatDefaultTarget();
+    notifyListeners();
+  }
 
   /// Loads a PDF into the panel, clearing any prior result/error so the panel
   /// reflects the new selection.

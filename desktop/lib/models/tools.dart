@@ -25,6 +25,7 @@ class CompressResponse {
     required this.downloadUrl,
     this.targetMet,
     this.note = '',
+    this.pages = const <EditPageModel>[],
   });
 
   final String jobId;
@@ -37,6 +38,7 @@ class CompressResponse {
   final bool? targetMet;
   final String note;
   final String downloadUrl;
+  final List<EditPageModel> pages;
 
   factory CompressResponse.fromJson(Map<String, dynamic> json) {
     return CompressResponse(
@@ -48,6 +50,9 @@ class CompressResponse {
       targetMet: json['target_met'] as bool?,
       note: json['note'] as String? ?? '',
       downloadUrl: json['download_url'] as String,
+      pages: ((json['pages'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((e) => EditPageModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -61,6 +66,7 @@ class CompressResponse {
       'target_met': targetMet,
       'note': note,
       'download_url': downloadUrl,
+      'pages': pages.map((e) => e.toJson()).toList(),
     };
   }
 }
@@ -641,6 +647,8 @@ class PreflightResponse {
     this.distinctPageSizes = const <String>[],
     this.mixedPageSizes = false,
     this.pageDetails = const <PreflightPageDetail>[],
+    this.jobId,
+    this.pages = const <EditPageModel>[],
   });
 
   /// pass | warn | fail.
@@ -657,6 +665,8 @@ class PreflightResponse {
   final List<String> distinctPageSizes;
   final bool mixedPageSizes;
   final List<PreflightPageDetail> pageDetails;
+  final String? jobId;
+  final List<EditPageModel> pages;
 
   factory PreflightResponse.fromJson(Map<String, dynamic> json) {
     return PreflightResponse(
@@ -690,6 +700,10 @@ class PreflightResponse {
               .map((e) =>
                   PreflightPageDetail.fromJson(e as Map<String, dynamic>))
               .toList(),
+      jobId: json['job_id'] as String?,
+      pages: ((json['pages'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((e) => EditPageModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -708,6 +722,8 @@ class PreflightResponse {
       'distinct_page_sizes': distinctPageSizes,
       'mixed_page_sizes': mixedPageSizes,
       'page_details': pageDetails.map((e) => e.toJson()).toList(),
+      'job_id': jobId,
+      'pages': pages.map((e) => e.toJson()).toList(),
     };
   }
 }
@@ -723,6 +739,7 @@ class PreflightFixResponse {
     required this.pagesChanged,
     required this.note,
     required this.downloadUrl,
+    this.pages = const <EditPageModel>[],
   });
 
   final String jobId;
@@ -733,6 +750,7 @@ class PreflightFixResponse {
   final int pagesChanged;
   final String note;
   final String downloadUrl;
+  final List<EditPageModel> pages;
 
   factory PreflightFixResponse.fromJson(Map<String, dynamic> json) {
     return PreflightFixResponse(
@@ -744,6 +762,9 @@ class PreflightFixResponse {
       pagesChanged: (json['pages_changed'] as num).toInt(),
       note: json['note'] as String,
       downloadUrl: json['download_url'] as String,
+      pages: ((json['pages'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((e) => EditPageModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -757,6 +778,7 @@ class PreflightFixResponse {
       'pages_changed': pagesChanged,
       'note': note,
       'download_url': downloadUrl,
+      'pages': pages.map((e) => e.toJson()).toList(),
     };
   }
 }

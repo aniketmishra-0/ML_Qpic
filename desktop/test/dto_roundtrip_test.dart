@@ -579,6 +579,7 @@ _JsonMap _genCompressResponse(math.Random r) => <String, dynamic>{
       'target_met': _nbool(r),
       'note': _str(r, min: 0, max: 30),
       'download_url': _str(r),
+      'pages': List.generate(r.nextInt(3), (_) => _genEditPageModel(r)),
     };
 
 _JsonMap _genEditableSpanModel(math.Random r) => <String, dynamic>{
@@ -710,6 +711,8 @@ _JsonMap _genPreflightResponse(math.Random r) => <String, dynamic>{
       'mixed_page_sizes': _b(r),
       'page_details':
           List.generate(r.nextInt(4), (_) => _genPreflightPageDetail(r)),
+      'job_id': r.nextBool() ? _str(r) : null,
+      'pages': List.generate(r.nextInt(3), (_) => _genEditPageModel(r)),
     };
 
 _JsonMap _genPreflightFixResponse(math.Random r) => <String, dynamic>{
@@ -721,6 +724,7 @@ _JsonMap _genPreflightFixResponse(math.Random r) => <String, dynamic>{
       'pages_changed': _int(r, max: 1000),
       'note': _str(r, min: 0, max: 30),
       'download_url': _str(r),
+      'pages': List.generate(r.nextInt(3), (_) => _genEditPageModel(r)),
     };
 
 // ===========================================================================
@@ -901,6 +905,7 @@ const Set<String> _kCompressResponse = {
   'target_met',
   'note',
   'download_url',
+  'pages',
 };
 
 const Set<String> _kEditableSpanModel = {
@@ -1024,6 +1029,8 @@ const Set<String> _kPreflightResponse = {
   'distinct_page_sizes',
   'mixed_page_sizes',
   'page_details',
+  'job_id',
+  'pages',
 };
 
 const Set<String> _kPreflightFixResponse = {
@@ -1035,4 +1042,5 @@ const Set<String> _kPreflightFixResponse = {
   'pages_changed',
   'note',
   'download_url',
+  'pages',
 };
