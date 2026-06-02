@@ -317,13 +317,12 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
   }
 
   void _onPointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
-    // Trackpad two-finger scroll → pan the canvas directly.
-    final bool zoomModifier = HardwareKeyboard.instance.isControlPressed ||
-        HardwareKeyboard.instance.isMetaPressed;
-    if (zoomModifier) {
-      // Pinch-to-zoom on trackpad.
+    // Zoom if the scale factor is not 1.0 (indicating a pinch gesture on trackpad/touchpad).
+    if (event.scale != 1.0) {
       widget.controller.zoomBy(event.scale);
-    } else {
+    }
+    // Pan if there is a pan delta.
+    if (event.panDelta != Offset.zero) {
       widget.controller.panBy(event.panDelta);
     }
   }

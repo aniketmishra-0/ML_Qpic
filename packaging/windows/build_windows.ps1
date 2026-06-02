@@ -283,6 +283,11 @@ switch ($Installer) {
                 # Do not auto-install the dev cert into the trust store in CI.
                 $msixArgs += @('--install-certificate', 'false')
             }
+            else {
+                # Sign tool not enabled; build an unsigned MSIX package.
+                # When sign-msix is false, msix requires a publisher name.
+                $msixArgs += @('--sign-msix', 'false', '--publisher', 'CN=Qpic')
+            }
 
             # NOTE: we intentionally do NOT pass --build-windows; the runner is
             # already built and the sidecar copied in, so msix packages the
