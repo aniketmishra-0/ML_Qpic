@@ -120,6 +120,22 @@ class RenameItem {
   /// Raw file bytes for upload (from file picker / drag-drop).
   final List<int>? fileBytes;
 
+  /// Cached list of decoded bytes.
+  List<int>? _decodedBytesCache;
+
+  /// Cached Uint8List for Flutter Image.memory rendering.
+  Uint8List? _uint8ListCache;
+
+  /// Returns the cached Uint8List representation of the image bytes.
+  Uint8List getUint8List() {
+    final cached = _uint8ListCache;
+    if (cached != null) return cached;
+    final bytes = bytesForUpload();
+    final list = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+    _uint8ListCache = list;
+    return list;
+  }
+
   /// The bytes to stream to the rename session, preferring the raw
   /// [fileBytes] (picked image) and falling back to decoding the base64
   /// payload of a PDF page's [dataUrl]. Returns an empty list when neither is
@@ -127,12 +143,18 @@ class RenameItem {
   List<int> bytesForUpload() {
     final raw = fileBytes;
     if (raw != null) return raw;
+
+    final cached = _decodedBytesCache;
+    if (cached != null) return cached;
+
     final url = dataUrl;
     if (url != null) {
       final comma = url.indexOf(',');
       if (url.startsWith('data:') && comma != -1) {
         try {
-          return base64Decode(url.substring(comma + 1));
+          final decoded = base64Decode(url.substring(comma + 1));
+          _decodedBytesCache = decoded;
+          return decoded;
         } catch (_) {
           return const <int>[];
         }
@@ -306,6 +328,16 @@ class RenameController extends ChangeNotifier {
   void removeItem(int index) {
     if (index < 0 || index >= _items.length) return;
     _items.removeAt(index);
+    notifyListeners();
+    _schedulePreview();
+  }
+
+  /// Move an item from [oldIndex] to [newIndex] to reorder the rename sequence.
+  void reorderItem(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _items.length) return;
+    if (newIndex < 0 || newIndex >= _items.length) return;
+    final item = _items.removeAt(oldIndex);
+    _items.insert(newIndex, item);
     notifyListeners();
     _schedulePreview();
   }

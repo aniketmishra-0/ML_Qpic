@@ -15,7 +15,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme_controller.dart';
-import '../../models/rename.dart';
 import 'rename_controller.dart';
 
 /// Stateless form surface for the Rename Batch tool.
@@ -117,6 +116,10 @@ class RenameView extends StatelessWidget {
                     ? _buildWideBody(context, palette)
                     : _buildNarrowBody(context, palette),
               ),
+              if (controller.itemCount > 0) ...<Widget>[
+                const SizedBox(height: 16),
+                _ImageGalleryRow(controller: controller, palette: palette),
+              ],
             ],
           ),
         );
@@ -127,58 +130,78 @@ class RenameView extends StatelessWidget {
   /// Two-column body for wide windows: naming + output controls on the left,
   /// the live preview on the right.
   Widget _buildWideBody(BuildContext context, QpicPalette? palette) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Expanded(
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                _SectionCard(
-                  title: 'Naming',
-                  palette: palette,
-                  children: <Widget>[
-                    _PatternField(controller: controller),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: <Widget>[
-                        Expanded(child: _StartField(controller: controller)),
-                        const SizedBox(width: 16),
-                        Expanded(child: _PaddingField(controller: controller)),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _SectionCard(
-                  title: 'Output',
-                  palette: palette,
-                  children: <Widget>[
-                    _OutputFormatSelector(controller: controller),
-                    if (controller.outputFormat == RenameOutputFormat.jpg ||
-                        controller.outputFormat ==
-                            RenameOutputFormat.jpeg) ...<Widget>[
-                      const SizedBox(height: 16),
-                      _JpgQualitySlider(controller: controller),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Expanded(
+              flex: 3,
+              child: _SectionCard(
+                title: 'Naming',
+                palette: palette,
+                children: <Widget>[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(
+                        flex: 3,
+                        child: _PatternField(controller: controller),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 2,
+                        child: _StartField(controller: controller),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 2,
+                        child: _PaddingField(controller: controller),
+                      ),
                     ],
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _RenameButton(
-                  busy: busy,
-                  enabled: controller.itemCount > 0,
-                  onRename: onRename,
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
-          ),
+            const SizedBox(width: 16),
+            Expanded(
+              flex: 2,
+              child: _SectionCard(
+                title: 'Output',
+                palette: palette,
+                children: <Widget>[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(
+                        child: _OutputFormatSelector(controller: controller),
+                      ),
+                      if (controller.outputFormat == RenameOutputFormat.jpg ||
+                          controller.outputFormat ==
+                              RenameOutputFormat.jpeg) ...<Widget>[
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _JpgQualitySlider(controller: controller),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 20),
+        const SizedBox(height: 12),
+        _RenameButton(
+          busy: busy,
+          enabled: controller.itemCount > 0,
+          onRename: onRename,
+          itemCount: controller.itemCount,
+        ),
+        const SizedBox(height: 16),
         Expanded(
-          child: SingleChildScrollView(
-            child: _PreviewSection(controller: controller, palette: palette),
-          ),
+          child: _PreviewSection(controller: controller, palette: palette),
         ),
       ],
     );
@@ -187,49 +210,60 @@ class RenameView extends StatelessWidget {
   /// Single-column body for narrow windows. Scrolls as a fallback so the form
   /// stays usable when there isn't room for the side-by-side preview.
   Widget _buildNarrowBody(BuildContext context, QpicPalette? palette) {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          _SectionCard(
-            title: 'Naming',
-            palette: palette,
-            children: <Widget>[
-              _PatternField(controller: controller),
-              const SizedBox(height: 16),
-              Row(
-                children: <Widget>[
-                  Expanded(child: _StartField(controller: controller)),
-                  const SizedBox(width: 16),
-                  Expanded(child: _PaddingField(controller: controller)),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _SectionCard(
-            title: 'Output',
-            palette: palette,
-            children: <Widget>[
-              _OutputFormatSelector(controller: controller),
-              if (controller.outputFormat == RenameOutputFormat.jpg ||
-                  controller.outputFormat ==
-                      RenameOutputFormat.jpeg) ...<Widget>[
-                const SizedBox(height: 16),
-                _JpgQualitySlider(controller: controller),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _SectionCard(
+          title: 'Naming',
+          palette: palette,
+          children: <Widget>[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Expanded(
+                  flex: 3,
+                  child: _PatternField(controller: controller),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: _StartField(controller: controller),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: _PaddingField(controller: controller),
+                ),
               ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _SectionCard(
+          title: 'Output',
+          palette: palette,
+          children: <Widget>[
+            _OutputFormatSelector(controller: controller),
+            if (controller.outputFormat == RenameOutputFormat.jpg ||
+                controller.outputFormat ==
+                    RenameOutputFormat.jpeg) ...<Widget>[
+              const SizedBox(height: 12),
+              _JpgQualitySlider(controller: controller),
             ],
-          ),
-          const SizedBox(height: 16),
-          _PreviewSection(controller: controller, palette: palette),
-          const SizedBox(height: 20),
-          _RenameButton(
-            busy: busy,
-            enabled: controller.itemCount > 0,
-            onRename: onRename,
-          ),
-        ],
-      ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _RenameButton(
+          busy: busy,
+          enabled: controller.itemCount > 0,
+          onRename: onRename,
+          itemCount: controller.itemCount,
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: _PreviewSection(controller: controller, palette: palette),
+        ),
+      ],
     );
   }
 }
@@ -551,7 +585,7 @@ class _PatternFieldState extends State<_PatternField> {
       key: const ValueKey<String>('rename-pattern'),
       controller: _textController,
       decoration: const InputDecoration(
-        labelText: 'Pattern',
+        labelText: 'Prefix / Pattern',
         hintText: 'e.g. Q#, (name), page-#',
         helperText: '# = number. Variables: (name), (width), (height), (date), (ext)',
         isDense: true,
@@ -829,9 +863,11 @@ class _PreviewSection extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
-            _PreviewList(
-              items: controller.previewPairs,
-              palette: palette,
+            Expanded(
+              child: _PreviewList(
+                controller: controller,
+                palette: palette,
+              ),
             ),
           ],
         ),
@@ -899,69 +935,219 @@ class _EmptyPreviewCard extends StatelessWidget {
 
 /// Renders the before/after preview list (client-side computed pairs).
 class _PreviewList extends StatelessWidget {
-  const _PreviewList({required this.items, required this.palette});
+  const _PreviewList({required this.controller, required this.palette});
 
-  final List<RenamePlanItem> items;
+  final RenameController controller;
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final pairs = controller.previewPairs;
+    final renameItems = controller.items;
+
+    return GridView.builder(
+      key: const ValueKey<String>('rename-preview-list'),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 450,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 1.35,
+      ),
+      itemCount: pairs.length,
+      itemBuilder: (context, index) {
+        if (index >= renameItems.length) return const SizedBox.shrink();
+        return _PreviewCard(
+          item: renameItems[index],
+          renamedName: pairs[index].renamed,
+          controller: controller,
+          index: index,
+          palette: palette,
+        );
+      },
+    );
+  }
+}
+
+class _PreviewCard extends StatelessWidget {
+  const _PreviewCard({
+    required this.item,
+    required this.renamedName,
+    required this.controller,
+    required this.index,
+    required this.palette,
+  });
+
+  final RenameItem item;
+  final String renamedName;
+  final RenameController controller;
+  final int index;
   final QpicPalette? palette;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Show at most 20 items to keep the preview compact.
-    final displayItems = items.length > 20 ? items.sublist(0, 20) : items;
-    final hasMore = items.length > 20;
+    final bytes = item.bytesForUpload();
 
-    return Column(
-      key: const ValueKey<String>('rename-preview-list'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        for (final item in displayItems)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    item.original,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+    return Container(
+      decoration: BoxDecoration(
+        color: palette?.field ?? theme.colorScheme.surfaceContainerHighest.withAlpha(120),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: palette?.border ?? theme.dividerColor,
+          width: 1.5,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Image Preview Container - Expanded to fill available height in grid cell
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () {
+                      showDialog<void>(
+                        context: context,
+                        barrierDismissible: true,
+                        builder: (_) => _ImageViewerDialog(
+                          controller: controller,
+                          initialIndex: index,
+                          palette: palette,
+                        ),
+                      );
+                    },
+                    child: Container(
+                      color: Colors.black.withAlpha(20),
+                      child: bytes.isNotEmpty
+                          ? Image.memory(
+                              item.getUint8List(),
+                              fit: BoxFit.contain,
+                            )
+                          : const Center(
+                              child: Icon(Icons.broken_image_outlined, size: 36),
+                            ),
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Icon(
-                    Icons.arrow_forward,
-                    size: 14,
-                    color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                // Delete button overlay
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _OverlayIconButton(
+                    icon: Icons.delete_outline_rounded,
+                    iconColor: Colors.redAccent,
+                    tooltip: 'Delete Image',
+                    onPressed: () => controller.removeItem(index),
                   ),
                 ),
-                Expanded(
-                  child: Text(
-                    item.renamed,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: palette?.text ?? theme.colorScheme.onSurface,
-                    ),
+                // Reorder controls overlay
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Row(
+                    children: [
+                      if (index > 0) ...[
+                        _OverlayIconButton(
+                          icon: Icons.arrow_back_rounded,
+                          tooltip: 'Move Left',
+                          onPressed: () => controller.reorderItem(index, index - 1),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      if (index < controller.itemCount - 1)
+                        _OverlayIconButton(
+                          icon: Icons.arrow_forward_rounded,
+                          tooltip: 'Move Right',
+                          onPressed: () => controller.reorderItem(index, index + 1),
+                        ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        if (hasMore)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              '… and ${items.length - 20} more',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                fontStyle: FontStyle.italic,
+          // Compare Names Row (fixed height bottom container)
+          Container(
+            height: 60,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: palette?.border ?? theme.dividerColor,
+                  width: 1,
+                ),
               ),
             ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Original',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: palette?.text ?? theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 14,
+                    color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Renamed',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        renamedName,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: palette?.text ?? theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -972,11 +1158,13 @@ class _RenameButton extends StatelessWidget {
     required this.busy,
     required this.enabled,
     required this.onRename,
+    required this.itemCount,
   });
 
   final bool busy;
   final bool enabled;
   final VoidCallback? onRename;
+  final int itemCount;
 
   @override
   Widget build(BuildContext context) {
@@ -990,7 +1178,456 @@ class _RenameButton extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : const Icon(Icons.drive_file_rename_outline),
-      label: const Text('Rename & Download ZIP'),
+      label: Text(
+        itemCount > 0
+            ? 'Rename & Download ZIP ($itemCount file${itemCount == 1 ? '' : 's'})'
+            : 'Rename & Download ZIP',
+      ),
     );
+  }
+}
+
+class _ImageGalleryRow extends StatelessWidget {
+  const _ImageGalleryRow({required this.controller, required this.palette});
+
+  final RenameController controller;
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final borderColor = palette?.border ?? theme.dividerColor;
+
+    return Container(
+      height: 130,
+      decoration: BoxDecoration(
+        color: palette?.panel ?? theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Loaded Images (${controller.itemCount})',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: palette?.text ?? theme.colorScheme.onSurface,
+                  ),
+                ),
+                Text(
+                  'Click to view each image',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              itemCount: controller.itemCount,
+              itemBuilder: (context, index) {
+                final item = controller.items[index];
+                return _GalleryThumbnail(
+                  item: item,
+                  index: index,
+                  controller: controller,
+                  palette: palette,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GalleryThumbnail extends StatelessWidget {
+  const _GalleryThumbnail({
+    required this.item,
+    required this.index,
+    required this.controller,
+    required this.palette,
+  });
+
+  final RenameItem item;
+  final int index;
+  final RenameController controller;
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bytes = item.bytesForUpload();
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+          showDialog<void>(
+            context: context,
+            barrierDismissible: true,
+            builder: (_) => _ImageViewerDialog(
+              controller: controller,
+              initialIndex: index,
+              palette: palette,
+            ),
+          );
+        },
+        child: Container(
+          width: 80,
+          margin: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: palette?.border ?? theme.dividerColor,
+              width: 1.5,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              bytes.isNotEmpty
+                  ? Image.memory(
+                      item.getUint8List(),
+                      fit: BoxFit.cover,
+                    )
+                  : Container(
+                      color: Colors.black.withAlpha(20),
+                      child: const Center(
+                        child: Icon(Icons.broken_image_outlined, size: 20),
+                      ),
+                    ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  color: Colors.black.withAlpha(160),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                  child: Text(
+                    item.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageViewerDialog extends StatefulWidget {
+  const _ImageViewerDialog({
+    required this.controller,
+    required this.initialIndex,
+    required this.palette,
+  });
+
+  final RenameController controller;
+  final int initialIndex;
+  final QpicPalette? palette;
+
+  @override
+  State<_ImageViewerDialog> createState() => _ImageViewerDialogState();
+}
+
+class _ImageViewerDialogState extends State<_ImageViewerDialog> {
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+  }
+
+  void _next() {
+    if (_currentIndex < widget.controller.items.length - 1) {
+      setState(() {
+        _currentIndex++;
+      });
+    }
+  }
+
+  void _prev() {
+    if (_currentIndex > 0) {
+      setState(() {
+        _currentIndex--;
+      });
+    }
+  }
+
+  void _deleteCurrent() {
+    final itemsCount = widget.controller.items.length;
+    if (itemsCount == 0) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    widget.controller.removeItem(_currentIndex);
+
+    final newCount = widget.controller.items.length;
+    if (newCount == 0) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() {
+        if (_currentIndex >= newCount) {
+          _currentIndex = newCount - 1;
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (widget.controller.items.isEmpty || _currentIndex >= widget.controller.items.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop();
+      });
+      return const SizedBox.shrink();
+    }
+
+    final item = widget.controller.items[_currentIndex];
+    final bytes = item.bytesForUpload();
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.all(24),
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        behavior: HitTestBehavior.translucent,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                behavior: HitTestBehavior.translucent,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            Center(
+              child: GestureDetector(
+                onTap: () {}, // Prevent closing when tapping card itself
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 800, maxHeight: 700),
+                  decoration: BoxDecoration(
+                    color: widget.palette?.panel ?? theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: widget.palette?.border ?? theme.dividerColor,
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(80),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.name,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: widget.palette?.text ?? theme.colorScheme.onSurface,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (item.width != null && item.height != null) ...[
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '${item.width} × ${item.height} px • ${_humanSize(item.sizeBytes)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline_rounded,
+                                color: Colors.redAccent,
+                              ),
+                              tooltip: 'Delete Image',
+                              onPressed: _deleteCurrent,
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: Icon(
+                                Icons.close,
+                                color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                              ),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      // Main content
+                      Expanded(
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(24.0),
+                              child: bytes.isNotEmpty
+                                  ? InteractiveViewer(
+                                      maxScale: 4.0,
+                                      child: Image.memory(
+                                        item.getUint8List(),
+                                        fit: BoxFit.contain,
+                                      ),
+                                    )
+                                  : const Center(
+                                      child: Text('Could not load image'),
+                                    ),
+                            ),
+                            // Navigation
+                            if (_currentIndex > 0)
+                              Positioned(
+                                left: 16,
+                                child: CircleAvatar(
+                                  backgroundColor: Colors.black.withAlpha(120),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.chevron_left, color: Colors.white),
+                                    onPressed: _prev,
+                                  ),
+                                ),
+                              ),
+                            if (_currentIndex < widget.controller.items.length - 1)
+                              Positioned(
+                                right: 16,
+                                child: CircleAvatar(
+                                  backgroundColor: Colors.black.withAlpha(120),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.chevron_right, color: Colors.white),
+                                    onPressed: _next,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      // Footer
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        child: Center(
+                          child: Text(
+                            'Image ${_currentIndex + 1} of ${widget.controller.items.length}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _humanSize(int bytes) {
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
+  }
+}
+
+class _OverlayIconButton extends StatelessWidget {
+  const _OverlayIconButton({
+    required this.icon,
+    required this.onPressed,
+    this.iconColor,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final Color? iconColor;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bg = isDark ? Colors.black.withAlpha(160) : Colors.white.withAlpha(200);
+    final fg = iconColor ?? (isDark ? Colors.white : Colors.black87);
+
+    Widget button = Material(
+      color: bg,
+      type: MaterialType.circle,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: Icon(
+            icon,
+            size: 18,
+            color: onPressed != null ? fg : fg.withAlpha(80),
+          ),
+        ),
+      ),
+    );
+
+    if (tooltip != null) {
+      button = Tooltip(
+        message: tooltip!,
+        child: button,
+      );
+    }
+
+    return button;
   }
 }

@@ -163,48 +163,55 @@ class _QpicNavRail extends StatelessWidget {
           right: BorderSide(color: borderColor, width: 1),
         ),
       ),
-      child: Column(
-        children: <Widget>[
-          const SizedBox(height: 16),
-          _QpicBrandMark(palette: palette),
-          const SizedBox(height: 24),
-          // Tool destinations.
-          Expanded(
-            child: SingleChildScrollView(
-              physics: const ClampingScrollPhysics(),
-              child: Column(
-                children: <Widget>[
-                  for (final tool in QpicTool.values)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3),
-                      child: _NavRailItem(
-                        tool: tool,
-                        active: tool == selected,
-                        enabled: enabled,
-                        onTap: () => onSelected(tool),
-                        palette: palette,
-                      ),
+      child: CustomScrollView(
+        physics: const ClampingScrollPhysics(),
+        slivers: <Widget>[
+          SliverToBoxAdapter(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const SizedBox(height: 10),
+                _QpicBrandMark(palette: palette),
+                const SizedBox(height: 12),
+                // Tool destinations.
+                for (final tool in QpicTool.values)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: _NavRailItem(
+                      tool: tool,
+                      active: tool == selected,
+                      enabled: enabled,
+                      onTap: () => onSelected(tool),
+                      palette: palette,
                     ),
+                  ),
+              ],
+            ),
+          ),
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  AppCredit(palette: palette),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: 40,
+                    height: 1,
+                    color: borderColor,
+                  ),
+                  const SizedBox(height: 4),
+                  // Help control.
+                  _NavHelpButton(palette: palette, enabled: enabled),
+                  const SizedBox(height: 6),
+                  // Vertical theme switcher.
+                  ThemeSwitcher(controller: themeController),
                 ],
               ),
             ),
           ),
-          // "Built by Aniket Mishra" credit (mirrors the web footer) — opens
-          // the author's LinkedIn profile.
-          AppCredit(palette: palette),
-          const SizedBox(height: 8),
-          Container(
-            width: 40,
-            height: 1,
-            color: borderColor,
-          ),
-          const SizedBox(height: 8),
-          // Help control.
-          _NavHelpButton(palette: palette, enabled: enabled),
-          const SizedBox(height: 12),
-          // Vertical theme switcher.
-          ThemeSwitcher(controller: themeController),
-          const SizedBox(height: 14),
         ],
       ),
     );

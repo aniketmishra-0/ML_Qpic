@@ -19,6 +19,7 @@ import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatf
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'about_dialog.dart';
 import 'document_zoom_controller.dart';
 import 'help_screen.dart';
 
@@ -72,7 +73,7 @@ class QpicPlatformMenuBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return PlatformMenuBar(
       menus: <PlatformMenuItem>[
-        _buildAppMenu(),
+        _buildAppMenu(context),
         _buildEditMenu(),
         _buildViewMenu(),
         _buildHelpMenu(context),
@@ -146,16 +147,17 @@ class QpicPlatformMenuBar extends StatelessWidget {
   /// The application menu. On macOS this is the first menu and carries About,
   /// Services, Hide, and Quit. On other platforms it's a simple "Qpic" menu
   /// with Quit.
-  PlatformMenu _buildAppMenu() {
+  PlatformMenu _buildAppMenu(BuildContext context) {
     return PlatformMenu(
       label: 'Qpic',
       menus: <PlatformMenuItem>[
-        if (_isMacOS &&
-            PlatformProvidedMenuItem.hasMenu(
-                PlatformProvidedMenuItemType.about))
-          const PlatformProvidedMenuItem(
-            type: PlatformProvidedMenuItemType.about,
-          ),
+        PlatformMenuItem(
+          label: 'About Qpic',
+          onSelected: () {
+            final navContext = navigatorKey?.currentContext;
+            QpicAboutDialog.show(navContext ?? context);
+          },
+        ),
         if (_isMacOS &&
             PlatformProvidedMenuItem.hasMenu(
                 PlatformProvidedMenuItemType.servicesSubmenu))
@@ -320,6 +322,13 @@ class QpicPlatformMenuBar extends StatelessWidget {
           onSelected: () {
             final navContext = navigatorKey?.currentContext;
             HelpScreen.open(navContext ?? context);
+          },
+        ),
+        PlatformMenuItem(
+          label: 'Privacy',
+          onSelected: () {
+            final navContext = navigatorKey?.currentContext;
+            HelpScreen.openPrivacy(navContext ?? context);
           },
         ),
       ],
