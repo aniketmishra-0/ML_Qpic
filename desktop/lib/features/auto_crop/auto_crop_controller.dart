@@ -228,7 +228,7 @@ class AutoCropController extends ChangeNotifier {
 
   // --- Mode toggles + numbering selector (Requirement 5.2) -----------------
 
-  bool _smartMode = false;
+  bool _smartMode = true;
   bool _onlineMode = false;
   bool _answerSheet = true;
   NumberingMode _numbering = NumberingMode.autoDetect;
@@ -498,7 +498,7 @@ class AutoCropController extends ChangeNotifier {
     _answerPages = '';
 
     // Mode toggles + numbering.
-    _smartMode = false;
+    _smartMode = true;
     _onlineMode = false;
     _answerSheet = true;
     _numbering = NumberingMode.autoDetect;

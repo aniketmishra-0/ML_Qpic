@@ -441,6 +441,7 @@ class _QpicAppState extends State<QpicApp> {
             theme: QpicTheme.light,
             darkTheme: QpicTheme.dark,
             themeMode: _controller.themeMode,
+            themeAnimationStyle: AnimationStyle.noAnimation,
             navigatorKey: _navigatorKey,
             home: _buildHome(),
           );

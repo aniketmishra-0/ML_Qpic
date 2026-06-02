@@ -745,16 +745,16 @@ class _ModeToggles extends StatelessWidget {
           title: const Text('Smart mode'),
           subtitle:
               const Text('Analyze and review detections before downloading.'),
-          value: controller.smartMode,
-          onChanged: (value) => controller.smartMode = value,
+          value: true,
+          onChanged: null,
         ),
         SwitchListTile(
           key: const ValueKey<String>('auto-crop-online-mode'),
           contentPadding: EdgeInsets.zero,
-          title: const Text('Online mode'),
+          title: const Text('Online mode (Coming Soon)'),
           subtitle: const Text('Allow the AI vision tier when configured.'),
-          value: controller.onlineMode,
-          onChanged: (value) => controller.onlineMode = value,
+          value: false,
+          onChanged: null,
         ),
         SwitchListTile(
           key: const ValueKey<String>('auto-crop-answer-sheet'),
