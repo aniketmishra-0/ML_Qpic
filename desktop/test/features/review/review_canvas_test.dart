@@ -155,18 +155,14 @@ void main() {
     controller.startEditing(0);
     await tester.pump();
 
-    // The delete affordance sits just outside the box's top-right corner.
-    // Box: x 20..60% of 400px → 80..240px; y 20..60% of fit-height.
     final Rect canvasRect = tester.getRect(find.byType(ReviewCanvas));
-    // Compute the top-right corner in screen space (fit-width: 400px wide,
-    // height = 400 * 800/600 = 533.33, but clamped by the 500px SizedBox; the
-    // painter uses the geometry from the viewport width). Tap slightly above
-    // the top-right corner where the ✕ affordance is drawn.
     final double pageW = canvasRect.width;
     final double rightX = canvasRect.left + 0.60 * pageW;
     final double topY = canvasRect.top + 0.20 * (pageW * 800 / 600);
-    await tester.tapAt(Offset(rightX, topY - 11));
-    await tester.pump();
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.down(Offset(rightX, topY - 11));
+    await gesture.up();
+    await tester.pump(const Duration(milliseconds: 350));
 
     expect(controller.items.single.segments, isEmpty);
   });

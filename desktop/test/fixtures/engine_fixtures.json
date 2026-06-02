@@ -274,7 +274,8 @@
     "level": "balanced",
     "target_met": null,
     "note": "",
-    "download_url": "/api/tools/compress/download/c0mpr3ss"
+    "download_url": "/api/tools/compress/download/c0mpr3ss",
+    "pages": []
   },
 
   "EditableSpanModel": {
@@ -374,6 +375,8 @@
         "format": "A4",
         "orientation": "Portrait"
       }
-    ]
+    ],
+    "job_id": null,
+    "pages": []
   }
 }

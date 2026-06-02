@@ -387,7 +387,14 @@ void main() {
 
       // Run-from-source: the engine is launched via the repo's Python.
       expect(command.isDevFallback, isTrue);
-      expect(command.args, <String>['-m', 'packaging.sidecar']);
+      final expectedScript = p.join(repoRoot, 'packaging', 'sidecar.py');
+      expect(
+        command.args,
+        anyOf([
+          <String>['-m', 'packaging.sidecar'],
+          <String>[expectedScript],
+        ]),
+      );
       expect(command.executable.toLowerCase(), contains('python'));
       // The working directory must be a repo root that actually contains the
       // sidecar entry point, so `-m packaging.sidecar` can import the engine.

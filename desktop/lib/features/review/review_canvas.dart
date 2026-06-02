@@ -377,7 +377,8 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
       final QuestionSegment seg = item.segments[s];
       if (seg.page != pageNo) continue;
       final Rect rect = _geometry.segToScreenRect(seg);
-      if (ReviewPainter.deleteAffordanceHitRect(rect).contains(pos)) {
+      final hitRect = ReviewPainter.deleteAffordanceHitRect(rect);
+      if (hitRect.contains(pos)) {
         c.deleteSegment(editIdx, s);
         return;
       }

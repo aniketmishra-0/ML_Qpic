@@ -210,60 +210,66 @@ class RenameView extends StatelessWidget {
   /// Single-column body for narrow windows. Scrolls as a fallback so the form
   /// stays usable when there isn't room for the side-by-side preview.
   Widget _buildNarrowBody(BuildContext context, QpicPalette? palette) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        _SectionCard(
-          title: 'Naming',
-          palette: palette,
-          children: <Widget>[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Expanded(
-                  flex: 3,
-                  child: _PatternField(controller: controller),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 2,
-                  child: _StartField(controller: controller),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 2,
-                  child: _PaddingField(controller: controller),
-                ),
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _SectionCard(
+            title: 'Naming',
+            palette: palette,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Expanded(
+                    flex: 3,
+                    child: _PatternField(controller: controller),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: _StartField(controller: controller),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: _PaddingField(controller: controller),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: 'Output',
+            palette: palette,
+            children: <Widget>[
+              _OutputFormatSelector(controller: controller),
+              if (controller.outputFormat == RenameOutputFormat.jpg ||
+                  controller.outputFormat ==
+                      RenameOutputFormat.jpeg) ...<Widget>[
+                const SizedBox(height: 12),
+                _JpgQualitySlider(controller: controller),
               ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          _RenameButton(
+            busy: busy,
+            enabled: controller.itemCount > 0,
+            onRename: onRename,
+            itemCount: controller.itemCount,
+          ),
+          if (controller.itemCount > 0) ...<Widget>[
+            const SizedBox(height: 16),
+            _PreviewSection(
+              controller: controller,
+              palette: palette,
+              isExpanded: false,
             ),
           ],
-        ),
-        const SizedBox(height: 12),
-        _SectionCard(
-          title: 'Output',
-          palette: palette,
-          children: <Widget>[
-            _OutputFormatSelector(controller: controller),
-            if (controller.outputFormat == RenameOutputFormat.jpg ||
-                controller.outputFormat ==
-                    RenameOutputFormat.jpeg) ...<Widget>[
-              const SizedBox(height: 12),
-              _JpgQualitySlider(controller: controller),
-            ],
-          ],
-        ),
-        const SizedBox(height: 12),
-        _RenameButton(
-          busy: busy,
-          enabled: controller.itemCount > 0,
-          onRename: onRename,
-          itemCount: controller.itemCount,
-        ),
-        const SizedBox(height: 16),
-        Expanded(
-          child: _PreviewSection(controller: controller, palette: palette),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -808,10 +814,15 @@ class _JpgQualitySlider extends StatelessWidget {
 /// expanded stems, no image bytes) drives [RenameController.previewError], shown
 /// here as a non-blocking banner when the engine reports a problem.
 class _PreviewSection extends StatelessWidget {
-  const _PreviewSection({required this.controller, required this.palette});
+  const _PreviewSection({
+    required this.controller,
+    required this.palette,
+    this.isExpanded = true,
+  });
 
   final RenameController controller;
   final QpicPalette? palette;
+  final bool isExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -831,6 +842,7 @@ class _PreviewSection extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Row(
               children: <Widget>[
@@ -863,12 +875,19 @@ class _PreviewSection extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
-            Expanded(
-              child: _PreviewList(
-                controller: controller,
-                palette: palette,
-              ),
-            ),
+            isExpanded
+                ? Expanded(
+                    child: _PreviewList(
+                      controller: controller,
+                      palette: palette,
+                    ),
+                  )
+                : _PreviewList(
+                    controller: controller,
+                    palette: palette,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                  ),
           ],
         ),
       ),
@@ -935,10 +954,17 @@ class _EmptyPreviewCard extends StatelessWidget {
 
 /// Renders the before/after preview list (client-side computed pairs).
 class _PreviewList extends StatelessWidget {
-  const _PreviewList({required this.controller, required this.palette});
+  const _PreviewList({
+    required this.controller,
+    required this.palette,
+    this.shrinkWrap = false,
+    this.physics,
+  });
 
   final RenameController controller;
   final QpicPalette? palette;
+  final bool shrinkWrap;
+  final ScrollPhysics? physics;
 
   @override
   Widget build(BuildContext context) {
@@ -954,6 +980,8 @@ class _PreviewList extends StatelessWidget {
         childAspectRatio: 1.35,
       ),
       itemCount: pairs.length,
+      shrinkWrap: shrinkWrap,
+      physics: physics,
       itemBuilder: (context, index) {
         if (index >= renameItems.length) return const SizedBox.shrink();
         return _PreviewCard(
