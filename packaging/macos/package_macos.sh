@@ -150,7 +150,6 @@ if command -v create-dmg >/dev/null 2>&1; then
     --app-drop-link 480 170 \
     --icon "${APP_BASENAME}" 160 170 \
     --window-size 640 360 \
-    --eula "${REPO_ROOT}/LICENSE" \
     "${DMG_PATH}" "${APP_PATH}" \
     || die "create-dmg failed."
 else
