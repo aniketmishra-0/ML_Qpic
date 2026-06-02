@@ -1363,26 +1363,55 @@ def drop_numbered_options(starts: list["QuestionStart"]) -> list["QuestionStart"
 
     # Anchor margins per (page, is_solution), from high-numbered weak markers.
     anchors: dict[tuple[int, bool], list[float]] = {}
+    global_anchors: dict[bool, list[float]] = {}
     for s in starts:
         if s.is_strong:
             continue
         num = _weak_marker_number(s)
         if num is not None and num >= _ANCHOR_MIN_NUMBER:
             anchors.setdefault((s.page_num, bool(s.is_solution)), []).append(s.x_left)
+            global_anchors.setdefault(bool(s.is_solution), []).append(s.x_left)
 
     margins: dict[tuple[int, bool], list[float]] = {
         key: _cluster_margins(vals, _MARGIN_CLUSTER_TOL_PX)
         for key, vals in anchors.items()
     }
 
+    global_margins: dict[bool, list[float]] = {
+        key: _cluster_margins(vals, _MARGIN_CLUSTER_TOL_PX)
+        for key, vals in global_anchors.items()
+    }
+
+    # For pages that have no anchors, compute page-specific margins by projecting global margins
+    # and adjusting for page-level shift/jitter using the page's own weak markers.
+    projected_margins: dict[tuple[int, bool], list[float]] = {}
+    for (p_num, is_sol) in set((s.page_num, bool(s.is_solution)) for s in starts):
+        page_cols = margins.get((p_num, is_sol))
+        if page_cols:
+            projected_margins[(p_num, is_sol)] = page_cols
+            continue
+
+        g_cols = global_margins.get(is_sol)
+        if not g_cols:
+            continue
+
+        page_weak = [s for s in starts if s.page_num == p_num and not s.is_strong and bool(s.is_solution) == is_sol]
+        adjusted_cols = []
+        for g_m in g_cols:
+            matching_markers = [s for s in page_weak if abs(s.x_left - g_m) < 50.0]
+            if matching_markers:
+                adjusted_cols.append(min(s.x_left for s in matching_markers))
+            else:
+                adjusted_cols.append(g_m)
+        projected_margins[(p_num, is_sol)] = sorted(adjusted_cols)
+
     kept: list["QuestionStart"] = []
     for s in starts:
         if s.is_strong:
             kept.append(s)
             continue
-        cols = margins.get((s.page_num, bool(s.is_solution)))
+        cols = projected_margins.get((s.page_num, bool(s.is_solution)))
         if not cols:
-            # No confident margin on this page/side — leave the markers alone.
             kept.append(s)
             continue
         # The marker's own column is the rightmost margin at or left of it (a

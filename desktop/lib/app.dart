@@ -443,6 +443,17 @@ class _QpicAppState extends State<QpicApp> {
             );
           },
         );
+      case QpicTool.tools:
+        return AnimatedBuilder(
+          animation: _autoCropController,
+          builder: (context, _) {
+            return PdfToolsView(
+              key: const ValueKey<String>('tool-view-tools'),
+              apiClient: _autoCropController.apiClient,
+              downloadService: _autoCropController.downloadService,
+            );
+          },
+        );
     }
   }
 

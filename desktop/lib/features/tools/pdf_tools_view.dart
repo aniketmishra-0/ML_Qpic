@@ -19,12 +19,10 @@ class PdfToolsView extends StatefulWidget {
     super.key,
     required this.apiClient,
     required this.downloadService,
-    this.hideHeader = false,
   });
 
   final ApiClient? apiClient;
   final DownloadService? downloadService;
-  final bool hideHeader;
 
   @override
   State<PdfToolsView> createState() => _PdfToolsViewState();
@@ -342,39 +340,37 @@ class _PdfToolsViewState extends State<PdfToolsView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (!widget.hideHeader) ...[
-            // Header Bar
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'PDF Tools',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                          color: palette?.text ?? theme.colorScheme.onSurface,
-                          letterSpacing: -0.3,
-                        ),
+          // Header Bar
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'PDF Tools',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: palette?.text ?? theme.colorScheme.onSurface,
+                        letterSpacing: -0.3,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Compress PDFs to lower file size, preflight them for quality, or edit them.',
-                        style: TextStyle(
-                          fontSize: 13.5,
-                          color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                          height: 1.4,
-                        ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Compress PDFs to lower file size, preflight them for quality, or edit them.',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                        height: 1.4,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-          ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
 
           // Sub-tabs navigation
           _buildSubTabs(context, palette),

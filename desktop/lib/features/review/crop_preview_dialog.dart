@@ -81,6 +81,9 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
   /// committed override and applied to the item when the user confirms.
   bool? _align;
 
+  /// Initial alignment setting when the dialog was opened, used by Reset.
+  bool? _initialAlign;
+
   /// Manual-align mode: when on, per-part nudge controls are shown and the user
   /// can shift each stitched part left/right. Off by default so the popup stays
   /// the simple on/off toggle unless the user opts into fine control.
@@ -93,6 +96,7 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
   void initState() {
     super.initState();
     _align = widget.controller.alignFor(widget.itemIndex);
+    _initialAlign = _align;
     // If the item already carries manual nudges (re-opening the popup), start
     // in manual mode so the user sees and keeps their adjustments.
     _manualMode =
@@ -184,9 +188,21 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
     _renderDebounced();
   }
 
-  void _resetOffsets() {
+  void _autoAlign() {
+    widget.controller.setItemAlign(widget.itemIndex, true);
     widget.controller.resetSegmentOffsets(widget.itemIndex);
-    setState(() {});
+    setState(() {
+      _align = true;
+    });
+    _render();
+  }
+
+  void _resetAll() {
+    widget.controller.setItemAlign(widget.itemIndex, _initialAlign);
+    widget.controller.resetSegmentOffsets(widget.itemIndex);
+    setState(() {
+      _align = _initialAlign;
+    });
     _render();
   }
 
@@ -215,6 +231,11 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
     final bool multiPart = partCount > 1;
     final List<double> offsets = widget.controller.offsetsFor(widget.itemIndex);
     final List<double> yOffsets = widget.controller.yOffsetsFor(widget.itemIndex);
+
+    final bool anyNudge = offsets.any((double o) => o.abs() > 1e-6) ||
+        yOffsets.any((double o) => o.abs() > 1e-6);
+    final bool canAuto = _align != true || anyNudge;
+    final bool canReset = anyNudge || _align != _initialAlign;
 
     return Dialog(
       key: const ValueKey<String>('crop-preview-dialog'),
@@ -257,7 +278,10 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
                 yOffsets: yOffsets,
                 onChanged: _setOffset,
                 onYChanged: _setYOffset,
-                onReset: _resetOffsets,
+                onAuto: _autoAlign,
+                onReset: _resetAll,
+                canAuto: canAuto,
+                canReset: canReset,
                 text: text,
                 muted: muted,
                 brand: brand,
@@ -434,7 +458,10 @@ class _ManualAlignBar extends StatelessWidget {
     required this.yOffsets,
     required this.onChanged,
     required this.onYChanged,
+    required this.onAuto,
     required this.onReset,
+    required this.canAuto,
+    required this.canReset,
     required this.text,
     required this.muted,
     required this.brand,
@@ -450,7 +477,10 @@ class _ManualAlignBar extends StatelessWidget {
   /// Called with (segmentIndex, newOffsetPct) as the user drags a slider.
   final void Function(int segmentIndex, double xOffsetPct) onChanged;
   final void Function(int segmentIndex, double yOffsetPct) onYChanged;
+  final VoidCallback onAuto;
   final VoidCallback onReset;
+  final bool canAuto;
+  final bool canReset;
   final Color text;
   final Color muted;
   final Color brand;
@@ -462,8 +492,6 @@ class _ManualAlignBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool anyNudge = offsets.any((double o) => o.abs() > 1e-6) ||
-        yOffsets.any((double o) => o.abs() > 1e-6);
     return Container(
       key: const ValueKey<String>('crop-preview-manual-controls'),
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
@@ -487,15 +515,33 @@ class _ManualAlignBar extends StatelessWidget {
                   ),
                 ),
               ),
+              TextButton.icon(
+                key: const ValueKey<String>('crop-preview-manual-auto'),
+                onPressed: canAuto ? onAuto : null,
+                icon: Icon(
+                  Icons.auto_awesome_rounded,
+                  size: 14,
+                  color: canAuto ? brand : muted.withValues(alpha: 0.5),
+                ),
+                label: Text(
+                  'Auto',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: canAuto ? brand : muted.withValues(alpha: 0.5),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
               TextButton(
                 key: const ValueKey<String>('crop-preview-manual-reset'),
-                onPressed: anyNudge ? onReset : null,
+                onPressed: canReset ? onReset : null,
                 child: Text(
                   'Reset',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600,
-                    color: anyNudge ? brand : muted.withValues(alpha: 0.5),
+                    color: canReset ? brand : muted.withValues(alpha: 0.5),
                   ),
                 ),
               ),

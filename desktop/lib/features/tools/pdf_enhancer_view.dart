@@ -9,7 +9,6 @@ import '../../core/theme_controller.dart';
 import '../../widgets/drop_target.dart';
 import '../auto_crop/auto_crop_controller.dart';
 import '../manual_crop/manual_crop_controller.dart';
-import 'pdf_tools_view.dart';
 
 /// PDF Enhancer and Quality Editor Tool View.
 ///
@@ -39,7 +38,6 @@ class PdfEnhancerView extends StatefulWidget {
 }
 
 class _PdfEnhancerViewState extends State<PdfEnhancerView> {
-  int _mainTab = 0; // 0 = Enhance, 1 = Tools
 
   // File state
   Uint8List? _fileBytes;
@@ -274,18 +272,9 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
       );
     }
 
-    Widget subView;
-    if (_mainTab == 0) {
-      subView = _fileBytes == null
-          ? _buildUploadDropZone(context, palette)
-          : _buildEnhancerInterface(context, palette);
-    } else {
-      subView = PdfToolsView(
-        apiClient: widget.apiClient,
-        downloadService: widget.downloadService,
-        hideHeader: true,
-      );
-    }
+    final subView = _fileBytes == null
+        ? _buildUploadDropZone(context, palette)
+        : _buildEnhancerInterface(context, palette);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
@@ -300,7 +289,7 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Enhancement & Tools',
+                      'PDF Enhancer & Watermark Remover',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
@@ -310,7 +299,7 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Remove watermarks, enhance PDFs, or use additional tools like compress, edit, and preflight.',
+                      'Remove faint watermarks, boost text contrast, and save the original PDF or crop directly.',
                       style: TextStyle(
                         fontSize: 13.5,
                         color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
@@ -320,7 +309,7 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                   ],
                 ),
               ),
-              if (_mainTab == 0 && _fileBytes != null && !_busy)
+              if (_fileBytes != null && !_busy)
                 TextButton.icon(
                   onPressed: _clear,
                   icon: const Icon(Icons.refresh_rounded, size: 18),
@@ -332,96 +321,12 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
             ],
           ),
           const SizedBox(height: 16),
-          
-          // Main Tabs
-          Container(
-            height: 48,
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerLow,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: palette?.border ?? theme.dividerColor),
-            ),
-            padding: const EdgeInsets.all(4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: _buildMainTab(
-                    label: 'Enhance PDF',
-                    icon: Icons.auto_awesome_rounded,
-                    isActive: _mainTab == 0,
-                    onTap: () => setState(() => _mainTab = 0),
-                    theme: theme,
-                    palette: palette,
-                  ),
-                ),
-                Expanded(
-                  child: _buildMainTab(
-                    label: 'Tools',
-                    icon: Icons.build_rounded,
-                    isActive: _mainTab == 1,
-                    onTap: () => setState(() => _mainTab = 1),
-                    theme: theme,
-                    palette: palette,
-                  ),
-                ),
-              ],
-            ),
-          ),
 
           // Main Layout
           Expanded(
             child: subView,
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildMainTab({
-    required String label,
-    required IconData icon,
-    required bool isActive,
-    required VoidCallback onTap,
-    required ThemeData theme,
-    required QpicPalette? palette,
-  }) {
-    final brand = palette?.brand ?? theme.colorScheme.primary;
-    final text = palette?.text ?? theme.colorScheme.onSurface;
-    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
-    
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-        decoration: BoxDecoration(
-          color: isActive ? brand.withValues(alpha: 0.12) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isActive ? brand.withValues(alpha: 0.5) : Colors.transparent,
-          ),
-        ),
-        alignment: Alignment.center,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: isActive ? brand : muted,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                color: isActive ? brand : text,
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -281,6 +281,9 @@ def crop_and_stitch(
     If multiple segments (cross-page): stitch all crops vertically.
     """
 
+    if getattr(question, "source", "auto") == "manual":
+        padding_px = 0
+
     crops: list[Image.Image] = []
     seg_count = len(question.segments)
     for idx, seg in enumerate(question.segments):
@@ -372,6 +375,9 @@ def crop_and_stitch_hires(
     column-split boxes (stem + spilled options) lines up cleanly instead of
     looking shifted.
     """
+
+    if getattr(question, "source", "auto") == "manual":
+        padding_px = 0
 
     page_count = doc.page_count
     crops: list[Image.Image] = []
