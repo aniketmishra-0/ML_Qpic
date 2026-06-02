@@ -123,6 +123,8 @@ class _QpicAppState extends State<QpicApp> {
     super.initState();
     _ownsController = widget.themeController == null;
     _controller = widget.themeController ?? ThemeController();
+    _autoCropController.applyDefaults(_controller);
+    _manualCropController.applyDefaults(_controller);
     // Kick off engine startup so the StartupGate shows the starting overlay
     // immediately and transitions to ready/failed as the manager progresses.
     final bootstrap = widget.sidecarBootstrap;
@@ -344,7 +346,7 @@ class _QpicAppState extends State<QpicApp> {
                   ? _submitAutoCrop
                   : null,
               onClear: !_autoCropController.busy
-                  ? _autoCropController.reset
+                  ? () => _autoCropController.reset(_controller)
                   : null,
               onView: ready &&
                       _autoCropController.hasFile &&
@@ -408,7 +410,7 @@ class _QpicAppState extends State<QpicApp> {
                   ? () => _manualCropController.pickPdf()
                   : null,
               onClear: !_manualCropController.busy
-                  ? _manualCropController.reset
+                  ? () => _manualCropController.reset(_controller)
                   : null,
               previewUrlResolver:
                   apiClient != null ? (url) => apiClient.resolveUri(url).toString() : null,
@@ -478,6 +480,7 @@ class _QpicAppState extends State<QpicApp> {
       registry: _zoomRegistry,
       child: AppShell(
         themeController: _controller,
+        sidecarBootstrap: widget.sidecarBootstrap,
         toolViewBuilder: _buildToolView,
         enabled: enabled,
       ),

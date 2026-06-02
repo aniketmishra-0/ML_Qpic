@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme_controller.dart';
+import '../../core/sidecar_bootstrap.dart';
+import '../../widgets/settings_dialog.dart';
 import 'app_credit.dart';
 import 'help_screen.dart';
-import 'theme_switcher.dart';
 import 'tool_placeholder.dart';
 
 /// The four tools the app exposes, in navigation order (Requirement 4.2).
@@ -63,6 +64,9 @@ class AppShell extends StatefulWidget {
   /// Controller backing the theme switcher (Requirement 4.5, 4.6).
   final ThemeController themeController;
 
+  /// Optional sidecar bootstrap manager.
+  final SidecarBootstrap? sidecarBootstrap;
+
   /// Optional builder for a tool's view. The host supplies the real Auto Crop
   /// form, Manual Crop, Rename Batch, and Tools widgets here; when null the
   /// shell renders a [ToolPlaceholder] for each tool.
@@ -102,6 +106,7 @@ class _AppShellState extends State<AppShell> {
             enabled: widget.enabled,
             onSelected: _selectTool,
             themeController: widget.themeController,
+            sidecarBootstrap: widget.sidecarBootstrap,
           ),
           // Tool views fill the remaining space.
           Expanded(
@@ -141,6 +146,7 @@ class _QpicNavRail extends StatelessWidget {
     required this.enabled,
     required this.onSelected,
     required this.themeController,
+    this.sidecarBootstrap,
   });
 
   final QpicPalette? palette;
@@ -149,6 +155,7 @@ class _QpicNavRail extends StatelessWidget {
   final bool enabled;
   final ValueChanged<QpicTool> onSelected;
   final ThemeController themeController;
+  final SidecarBootstrap? sidecarBootstrap;
 
   @override
   Widget build(BuildContext context) {
@@ -205,9 +212,14 @@ class _QpicNavRail extends StatelessWidget {
                   const SizedBox(height: 4),
                   // Help control.
                   _NavHelpButton(palette: palette, enabled: enabled),
-                  const SizedBox(height: 6),
-                  // Vertical theme switcher.
-                  ThemeSwitcher(controller: themeController),
+                  const SizedBox(height: 4),
+                  // Settings control.
+                  _NavSettingsButton(
+                    themeController: themeController,
+                    sidecarBootstrap: sidecarBootstrap,
+                    enabled: enabled,
+                    palette: palette,
+                  ),
                 ],
               ),
             ),
@@ -356,6 +368,42 @@ class _NavHelpButton extends StatelessWidget {
       tooltip: 'Help',
       icon: Icon(Icons.help_outline_rounded, size: 21, color: muted),
       onPressed: enabled ? () => HelpScreen.open(context) : null,
+      style: IconButton.styleFrom(
+        padding: const EdgeInsets.all(8),
+        minimumSize: const Size(40, 40),
+      ),
+    );
+  }
+}
+
+/// The Settings gear control pinned near the bottom of the rail.
+class _NavSettingsButton extends StatelessWidget {
+  const _NavSettingsButton({
+    required this.themeController,
+    required this.sidecarBootstrap,
+    required this.enabled,
+    required this.palette,
+  });
+
+  final ThemeController themeController;
+  final SidecarBootstrap? sidecarBootstrap;
+  final bool enabled;
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+
+    return IconButton(
+      key: const ValueKey<String>('shell-settings-button'),
+      tooltip: 'Settings',
+      icon: Icon(Icons.settings_outlined, size: 21, color: muted),
+      onPressed: () => SettingsDialog.show(
+        context,
+        themeController,
+        sidecarBootstrap: sidecarBootstrap,
+      ),
       style: IconButton.styleFrom(
         padding: const EdgeInsets.all(8),
         minimumSize: const Size(40, 40),

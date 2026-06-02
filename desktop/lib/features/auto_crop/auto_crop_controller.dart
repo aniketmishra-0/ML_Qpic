@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/api_client.dart';
 import '../../core/download_service.dart';
+import '../../core/theme_controller.dart';
 import '../../models/analyze.dart';
 import '../../models/crop.dart';
 
@@ -480,7 +481,15 @@ class AutoCropController extends ChangeNotifier {
   /// ranges, numbering, and output / render config) to its default. The engine
   /// binding is preserved so the form stays usable. A no-op while a request is
   /// in flight so a half-finished run isn't torn out from under the engine.
-  void reset() {
+  /// Clears the form back to its initial state: drops the selected PDF, any
+  /// crop / analyze result and error, and resets every option (toggles, page
+  /// ranges, numbering, and output / render config) to its default. The engine
+  /// binding is preserved so the form stays usable. A no-op while a request is
+  /// in flight so a half-finished run isn't torn out from under the engine.
+  ///
+  /// Optionally accepts a [ThemeController] to load user-configured defaults
+  /// instead of the hardcoded factory values.
+  void reset([ThemeController? defaults]) {
     if (_busy) return;
 
     // Selected PDF + run state.
@@ -498,20 +507,35 @@ class AutoCropController extends ChangeNotifier {
     _answerPages = '';
 
     // Mode toggles + numbering.
-    _smartMode = true;
+    _smartMode = defaults?.defaultSmartMode ?? true;
     _onlineMode = false;
     _answerSheet = false;
     _numbering = NumberingMode.autoDetect;
 
     // Output configuration.
-    _questionPrefix = 'Q';
-    _solutionPrefix = 'S';
+    _questionPrefix = defaults?.defaultQuestionPrefix ?? 'Q';
+    _solutionPrefix = defaults?.defaultSolutionPrefix ?? 'S';
     _startNumber = AutoCropBounds.startNumberDefault;
-    _imageFormat = CropImageFormat.png;
+    _imageFormat = defaults?.defaultImageFormat == 'jpg'
+        ? CropImageFormat.jpg
+        : CropImageFormat.png;
     _jpgQuality = AutoCropBounds.jpgQualityDefault;
-    _dpi = AutoCropBounds.dpiDefault;
-    _padding = AutoCropBounds.paddingDefault;
+    _dpi = defaults?.defaultDpi ?? AutoCropBounds.dpiDefault;
+    _padding = defaults?.defaultPadding ?? AutoCropBounds.paddingDefault;
 
+    notifyListeners();
+  }
+
+  /// Applies default settings loaded from [ThemeController].
+  void applyDefaults(ThemeController controller) {
+    _questionPrefix = controller.defaultQuestionPrefix;
+    _solutionPrefix = controller.defaultSolutionPrefix;
+    _imageFormat = controller.defaultImageFormat == 'jpg'
+        ? CropImageFormat.jpg
+        : CropImageFormat.png;
+    _dpi = controller.defaultDpi;
+    _padding = controller.defaultPadding;
+    _smartMode = controller.defaultSmartMode;
     notifyListeners();
   }
 

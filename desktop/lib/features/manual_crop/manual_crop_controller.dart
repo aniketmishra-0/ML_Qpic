@@ -40,6 +40,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/api_client.dart';
 import '../../core/download_service.dart';
 import '../../core/file_picker_service.dart';
+import '../../core/theme_controller.dart';
 import '../auto_crop/auto_crop_controller.dart'
     show AutoCropBounds, CropImageFormat;
 import '../review/review_controller.dart';
@@ -339,7 +340,7 @@ class ManualCropController extends ChangeNotifier {
   /// (prefixes, start number, image format, JPG quality) and render DPI to
   /// their defaults. The engine binding is preserved so the tool stays usable.
   /// A no-op while a prepare-manual request is in flight.
-  void reset() {
+  void reset([ThemeController? defaults]) {
     if (_busy) return;
 
     // Canvas + selected PDF + error.
@@ -352,13 +353,26 @@ class ManualCropController extends ChangeNotifier {
     _errorText = null;
 
     // Independent output configuration.
-    _questionPrefix = 'Q';
-    _solutionPrefix = 'S';
+    _questionPrefix = defaults?.defaultQuestionPrefix ?? 'Q';
+    _solutionPrefix = defaults?.defaultSolutionPrefix ?? 'S';
     _startNumber = AutoCropBounds.startNumberDefault;
-    _imageFormat = CropImageFormat.png;
+    _imageFormat = defaults?.defaultImageFormat == 'jpg'
+        ? CropImageFormat.jpg
+        : CropImageFormat.png;
     _jpgQuality = AutoCropBounds.jpgQualityDefault;
-    _dpi = AutoCropBounds.dpiDefault;
+    _dpi = defaults?.defaultDpi ?? AutoCropBounds.dpiDefault;
 
+    notifyListeners();
+  }
+
+  /// Applies default settings loaded from [ThemeController].
+  void applyDefaults(ThemeController controller) {
+    _questionPrefix = controller.defaultQuestionPrefix;
+    _solutionPrefix = controller.defaultSolutionPrefix;
+    _imageFormat = controller.defaultImageFormat == 'jpg'
+        ? CropImageFormat.jpg
+        : CropImageFormat.png;
+    _dpi = controller.defaultDpi;
     notifyListeners();
   }
 

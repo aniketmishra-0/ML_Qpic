@@ -451,6 +451,12 @@ class ThemeController extends ChangeNotifier {
 
   /// `shared_preferences` key under which the selected mode is stored.
   static const String storageKey = 'qpic.theme_mode';
+  static const String dpiKey = 'qpic.default_dpi';
+  static const String paddingKey = 'qpic.default_padding';
+  static const String questionPrefixKey = 'qpic.default_q_prefix';
+  static const String solutionPrefixKey = 'qpic.default_s_prefix';
+  static const String imageFormatKey = 'qpic.default_image_format';
+  static const String smartModeKey = 'qpic.default_smart_mode';
 
   /// Optional injected store (used by tests). When null, the controller
   /// resolves the shared singleton lazily inside [load]/[setThemeMode].
@@ -458,9 +464,23 @@ class ThemeController extends ChangeNotifier {
 
   ThemeMode _themeMode = ThemeMode.system;
 
+  int _defaultDpi = 200;
+  int _defaultPadding = 20;
+  String _defaultQuestionPrefix = 'Q';
+  String _defaultSolutionPrefix = 'S';
+  String _defaultImageFormat = 'png';
+  bool _defaultSmartMode = true;
+
   /// The currently selected theme mode. Defaults to [ThemeMode.system] until
   /// [load] completes.
   ThemeMode get themeMode => _themeMode;
+
+  int get defaultDpi => _defaultDpi;
+  int get defaultPadding => _defaultPadding;
+  String get defaultQuestionPrefix => _defaultQuestionPrefix;
+  String get defaultSolutionPrefix => _defaultSolutionPrefix;
+  String get defaultImageFormat => _defaultImageFormat;
+  bool get defaultSmartMode => _defaultSmartMode;
 
   /// Reads the persisted selection. Defaults to [ThemeMode.system] when there
   /// is no stored value (first launch) or the stored value is unrecognized,
@@ -469,8 +489,45 @@ class ThemeController extends ChangeNotifier {
     final prefs = await _prefs();
     final stored = prefs.getString(storageKey);
     final resolved = _decode(stored) ?? ThemeMode.system;
+
+    final storedDpi = prefs.getInt(dpiKey);
+    final storedPadding = prefs.getInt(paddingKey);
+    final storedQPrefix = prefs.getString(questionPrefixKey);
+    final storedSPrefix = prefs.getString(solutionPrefixKey);
+    final storedFormat = prefs.getString(imageFormatKey);
+    final storedSmartMode = prefs.getBool(smartModeKey);
+
+    bool changed = false;
     if (resolved != _themeMode) {
       _themeMode = resolved;
+      changed = true;
+    }
+    if (storedDpi != null && storedDpi != _defaultDpi) {
+      _defaultDpi = storedDpi;
+      changed = true;
+    }
+    if (storedPadding != null && storedPadding != _defaultPadding) {
+      _defaultPadding = storedPadding;
+      changed = true;
+    }
+    if (storedQPrefix != null && storedQPrefix != _defaultQuestionPrefix) {
+      _defaultQuestionPrefix = storedQPrefix;
+      changed = true;
+    }
+    if (storedSPrefix != null && storedSPrefix != _defaultSolutionPrefix) {
+      _defaultSolutionPrefix = storedSPrefix;
+      changed = true;
+    }
+    if (storedFormat != null && storedFormat != _defaultImageFormat) {
+      _defaultImageFormat = storedFormat;
+      changed = true;
+    }
+    if (storedSmartMode != null && storedSmartMode != _defaultSmartMode) {
+      _defaultSmartMode = storedSmartMode;
+      changed = true;
+    }
+
+    if (changed) {
       notifyListeners();
     }
   }
@@ -484,6 +541,80 @@ class ThemeController extends ChangeNotifier {
     }
     final prefs = await _prefs();
     await prefs.setString(storageKey, _encode(mode));
+  }
+
+  Future<void> setDefaultDpi(int value) async {
+    if (_defaultDpi != value) {
+      _defaultDpi = value;
+      notifyListeners();
+    }
+    final prefs = await _prefs();
+    await prefs.setInt(dpiKey, value);
+  }
+
+  Future<void> setDefaultPadding(int value) async {
+    if (_defaultPadding != value) {
+      _defaultPadding = value;
+      notifyListeners();
+    }
+    final prefs = await _prefs();
+    await prefs.setInt(paddingKey, value);
+  }
+
+  Future<void> setDefaultQuestionPrefix(String value) async {
+    if (_defaultQuestionPrefix != value) {
+      _defaultQuestionPrefix = value;
+      notifyListeners();
+    }
+    final prefs = await _prefs();
+    await prefs.setString(questionPrefixKey, value);
+  }
+
+  Future<void> setDefaultSolutionPrefix(String value) async {
+    if (_defaultSolutionPrefix != value) {
+      _defaultSolutionPrefix = value;
+      notifyListeners();
+    }
+    final prefs = await _prefs();
+    await prefs.setString(solutionPrefixKey, value);
+  }
+
+  Future<void> setDefaultImageFormat(String value) async {
+    if (_defaultImageFormat != value) {
+      _defaultImageFormat = value;
+      notifyListeners();
+    }
+    final prefs = await _prefs();
+    await prefs.setString(imageFormatKey, value);
+  }
+
+  Future<void> setDefaultSmartMode(bool value) async {
+    if (_defaultSmartMode != value) {
+      _defaultSmartMode = value;
+      notifyListeners();
+    }
+    final prefs = await _prefs();
+    await prefs.setBool(smartModeKey, value);
+  }
+
+  Future<void> resetToDefaults() async {
+    _themeMode = ThemeMode.system;
+    _defaultDpi = 200;
+    _defaultPadding = 20;
+    _defaultQuestionPrefix = 'Q';
+    _defaultSolutionPrefix = 'S';
+    _defaultImageFormat = 'png';
+    _defaultSmartMode = true;
+    notifyListeners();
+
+    final prefs = await _prefs();
+    await prefs.remove(storageKey);
+    await prefs.remove(dpiKey);
+    await prefs.remove(paddingKey);
+    await prefs.remove(questionPrefixKey);
+    await prefs.remove(solutionPrefixKey);
+    await prefs.remove(imageFormatKey);
+    await prefs.remove(smartModeKey);
   }
 
   Future<SharedPreferences> _prefs() async {

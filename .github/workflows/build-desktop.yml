@@ -92,7 +92,10 @@ jobs:
 
       - name: Install Tesseract & NSIS (Windows)
         if: runner.os == 'Windows'
-        run: choco install --no-progress -y tesseract nsis
+        shell: pwsh
+        run: |
+          choco install --no-progress -y tesseract nsis
+          echo "C:\Program Files (x86)\NSIS" >> $env:GITHUB_PATH
 
       # ---- Signing setup (only when the matching secrets are present) ------
       - name: Import macOS signing certificate
