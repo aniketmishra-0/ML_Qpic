@@ -27,6 +27,9 @@ dependencies:
   path: ^1.9.0
   # Per-OS writable application-support / temp directory resolution.
   path_provider: ^2.1.5
+  # Opens external links (the "Built by" credit's LinkedIn profile) in the
+  # user's default browser on macOS + Windows.
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:

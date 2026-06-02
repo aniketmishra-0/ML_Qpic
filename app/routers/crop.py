@@ -12,12 +12,13 @@ from typing import Any, Optional
 import anthropic
 import fitz
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from ..config import Settings
 from ..dependencies import build_ai_detector, get_anthropic_client_optional, get_settings
 from ..models.schemas import (
     AnalyzeResponse,
+    CropPreviewRequest,
     CropResponse,
     FinalizeRequest,
     HealthResponse,
@@ -27,6 +28,7 @@ from ..models.schemas import (
 )
 from ..models.schemas import DetectedQuestion
 from ..services.crop_service import crop_and_stitch_hires, save_question_image
+from ..utils.image_utils import ensure_rgb
 from ..services.answer_sheet import count_answered, write_answer_sheet
 from ..services.detector.ai_answer_key import read_answer_key_with_ai
 from ..services.detector.answer_key import (
@@ -145,6 +147,22 @@ def _dedupe_by_overlap(detected: list[Any]) -> list[Any]:
     return kept
 ERR_NO_QUESTIONS = "No questions detected in this PDF"
 ERR_JOB_NOT_FOUND = "Job ID not found"
+
+
+def _should_align_parts(question: Any) -> bool:
+    """Decide whether a question's stitched parts get left-aligned.
+
+    Honours an explicit ``align`` override when the item carries one (the review
+    "Align parts" toggle); otherwise falls back to the legacy default of aligning
+    only hand-drawn ("manual") items so the fully-automatic ``/crop`` path is
+    unchanged. Single-segment items are unaffected — alignment only matters when
+    stitching multiple parts.
+    """
+
+    override = getattr(question, "align", None)
+    if override is not None:
+        return bool(override)
+    return getattr(question, "source", "auto") == "manual"
 ERR_QUESTION_PAGES_REQUIRED = (
     "Question pages are required when the PDF has questions, e.g. '1-5' or '1 to 5, 8'. "
     "Turn off the questions toggle if this PDF has none."
@@ -705,6 +723,7 @@ def _analyzed_to_detected(items: list[Any]) -> list[DetectedQuestion]:
                 is_solution=bool(it.is_solution),
                 segments=list(it.segments),
                 source=getattr(it, "source", "auto") or "auto",
+                align=getattr(it, "align", None),
             )
         )
     return out
@@ -1141,6 +1160,95 @@ async def snap_box(
     return SnapResponse(**snapped)
 
 
+@router.post("/crop/preview")
+async def crop_preview(
+    request: Request,
+    payload: CropPreviewRequest,
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Render ONE reviewed item as a standalone preview image (no ZIP).
+
+    Reuses the exact crop/stitch pipeline the finalized download runs
+    (:func:`crop_and_stitch_hires` with the same furniture removal, padding and
+    optional part-alignment), so the returned PNG/JPG is a faithful "what you
+    see is what you get" preview of how that single question/solution will look
+    after cropping. Nothing is written to disk and the answer sheet / ZIP are
+    untouched — this is a read-only render off the PDF the matching ``/analyze``
+    or ``/prepare-manual`` call cached under the job dir.
+    """
+
+    temp_root = _get_temp_root(request, settings)
+    job_dir = get_job_dir(payload.job_id, temp_root)
+    source_pdf = job_dir / "source.pdf"
+
+    def _exists(p: Path) -> bool:
+        return p.exists()
+
+    if not await asyncio.to_thread(_exists, source_pdf):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERR_JOB_NOT_FOUND)
+
+    if not payload.segments:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No region to preview. Draw or select a box first.",
+        )
+
+    fmt = (payload.image_format or "png").strip().lower()
+    out_format = "jpg" if fmt in ("jpg", "jpeg") else "png"
+    dpi = max(72, min(600, int(payload.dpi or 200)))
+    padding = max(0, min(200, int(payload.padding or 0)))
+    jpg_quality = max(1, min(100, int(payload.jpg_quality or 90)))
+
+    question = DetectedQuestion(
+        q_num=(payload.q_num or "0").strip() or "0",
+        is_solution=bool(payload.is_solution),
+        segments=list(payload.segments),
+        source=payload.source or "auto",
+        align=payload.align,
+    )
+
+    file_bytes = await asyncio.to_thread(source_pdf.read_bytes)
+
+    def _render() -> bytes:
+        import io
+
+        crop_dpi = max(dpi, settings.CROP_RENDER_DPI)
+        with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+            furniture_by_page = collect_document_furniture(doc)
+            img = crop_and_stitch_hires(
+                doc,
+                question,
+                padding_px=padding,
+                detection_dpi=dpi,
+                crop_dpi=crop_dpi,
+                furniture_by_page=furniture_by_page,
+                align_parts=_should_align_parts(question),
+            )
+        buf = io.BytesIO()
+        if out_format == "jpg":
+            ensure_rgb(img).save(buf, format="JPEG", quality=jpg_quality, optimize=True)
+        else:
+            ensure_rgb(img).save(buf, format="PNG")
+        return buf.getvalue()
+
+    try:
+        image_bytes = await asyncio.to_thread(_render)
+    except Exception as exc:
+        logger.exception("job_id=%s stage=preview_error error=%s", payload.job_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not render this preview.",
+        ) from exc
+
+    media_type = "image/jpeg" if out_format == "jpg" else "image/png"
+    # Previews change as the user re-selects / toggles align, so never cache.
+    return Response(
+        content=image_bytes,
+        media_type=media_type,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @router.post("/finalize", response_model=CropResponse)
 async def finalize_crop(
     request: Request,
@@ -1210,9 +1318,11 @@ async def finalize_crop(
                     detection_dpi=dpi,
                     crop_dpi=crop_dpi,
                     furniture_by_page=furniture_by_page,
-                    # Left-align column-split parts only for hand-drawn items so
-                    # the auto path's output is untouched.
-                    align_parts=(getattr(question, "source", "auto") == "manual"),
+                    # Left-align column-split parts when the item asks for it.
+                    # Defaults to manual-only so the auto path's output is
+                    # untouched; an explicit `align` override (the review "Align
+                    # parts" toggle) wins so the file matches the preview.
+                    align_parts=_should_align_parts(question),
                 )
                 saved = save_question_image(
                     image=img,

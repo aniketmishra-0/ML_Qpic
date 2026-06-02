@@ -115,6 +115,12 @@ void main() {
           (j) => FinalizeItem.fromJson(j).toJson());
     });
 
+    test('CropPreviewRequest', () {
+      _runProperty('CropPreviewRequest', _kCropPreviewRequest,
+          (r) => _genCropPreviewRequest(r),
+          (j) => CropPreviewRequest.fromJson(j).toJson());
+    });
+
     test('FinalizeRequest', () {
       _runProperty('FinalizeRequest', _kFinalizeRequest,
           (r) => _genFinalizeRequest(r),
@@ -396,6 +402,7 @@ _JsonMap _genSegment(math.Random r) => <String, dynamic>{
       'y_end_pct': _d(r),
       'x_start_pct': _d(r),
       'x_end_pct': _d(r),
+      'x_offset_pct': _d(r, maxv: 50),
     };
 
 List<_JsonMap> _segList(math.Random r) =>
@@ -479,6 +486,20 @@ _JsonMap _genFinalizeItem(math.Random r) => <String, dynamic>{
       'is_solution': _b(r),
       'segments': _segList(r),
       'source': _pick(r, _sources),
+      'align': _nbool(r),
+    };
+
+_JsonMap _genCropPreviewRequest(math.Random r) => <String, dynamic>{
+      'job_id': _str(r),
+      'q_num': _str(r, min: 1, max: 5),
+      'is_solution': _b(r),
+      'segments': _segList(r),
+      'source': _pick(r, _sources),
+      'align': _nbool(r),
+      'dpi': _int(r, min: 72, max: 600),
+      'padding': _int(r, max: 200),
+      'image_format': _pick(r, _imageFormats),
+      'jpg_quality': _int(r, min: 1, max: 100),
     };
 
 _JsonMap _genFinalizeRequest(math.Random r) => <String, dynamic>{
@@ -703,6 +724,7 @@ const Set<String> _kQuestionSegment = {
   'y_end_pct',
   'x_start_pct',
   'x_end_pct',
+  'x_offset_pct',
 };
 
 const Set<String> _kDetectedQuestion = {
@@ -783,6 +805,20 @@ const Set<String> _kFinalizeItem = {
   'is_solution',
   'segments',
   'source',
+  'align',
+};
+
+const Set<String> _kCropPreviewRequest = {
+  'job_id',
+  'q_num',
+  'is_solution',
+  'segments',
+  'source',
+  'align',
+  'dpi',
+  'padding',
+  'image_format',
+  'jpg_quality',
 };
 
 const Set<String> _kFinalizeRequest = {

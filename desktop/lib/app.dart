@@ -23,6 +23,7 @@ import 'features/shell/platform_menu_bar.dart';
 import 'features/shell/startup_gate.dart';
 import 'features/shell/tool_placeholder.dart';
 import 'models/analyze.dart';
+import 'widgets/pdf_preview_dialog.dart';
 
 /// Root MaterialApp for the Qpic desktop client.
 ///
@@ -215,6 +216,25 @@ class _QpicAppState extends State<QpicApp> {
     _autoCropController.setFile(bytes: bytes, filename: picked.name);
   }
 
+  /// Renders the selected PDF's pages (via the engine) and opens the in-app
+  /// preview popup so the user can eyeball the document without leaving the
+  /// tool. On a render error the controller surfaces the engine `detail` above
+  /// the form and the popup is not shown.
+  Future<void> _viewAutoCropPdf() async {
+    final ok = await _autoCropController.loadPreview();
+    final pages = _autoCropController.previewPages;
+    final apiClient = _autoCropController.apiClient;
+    if (!ok || pages == null || apiClient == null) return;
+    final navigatorContext = _navigatorKey.currentContext;
+    if (navigatorContext == null) return;
+    await PdfPreviewDialog.open(
+      navigatorContext,
+      title: _autoCropController.fileName ?? 'Preview',
+      pages: pages,
+      resolveUrl: (url) => apiClient.resolveUri(url).toString(),
+    );
+  }
+
   /// Runs the Auto Crop submit. For a non-Smart crop the controller streams the
   /// archive itself; for a Smart submit a successful `POST /api/analyze` lands
   /// an [AutoCropController.analyzeResult], which this opens in the shared
@@ -224,6 +244,13 @@ class _QpicAppState extends State<QpicApp> {
   Future<void> _submitAutoCrop() async {
     await _autoCropController.submit();
     final analysis = _autoCropController.analyzeResult;
+    debugPrint(
+      '[Qpic] _submitAutoCrop: busy=${_autoCropController.busy} '
+      'smart=${_autoCropController.smartMode} '
+      'analysis=${analysis != null} '
+      'error=${_autoCropController.errorText} '
+      'reviewOpen=$_autoCropReviewOpen',
+    );
     if (analysis != null) {
       _openAutoCropReview(analysis);
     }
@@ -234,6 +261,14 @@ class _QpicAppState extends State<QpicApp> {
   /// drives the canvas's answer-sheet advisory (Req 6.4, 6.5).
   void _openAutoCropReview(AnalyzeResponse analysis) {
     _autoCropReview.loadFromAnalyze(analysis);
+    // Keep the per-item crop preview in step with the Auto Crop output config
+    // so a preview renders exactly as the finalized download will (Req 6.6).
+    _autoCropReview.setPreviewOutput(
+      dpi: _autoCropController.dpi,
+      padding: _autoCropController.padding,
+      imageFormat: _autoCropController.imageFormatValue,
+      jpgQuality: _autoCropController.jpgQuality,
+    );
     // Consume the stored result so a later rebuild doesn't re-open the canvas.
     _autoCropController.consumeAnalyzeResult();
     setState(() => _autoCropReviewOpen = true);
@@ -308,6 +343,14 @@ class _QpicAppState extends State<QpicApp> {
               onSubmit: ready && !_autoCropController.busy
                   ? _submitAutoCrop
                   : null,
+              onClear: !_autoCropController.busy
+                  ? _autoCropController.reset
+                  : null,
+              onView: ready &&
+                      _autoCropController.hasFile &&
+                      !_autoCropController.busy
+                  ? _viewAutoCropPdf
+                  : null,
             );
           },
         );
@@ -332,10 +375,16 @@ class _QpicAppState extends State<QpicApp> {
               onPickFiles: ready && !_renameController.busy
                   ? () => _renameController.pickAndAddFiles()
                   : null,
+              onPickFolder: ready && !_renameController.busy
+                  ? () => _renameController.pickAndAddFolder()
+                  : null,
               onRename: ready &&
                       !_renameController.busy &&
                       _renameController.itemCount > 0
                   ? () => _renameController.rename()
+                  : null,
+              onClear: !_renameController.busy
+                  ? _renameController.reset
                   : null,
             );
           },
@@ -357,6 +406,9 @@ class _QpicAppState extends State<QpicApp> {
               controller: _manualCropController,
               onPickFile: ready && !_manualCropController.busy
                   ? () => _manualCropController.pickPdf()
+                  : null,
+              onClear: !_manualCropController.busy
+                  ? _manualCropController.reset
                   : null,
               previewUrlResolver:
                   apiClient != null ? (url) => apiClient.resolveUri(url).toString() : null,

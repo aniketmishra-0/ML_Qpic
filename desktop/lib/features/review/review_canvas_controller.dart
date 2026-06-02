@@ -491,6 +491,95 @@ class ReviewCanvasController extends ChangeNotifier {
       source: it.source,
       flagged: it.flagged,
       flagReason: it.flagReason,
+      align: it.align,
+    );
+    _bump();
+  }
+
+  /// Reorders a part within its item (web `moveSegment`): swaps segment
+  /// [segmentIndex] with its neighbour [direction] steps away (`-1` up, `+1`
+  /// down), clamped to the item's bounds. The stitch order IS the segment
+  /// order, so this lets a scattered cross-page question (e.g. parts a/b drawn
+  /// out of reading order) be put back into the order it should be combined in.
+  /// A no-op when the move would fall outside the item's parts.
+  void moveSegment(int itemIndex, int segmentIndex, int direction) {
+    if (itemIndex < 0 || itemIndex >= _items.length) return;
+    final AnalyzedItem it = _items[itemIndex];
+    final int target = segmentIndex + direction;
+    if (segmentIndex < 0 || segmentIndex >= it.segments.length) return;
+    if (target < 0 || target >= it.segments.length) return;
+    final List<QuestionSegment> next = List<QuestionSegment>.of(it.segments);
+    final QuestionSegment tmp = next[segmentIndex];
+    next[segmentIndex] = next[target];
+    next[target] = tmp;
+    _items[itemIndex] = AnalyzedItem(
+      qNum: it.qNum,
+      isSolution: it.isSolution,
+      segments: next,
+      source: it.source,
+      flagged: it.flagged,
+      flagReason: it.flagReason,
+      align: it.align,
+    );
+    _bump();
+  }
+
+  /// Sets the client-only [AnalyzedItem.align] override for item [itemIndex]
+  /// (the review "Align parts" toggle). `null` restores the engine's per-source
+  /// default. Carried into the finalize/preview request so the downloaded crop
+  /// matches the previewed one. A no-op when the value is unchanged.
+  void setItemAlign(int itemIndex, bool? align) {
+    if (itemIndex < 0 || itemIndex >= _items.length) return;
+    final AnalyzedItem it = _items[itemIndex];
+    if (it.align == align) return;
+    _items[itemIndex] = it.copyWithAlign(align);
+    _bump();
+  }
+
+  /// Sets the manual horizontal nudge ([QuestionSegment.xOffsetPct], a signed
+  /// percentage of the page width) for part [segmentIndex] of item [itemIndex]
+  /// (the review "Manual align" controls). Applied only when the part is
+  /// stitched into a multi-part crop, and carried into the preview/finalize
+  /// payload so the downloaded crop lines up exactly like the approved preview.
+  /// A no-op when the index is out of range or the value is unchanged.
+  void setSegmentOffset(int itemIndex, int segmentIndex, double xOffsetPct) {
+    if (itemIndex < 0 || itemIndex >= _items.length) return;
+    final AnalyzedItem it = _items[itemIndex];
+    if (segmentIndex < 0 || segmentIndex >= it.segments.length) return;
+    final QuestionSegment seg = it.segments[segmentIndex];
+    if ((seg.xOffsetPct - xOffsetPct).abs() < 1e-6) return;
+    final List<QuestionSegment> next = List<QuestionSegment>.of(it.segments);
+    next[segmentIndex] = seg.copyWithOffset(xOffsetPct);
+    _items[itemIndex] = AnalyzedItem(
+      qNum: it.qNum,
+      isSolution: it.isSolution,
+      segments: next,
+      source: it.source,
+      flagged: it.flagged,
+      flagReason: it.flagReason,
+      align: it.align,
+    );
+    _bump();
+  }
+
+  /// Clears every manual nudge on item [itemIndex] back to 0 (the "Reset"
+  /// action in the manual-align controls). A no-op when nothing is nudged.
+  void resetSegmentOffsets(int itemIndex) {
+    if (itemIndex < 0 || itemIndex >= _items.length) return;
+    final AnalyzedItem it = _items[itemIndex];
+    final bool any = it.segments.any((QuestionSegment s) => s.xOffsetPct != 0.0);
+    if (!any) return;
+    final List<QuestionSegment> next = <QuestionSegment>[
+      for (final QuestionSegment s in it.segments) s.copyWithOffset(0.0),
+    ];
+    _items[itemIndex] = AnalyzedItem(
+      qNum: it.qNum,
+      isSolution: it.isSolution,
+      segments: next,
+      source: it.source,
+      flagged: it.flagged,
+      flagReason: it.flagReason,
+      align: it.align,
     );
     _bump();
   }
@@ -532,6 +621,7 @@ class ReviewCanvasController extends ChangeNotifier {
       source: it.source,
       flagged: it.flagged,
       flagReason: it.flagReason,
+      align: it.align,
     );
     _bump();
   }
@@ -557,6 +647,7 @@ class ReviewCanvasController extends ChangeNotifier {
       source: 'manual',
       flagged: false,
       flagReason: null,
+      align: it.align,
     );
   }
 

@@ -258,6 +258,15 @@ class ReviewController extends ChangeNotifier {
   String _finalizeQuestionPrefix = 'Q';
   String _finalizeSolutionPrefix = 'S';
 
+  // Output config used for per-item previews so a preview render matches the
+  // finalized download exactly (same DPI / padding / format). The host keeps
+  // these in step with the active tool's output config via [setPreviewOutput];
+  // they default to the engine's own defaults.
+  int _previewDpi = 200;
+  int _previewPadding = 20;
+  String _previewImageFormat = 'png';
+  int _previewJpgQuality = 90;
+
   /// The wrapped canvas-input controller.
   ReviewCanvasController get canvas => _canvas;
 
@@ -461,6 +470,100 @@ class ReviewController extends ChangeNotifier {
   void deleteSegment(int itemIndex, int segmentIndex) =>
       _canvas.deleteSegment(itemIndex, segmentIndex);
 
+  /// Reorders a part within its item (web `moveSegment`): the stitch order is
+  /// the segment order, so this fixes the order a multi-part item is combined
+  /// in. [direction] is `-1` (up) or `+1` (down).
+  void moveSegment(int itemIndex, int segmentIndex, int direction) =>
+      _canvas.moveSegment(itemIndex, segmentIndex, direction);
+
+  // ---- Per-item alignment + preview (the review "Align parts" + Preview) ---
+
+  /// Sets the client-only alignment override for item [itemIndex] — the review
+  /// "Align parts" toggle. `null` restores the engine's per-source default
+  /// (align manual items only). Carried into both the per-item preview and the
+  /// finalize payload, so the downloaded crop matches the previewed one.
+  void setItemAlign(int itemIndex, bool? align) =>
+      _canvas.setItemAlign(itemIndex, align);
+
+  /// Sets the manual horizontal nudge for part [segmentIndex] of item
+  /// [itemIndex] (the review "Manual align" controls), a signed percentage of
+  /// the page width. Carried into the preview and the finalize payload so the
+  /// downloaded crop lines up exactly like the approved preview.
+  void setSegmentOffset(int itemIndex, int segmentIndex, double xOffsetPct) =>
+      _canvas.setSegmentOffset(itemIndex, segmentIndex, xOffsetPct);
+
+  /// Clears every manual nudge on item [itemIndex] back to 0.
+  void resetSegmentOffsets(int itemIndex) =>
+      _canvas.resetSegmentOffsets(itemIndex);
+
+  /// The manual nudges (`xOffsetPct` per part) for item [itemIndex], in segment
+  /// order. Empty when the index is out of range.
+  List<double> offsetsFor(int itemIndex) {
+    final List<AnalyzedItem> current = _canvas.items;
+    if (itemIndex < 0 || itemIndex >= current.length) {
+      return const <double>[];
+    }
+    return <double>[
+      for (final QuestionSegment s in current[itemIndex].segments) s.xOffsetPct,
+    ];
+  }
+
+  /// The current alignment override for item [itemIndex], or null when none is
+  /// set / the index is out of range.
+  bool? alignFor(int itemIndex) {
+    final List<AnalyzedItem> current = _canvas.items;
+    if (itemIndex < 0 || itemIndex >= current.length) return null;
+    return current[itemIndex].align;
+  }
+
+  /// Keeps the preview output config in step with the active tool's output
+  /// config so a per-item preview renders at the SAME DPI / padding / format
+  /// the finalized download will use (preview == final). Called by the host
+  /// when the tool's config changes (and once when the canvas opens).
+  void setPreviewOutput({
+    int? dpi,
+    int? padding,
+    String? imageFormat,
+    int? jpgQuality,
+  }) {
+    if (dpi != null) _previewDpi = dpi;
+    if (padding != null) _previewPadding = padding;
+    if (imageFormat != null) _previewImageFormat = imageFormat;
+    if (jpgQuality != null) _previewJpgQuality = jpgQuality;
+  }
+
+  /// Renders a standalone preview of item [itemIndex] through the engine's
+  /// `POST /api/crop/preview`, reusing the same crop/stitch pipeline the
+  /// finalized download runs (so it is a faithful "what you see is what you get"
+  /// preview). Returns the image bytes, or null when no engine is bound, the
+  /// index is out of range, or the item has no segments. Any per-item alignment
+  /// override (the "Align parts" toggle) is honoured. Pass [alignOverride] to
+  /// preview a specific alignment without committing it to the item first.
+  Future<List<int>?> previewItem(int itemIndex, {bool? alignOverride}) async {
+    final ApiClient? client = _apiClient;
+    if (client == null) return null;
+    final List<AnalyzedItem> current = _canvas.items;
+    if (itemIndex < 0 || itemIndex >= current.length) return null;
+    final AnalyzedItem it = current[itemIndex];
+    if (it.segments.isEmpty) return null;
+
+    final List<int> bytes = await client.cropPreview(
+      CropPreviewRequest(
+        jobId: _jobId,
+        qNum: it.qNum,
+        isSolution: it.isSolution,
+        segments: it.segments,
+        source: it.source,
+        align: alignOverride ?? it.align,
+        dpi: _previewDpi,
+        padding: _previewPadding,
+        imageFormat: _previewImageFormat,
+        jpgQuality: _previewJpgQuality,
+      ),
+    );
+    return bytes;
+  }
+
   // ---- Additive re-select (Req 8.6) + "Done" cleanup (Req 8.7) -----------
 
   /// Begins re-selecting item [index] (Req 8.6): jumps to its first page and
@@ -580,6 +683,7 @@ class ReviewController extends ChangeNotifier {
             isSolution: it.isSolution,
             segments: it.segments,
             source: it.source,
+            align: it.align,
           ),
     ];
   }

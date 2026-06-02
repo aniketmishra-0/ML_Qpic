@@ -272,6 +272,24 @@ class ApiClient {
     });
   }
 
+  /// `POST /api/crop/preview` — render ONE reviewed item as a standalone preview
+  /// image (PNG/JPG bytes), reusing the same crop/stitch pipeline the finalized
+  /// download runs. JSON body is the [CropPreviewRequest]. Mirrors
+  /// `crop_preview`; returns the raw image bytes for `Image.memory`.
+  Future<List<int>> cropPreview(CropPreviewRequest request) {
+    return _guard(() async {
+      final res = await _dio.post<dynamic>(
+        '$_api/crop/preview',
+        data: request.toJson(),
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final data = res.data;
+      if (data is List<int>) return data;
+      if (data is List) return data.cast<int>();
+      return const <int>[];
+    });
+  }
+
   // ===========================================================================
   //  Rename Batch
   // ===========================================================================

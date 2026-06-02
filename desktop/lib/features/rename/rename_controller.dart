@@ -318,6 +318,36 @@ class RenameController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Resets the whole tool back to its initial state: drops every loaded item
+  /// and the preview, and restores the naming controls (pattern, start,
+  /// padding, output format, JPG quality) plus any surfaced error / status to
+  /// their defaults. The engine binding is preserved so the tool stays usable.
+  /// A no-op while a session is in flight so a half-finished run isn't torn out
+  /// from under the engine.
+  void reset() {
+    if (_busy) return;
+
+    // Items + preview.
+    _items.clear();
+    _previewItems = null;
+    _previewError = null;
+    _previewLoading = false;
+    _debounceTimer?.cancel();
+
+    // Naming controls.
+    _pattern = '#';
+    _start = RenameBounds.startDefault;
+    _padding = RenameBounds.paddingDefault;
+    _outputFormat = RenameOutputFormat.original;
+    _jpgQuality = RenameBounds.jpgQualityDefault;
+
+    // Messages.
+    _errorText = null;
+    _statusText = null;
+
+    notifyListeners();
+  }
+
   // ---------------------------------------------------------------------------
   //  Live preview (Requirement 12.2)
   // ---------------------------------------------------------------------------

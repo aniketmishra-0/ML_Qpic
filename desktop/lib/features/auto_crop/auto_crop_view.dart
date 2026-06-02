@@ -35,6 +35,8 @@ class AutoCropView extends StatelessWidget {
     required this.controller,
     this.onSubmit,
     this.onPickFile,
+    this.onClear,
+    this.onView,
     this.fileName,
     this.errorText,
     this.busy = false,
@@ -52,6 +54,17 @@ class AutoCropView extends StatelessWidget {
   /// Invoked when the user taps the "Choose PDF" affordance. Wired by the
   /// file-picker integration; when null the affordance is disabled.
   final VoidCallback? onPickFile;
+
+  /// Invoked when the user taps the "Clear" affordance to reset the form back
+  /// to its defaults. Typically wired to [AutoCropController.reset]. When null
+  /// the affordance is hidden.
+  final VoidCallback? onClear;
+
+  /// Invoked when the user taps the "View" affordance to preview the selected
+  /// PDF in an in-app popup. The host renders the page previews and opens the
+  /// dialog. When null (no file loaded or engine not ready) the affordance is
+  /// hidden / disabled.
+  final VoidCallback? onView;
 
   /// Name of the currently selected PDF, shown next to the picker. When null
   /// the controller's own [AutoCropController.fileName] is shown instead.
@@ -81,25 +94,63 @@ class AutoCropView extends StatelessWidget {
     final String? shownFileName = fileName ?? controller.fileName;
     final bool isBusy = busy || controller.busy;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+    // Full-bleed layout: the form spans the whole tool area (no narrow centered
+    // column with empty side margins) and lays its sections across two columns
+    // so everything fits without an outer scroll. On a narrow window the two
+    // columns collapse into one, which can then scroll as a fallback.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool wide = constraints.maxWidth >= 880;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-                _Header(palette: palette),
-                const SizedBox(height: 20),
-                _FilePickerRow(
-                  fileName: shownFileName,
-                  onPickFile: onPickFile,
-                ),
-                if (shownError != null) ...<Widget>[
-                  const SizedBox(height: 16),
-                  _ErrorBanner(message: shownError, palette: palette),
-                ],
-                const SizedBox(height: 28),
+              _HeaderBar(
+                palette: palette,
+                onClear: onClear,
+                busy: isBusy,
+              ),
+              const SizedBox(height: 16),
+              _FilePickerRow(
+                fileName: shownFileName,
+                onPickFile: onPickFile,
+                onView: onView,
+                previewLoading: controller.previewLoading,
+              ),
+              if (shownError != null) ...<Widget>[
+                const SizedBox(height: 14),
+                _ErrorBanner(message: shownError, palette: palette),
+              ],
+              const SizedBox(height: 18),
+              Expanded(
+                child: wide
+                    ? _buildWideBody(context, palette, isBusy)
+                    : _buildNarrowBody(context, palette, isBusy),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Two-column body for wide windows: Pages + Detection on the left, Output +
+  /// Render + actions on the right. Each column scrolls independently only if
+  /// its own content can't fit, so the page itself never needs to scroll.
+  Widget _buildWideBody(
+    BuildContext context,
+    QpicPalette? palette,
+    bool isBusy,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
                 _SectionCard(
                   title: 'Pages',
                   palette: palette,
@@ -119,7 +170,16 @@ class AutoCropView extends StatelessWidget {
                     _NumberingSelector(controller: controller),
                   ],
                 ),
-                const SizedBox(height: 16),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 20),
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
                 _SectionCard(
                   title: 'Output',
                   palette: palette,
@@ -135,108 +195,322 @@ class AutoCropView extends StatelessWidget {
                     _RenderConfig(controller: controller),
                   ],
                 ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
                 _SubmitButton(
                   smartMode: controller.smartMode,
                   busy: isBusy,
                   onSubmit: onSubmit,
                 ),
                 if (controller.result != null) ...<Widget>[
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
                   _DownloadCard(controller: controller, palette: palette),
                 ],
               ],
             ),
           ),
         ),
-      );
+      ],
+    );
+  }
+
+  /// Single-column body for narrow windows. Scrolls as a fallback so the form
+  /// stays usable when there isn't room for two side-by-side columns.
+  Widget _buildNarrowBody(
+    BuildContext context,
+    QpicPalette? palette,
+    bool isBusy,
+  ) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _SectionCard(
+            title: 'Pages',
+            palette: palette,
+            children: <Widget>[
+              _QuestionsSection(controller: controller),
+              const SizedBox(height: 16),
+              _SolutionsSection(controller: controller),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Detection',
+            palette: palette,
+            children: <Widget>[
+              _ModeToggles(controller: controller),
+              const SizedBox(height: 16),
+              _NumberingSelector(controller: controller),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Output',
+            palette: palette,
+            children: <Widget>[
+              _OutputConfig(controller: controller),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Render',
+            palette: palette,
+            children: <Widget>[
+              _RenderConfig(controller: controller),
+            ],
+          ),
+          const SizedBox(height: 20),
+          _SubmitButton(
+            smartMode: controller.smartMode,
+            busy: isBusy,
+            onSubmit: onSubmit,
+          ),
+          if (controller.result != null) ...<Widget>[
+            const SizedBox(height: 20),
+            _DownloadCard(controller: controller, palette: palette),
+          ],
+        ],
+      ),
+    );
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({required this.palette});
+class _HeaderBar extends StatelessWidget {
+  const _HeaderBar({
+    required this.palette,
+    required this.onClear,
+    required this.busy,
+  });
 
   final QpicPalette? palette;
+  final VoidCallback? onClear;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          'Auto Crop',
-          key: const ValueKey<String>('auto-crop-title'),
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: palette?.text ?? theme.colorScheme.onSurface,
-            letterSpacing: -0.3,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Auto Crop',
+                key: const ValueKey<String>('auto-crop-title'),
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: palette?.text ?? theme.colorScheme.onSurface,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Choose a PDF, set the page ranges and output options, then crop.',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          'Choose a PDF, set the page ranges and output options, then crop.',
-          style: TextStyle(
-            fontSize: 13.5,
-            color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-            height: 1.4,
+        if (onClear != null) ...<Widget>[
+          const SizedBox(width: 16),
+          TextButton.icon(
+            key: const ValueKey<String>('auto-crop-clear'),
+            onPressed: busy ? null : onClear,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Clear'),
+            style: TextButton.styleFrom(
+              foregroundColor:
+                  palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
 }
 
 class _FilePickerRow extends StatelessWidget {
-  const _FilePickerRow({required this.fileName, required this.onPickFile});
+  const _FilePickerRow({
+    required this.fileName,
+    required this.onPickFile,
+    this.onView,
+    this.previewLoading = false,
+  });
 
   final String? fileName;
   final VoidCallback? onPickFile;
+  final VoidCallback? onView;
+  final bool previewLoading;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: palette?.field ?? theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: palette?.border ?? theme.dividerColor,
-        ),
-      ),
-      child: Row(
-        children: <Widget>[
-          FilledButton.icon(
-            key: const ValueKey<String>('auto-crop-pick-file'),
-            onPressed: onPickFile,
-            icon: const Icon(Icons.upload_file, size: 18),
-            label: const Text('Choose PDF'),
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+    final bool hasFile = fileName != null;
+
+    final dropZone = _HoverDropZone(
+      key: const ValueKey<String>('auto-crop-pick-file'),
+      enabled: onPickFile != null,
+      onTap: onPickFile,
+      builder: (context, hovered) {
+        final bool active = hovered && onPickFile != null;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: active
+                ? brand.withValues(alpha: 0.06)
+                : (palette?.field ?? theme.colorScheme.surfaceContainerHighest),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: active ? brand : (palette?.border ?? theme.dividerColor),
+              width: 1.5,
             ),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              fileName ?? 'No PDF selected',
-              key: const ValueKey<String>('auto-crop-file-name'),
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                color: fileName == null
-                    ? (palette?.mutedAlt ?? theme.colorScheme.onSurfaceVariant)
-                    : (palette?.text ?? theme.colorScheme.onSurface),
-                fontStyle:
-                    fileName == null ? FontStyle.italic : FontStyle.normal,
-                fontWeight:
-                    fileName != null ? FontWeight.w500 : FontWeight.normal,
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: brand.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  hasFile
+                      ? Icons.picture_as_pdf_rounded
+                      : Icons.cloud_upload_outlined,
+                  color: brand,
+                  size: 21,
+                ),
               ),
-            ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      hasFile ? fileName! : 'Drop your PDF here',
+                      key: const ValueKey<String>('auto-crop-file-name'),
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: palette?.text ?? theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasFile ? 'Tap to choose a different PDF' : 'or click to browse',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: palette?.mutedAlt ??
+                            theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        );
+      },
+    );
+
+    // The View affordance only appears once a PDF is loaded. It sits outside
+    // the drop zone's tap target so previewing never triggers a file re-pick.
+    if (!hasFile) return dropZone;
+    return Row(
+      children: <Widget>[
+        Expanded(child: dropZone),
+        const SizedBox(width: 12),
+        _ViewButton(
+          onView: onView,
+          loading: previewLoading,
+          palette: palette,
+        ),
+      ],
+    );
+  }
+}
+
+/// The "View" affordance shown beside a loaded PDF: opens the in-app preview
+/// popup. Shows a spinner while the engine renders the page previews.
+class _ViewButton extends StatelessWidget {
+  const _ViewButton({
+    required this.onView,
+    required this.loading,
+    required this.palette,
+  });
+
+  final VoidCallback? onView;
+  final bool loading;
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+    return OutlinedButton.icon(
+      key: const ValueKey<String>('auto-crop-view'),
+      onPressed: loading ? null : onView,
+      icon: loading
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.visibility_outlined, size: 18),
+      label: const Text('View'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: brand,
+        side: BorderSide(color: brand.withValues(alpha: 0.5)),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      ),
+    );
+  }
+}
+
+/// A hoverable, clickable zone that reports its hover state to [builder].
+/// Used to turn the file picker rows into prominent drop-zone style targets
+/// without changing the host's callback contract.
+class _HoverDropZone extends StatefulWidget {
+  const _HoverDropZone({
+    super.key,
+    required this.builder,
+    required this.onTap,
+    required this.enabled,
+  });
+
+  final Widget Function(BuildContext context, bool hovered) builder;
+  final VoidCallback? onTap;
+  final bool enabled;
+
+  @override
+  State<_HoverDropZone> createState() => _HoverDropZoneState();
+}
+
+class _HoverDropZoneState extends State<_HoverDropZone> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.enabled ? widget.onTap : null,
+        child: widget.builder(context, _hovered),
       ),
     );
   }

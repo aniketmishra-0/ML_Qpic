@@ -139,7 +139,29 @@
         "x_end_pct": 100.0
       }
     ],
-    "source": "manual"
+    "source": "manual",
+    "align": null
+  },
+
+  "CropPreviewRequest": {
+    "job_id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "q_num": "3",
+    "is_solution": false,
+    "segments": [
+      {
+        "page": 2,
+        "y_start_pct": 30.0,
+        "y_end_pct": 55.5,
+        "x_start_pct": 0.0,
+        "x_end_pct": 100.0
+      }
+    ],
+    "source": "manual",
+    "align": true,
+    "dpi": 200,
+    "padding": 20,
+    "image_format": "png",
+    "jpg_quality": 90
   },
 
   "FinalizeRequest": {
@@ -157,7 +179,8 @@
             "x_end_pct": 100.0
           }
         ],
-        "source": "auto"
+        "source": "auto",
+        "align": null
       }
     ],
     "dpi": 200,

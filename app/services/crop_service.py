@@ -381,6 +381,15 @@ def crop_and_stitch_hires(
     # Per-segment data for option-label alignment (manual column-split case).
     opt_pixel_offsets: list["float | None"] = []
 
+    # Manual per-part horizontal nudges (the review "Manual align" controls),
+    # in output pixels, parallel to ``crops``. Applied on top of any automatic
+    # alignment so the user can fine-tune how the stitched parts line up.
+    manual_offsets_px: list[float] = []
+    has_manual = any(
+        abs(float(getattr(s, "x_offset_pct", 0.0) or 0.0)) > 1e-6
+        for s in question.segments
+    )
+
     for idx, seg in enumerate(question.segments):
         page_index = seg.page - 1
         if page_index < 0 or page_index >= page_count:
@@ -446,34 +455,55 @@ def crop_and_stitch_hires(
             (opt_x_pts - x0_pts) * zoom if opt_x_pts is not None else None
         )
 
-        if align_parts:
+        # Convert this part's manual nudge (% of page width) into output pixels.
+        manual_offsets_px.append(
+            (float(getattr(seg, "x_offset_pct", 0.0) or 0.0) / 100.0)
+            * page_w_pts
+            * zoom
+        )
+
+        if align_parts or has_manual:
             # Defer edge-rule trimming to the final stitched image so the option
-            # pixel offsets above stay valid (a per-part left trim would shift
-            # them out of sync).
+            # pixel offsets above (and the manual nudges) stay valid (a per-part
+            # left trim would shift them out of sync).
             crops.append(ensure_rgb(rendered))
         else:
             crops.append(trim_edge_rules(rendered))
 
-    if not align_parts or len(crops) <= 1:
+    if len(crops) <= 1 or (not align_parts and not has_manual):
+        # A single part has nothing to line up against, and with neither
+        # automatic alignment nor a manual nudge requested the parts stitch
+        # plain flush-left (the original auto-path behaviour).
         return _stitch_vertical(crops, align_parts=False)
 
-    # Align the parts so every MCQ option label ("(A)".."(D)") starts at the same
-    # x. The reference is the rightmost option column among the parts; each other
-    # part is left-padded to push its options under it. Parts without a detected
-    # option line (e.g. a pure stem fragment) are left flush-left.
-    known = [o for o in opt_pixel_offsets if o is not None]
-    if len(known) >= 2:
-        ref = max(known)
-        pads = [
-            int(round(ref - o)) if o is not None else 0 for o in opt_pixel_offsets
-        ]
-        stitched = _stitch_with_left_pads(crops, pads)
-        return trim_edge_rules(stitched)
+    # Base per-part left pad from automatic option-column alignment (when on and
+    # at least two parts expose an option column); otherwise no automatic pad.
+    base_pads = [0.0] * len(crops)
+    if align_parts:
+        known = [o for o in opt_pixel_offsets if o is not None]
+        if len(known) >= 2:
+            ref = max(known)
+            base_pads = [
+                (ref - o) if o is not None else 0.0 for o in opt_pixel_offsets
+            ]
+        elif not has_manual:
+            # No reliable option columns to align on (e.g. a scanned page) and
+            # no manual nudges — fall back to the content-edge aligner, then a
+            # flush-left stitch (the original behaviour).
+            trimmed = [trim_edge_rules(c) for c in crops]
+            return _stitch_vertical(
+                _align_left_by_content(trimmed), align_parts=False
+            )
 
-    # No reliable option columns to align on (e.g. a scanned page) — fall back to
-    # the content-edge aligner, then a flush-left stitch.
-    trimmed = [trim_edge_rules(c) for c in crops]
-    return _stitch_vertical(_align_left_by_content(trimmed), align_parts=False)
+    # Combine the automatic pad with the manual nudge, then renormalise so the
+    # smallest combined offset is zero (left pads can't be negative, and this
+    # keeps the stitched image flush to the left edge without clipping).
+    combined = [base + manual_offsets_px[i] for i, base in enumerate(base_pads)]
+    floor = min(combined) if combined else 0.0
+    pads = [int(round(c - floor)) for c in combined]
+
+    stitched = _stitch_with_left_pads(crops, pads)
+    return trim_edge_rules(stitched)
 
 
 def save_question_image(

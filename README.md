@@ -419,12 +419,15 @@ Notes:
 - **OCR works offline out of the box.** The build vendors a self-contained
   Tesseract (binary + libraries + `eng`/`hin`/`osd` language data) into the app
   via `scripts/vendor_tesseract.py`, so scanned PDFs are handled with no
-  separate Tesseract install on the user's machine. Any requested language the
-  build host's Tesseract didn't ship (e.g. Hindi on the Windows installer) is
-  downloaded automatically from the official `tessdata` repos at build time. At
-  runtime the app finds it in this order: `TESSERACT_CMD` env var → the copy
-  bundled inside the app → a standard system install → whatever is on `PATH`.
-  The AI fallback still needs internet + an API key.
+  separate Tesseract install on the user's machine. By default the bundled
+  language data is pulled from the high-accuracy `tessdata_best` (LSTM) models
+  rather than the smaller models a system Tesseract usually ships — a few MB
+  larger per language but noticeably better on math / mixed-script exam scans.
+  (Pass `--no-prefer-best` to `vendor_tesseract.py` to use the build host's
+  local copy instead.) At runtime the app finds Tesseract in this order:
+  `TESSERACT_CMD` env var → the copy bundled inside the app → a standard system
+  install → whatever is on `PATH`. The AI fallback still needs internet + an
+  API key.
 - Cropped images/zips are written to a per-user folder
   (`~/Library/Application Support/Qpic` on macOS, `%LOCALAPPDATA%\Qpic` on
   Windows).

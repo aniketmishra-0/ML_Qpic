@@ -388,6 +388,8 @@ class AutoCropController extends ChangeNotifier {
   String? _errorText;
   CropResponse? _result;
   AnalyzeResponse? _analyzeResult;
+  List<PageInfo>? _previewPages;
+  bool _previewLoading = false;
 
   /// Name of the currently selected PDF, or null when none is loaded.
   String? get fileName => _fileName;
@@ -397,6 +399,15 @@ class AutoCropController extends ChangeNotifier {
 
   /// Whether a crop request is in flight.
   bool get busy => _busy;
+
+  /// Cached page previews for the currently selected PDF (the engine-rendered
+  /// page images), or null until [loadPreview] has run for this file. Drives
+  /// the in-app "View" popup.
+  List<PageInfo>? get previewPages => _previewPages;
+
+  /// Whether a preview-render request is in flight (drives the View button's
+  /// busy state).
+  bool get previewLoading => _previewLoading;
 
   /// The prompt / engine error to surface above the form, or null when there
   /// is none. Guard prompts (Requirements 5.5–5.7) and the engine `detail`
@@ -421,6 +432,86 @@ class AutoCropController extends ChangeNotifier {
     _result = null;
     _analyzeResult = null;
     _errorText = null;
+    _previewPages = null;
+    notifyListeners();
+  }
+
+  /// Renders the selected PDF's pages to preview images via the engine's
+  /// `POST /api/prepare-manual` rasteriser and caches them on [previewPages]
+  /// for the in-app "View" popup. The result is cached so re-opening the popup
+  /// for the same file is instant; a new selection clears the cache.
+  ///
+  /// Returns true once previews are available (freshly rendered or cached). On
+  /// an engine error the `{"detail": ...}` message is surfaced via [errorText]
+  /// and false is returned. A no-op (returns false) when no PDF is loaded, no
+  /// engine is bound, or a render is already in flight.
+  Future<bool> loadPreview() async {
+    if (_previewPages != null) return true;
+    final client = _apiClient;
+    final bytes = _fileBytes;
+    final name = _fileName;
+    if (client == null || bytes == null || name == null || _previewLoading) {
+      return false;
+    }
+
+    _previewLoading = true;
+    _errorText = null;
+    notifyListeners();
+
+    try {
+      final response = await client.prepareManual(
+        fileBytes: bytes,
+        filename: name,
+        dpi: _dpi,
+      );
+      _previewPages = response.pages;
+      return true;
+    } on ApiException catch (e) {
+      _errorText = e.detail;
+      return false;
+    } finally {
+      _previewLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Clears the form back to its initial state: drops the selected PDF, any
+  /// crop / analyze result and error, and resets every option (toggles, page
+  /// ranges, numbering, and output / render config) to its default. The engine
+  /// binding is preserved so the form stays usable. A no-op while a request is
+  /// in flight so a half-finished run isn't torn out from under the engine.
+  void reset() {
+    if (_busy) return;
+
+    // Selected PDF + run state.
+    _fileBytes = null;
+    _fileName = null;
+    _result = null;
+    _analyzeResult = null;
+    _errorText = null;
+    _previewPages = null;
+
+    // Questions / Solutions selection.
+    _hasQuestions = true;
+    _questionPages = '';
+    _hasAnswers = true;
+    _answerPages = '';
+
+    // Mode toggles + numbering.
+    _smartMode = false;
+    _onlineMode = false;
+    _answerSheet = true;
+    _numbering = NumberingMode.autoDetect;
+
+    // Output configuration.
+    _questionPrefix = 'Q';
+    _solutionPrefix = 'S';
+    _startNumber = AutoCropBounds.startNumberDefault;
+    _imageFormat = CropImageFormat.png;
+    _jpgQuality = AutoCropBounds.jpgQualityDefault;
+    _dpi = AutoCropBounds.dpiDefault;
+    _padding = AutoCropBounds.paddingDefault;
+
     notifyListeners();
   }
 

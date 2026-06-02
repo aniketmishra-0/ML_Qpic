@@ -292,6 +292,13 @@ class ManualCropController extends ChangeNotifier {
       // Load the page previews with an empty item list — every crop is drawn by
       // hand in the canvas (Req 7.2).
       review.loadFromManual(response);
+      // Keep the per-item crop preview in step with this tool's output config so
+      // a preview renders exactly as the finalized download will (Req 7.4).
+      review.setPreviewOutput(
+        dpi: _dpi,
+        imageFormat: _imageFormat.value,
+        jpgQuality: _jpgQuality,
+      );
       _canvasOpen = true;
       return true;
     } on ApiException catch (e) {
@@ -324,6 +331,34 @@ class ManualCropController extends ChangeNotifier {
     if (!_canvasOpen) return;
     _canvasOpen = false;
     review.reset();
+    notifyListeners();
+  }
+
+  /// Resets the whole tool back to its initial state: closes the canvas, drops
+  /// the selected PDF and any error, and restores the independent output config
+  /// (prefixes, start number, image format, JPG quality) and render DPI to
+  /// their defaults. The engine binding is preserved so the tool stays usable.
+  /// A no-op while a prepare-manual request is in flight.
+  void reset() {
+    if (_busy) return;
+
+    // Canvas + selected PDF + error.
+    if (_canvasOpen) {
+      _canvasOpen = false;
+      review.reset();
+    }
+    _fileBytes = null;
+    _fileName = null;
+    _errorText = null;
+
+    // Independent output configuration.
+    _questionPrefix = 'Q';
+    _solutionPrefix = 'S';
+    _startNumber = AutoCropBounds.startNumberDefault;
+    _imageFormat = CropImageFormat.png;
+    _jpgQuality = AutoCropBounds.jpgQualityDefault;
+    _dpi = AutoCropBounds.dpiDefault;
+
     notifyListeners();
   }
 

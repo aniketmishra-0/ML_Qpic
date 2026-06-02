@@ -30,6 +30,7 @@ class RenameView extends StatelessWidget {
     this.onPickFiles,
     this.onPickFolder,
     this.onRename,
+    this.onClear,
     this.errorText,
     this.statusText,
     this.busy = false,
@@ -49,6 +50,11 @@ class RenameView extends StatelessWidget {
   /// Invoked when the user taps the "Rename & Download" button. Wired by
   /// task 15.2; when null the button is disabled.
   final VoidCallback? onRename;
+
+  /// Invoked when the user taps "Clear" to reset the tool back to its defaults
+  /// (drops all loaded files and restores the naming controls). Typically wired
+  /// to [RenameController.reset]. When null the affordance is hidden.
+  final VoidCallback? onClear;
 
   /// Optional error message shown above the form.
   final String? errorText;
@@ -72,30 +78,63 @@ class RenameView extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 900),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+    // Full-bleed layout: spans the whole tool area (no narrow centered column
+    // with empty side margins). On a wide window the naming/output controls sit
+    // on the left and the live preview fills the right, each scrolling
+    // independently only if its own content overflows — so the page itself
+    // never needs to scroll. A narrow window collapses to a single scrolling
+    // column.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool wide = constraints.maxWidth >= 880;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-                _Header(palette: palette),
-                const SizedBox(height: 20),
-                _FilePickerRow(
-                  itemCount: controller.itemCount,
-                  onPickFiles: onPickFiles,
-                  onPickFolder: onPickFolder,
-                ),
-                if (statusText != null) ...<Widget>[
-                  const SizedBox(height: 12),
-                  _StatusLine(message: statusText!, palette: palette),
-                ],
-                if (errorText != null) ...<Widget>[
-                  const SizedBox(height: 16),
-                  _ErrorBanner(message: errorText!, palette: palette),
-                ],
-                const SizedBox(height: 28),
+              _HeaderBar(
+                palette: palette,
+                onClear: onClear,
+                busy: busy,
+              ),
+              const SizedBox(height: 16),
+              _FilePickerRow(
+                itemCount: controller.itemCount,
+                onPickFiles: onPickFiles,
+                onPickFolder: onPickFolder,
+              ),
+              if (statusText != null) ...<Widget>[
+                const SizedBox(height: 12),
+                _StatusLine(message: statusText!, palette: palette),
+              ],
+              if (errorText != null) ...<Widget>[
+                const SizedBox(height: 14),
+                _ErrorBanner(message: errorText!, palette: palette),
+              ],
+              const SizedBox(height: 18),
+              Expanded(
+                child: wide
+                    ? _buildWideBody(context, palette)
+                    : _buildNarrowBody(context, palette),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Two-column body for wide windows: naming + output controls on the left,
+  /// the live preview on the right.
+  Widget _buildWideBody(BuildContext context, QpicPalette? palette) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
                 _SectionCard(
                   title: 'Naming',
                   palette: palette,
@@ -104,13 +143,9 @@ class RenameView extends StatelessWidget {
                     const SizedBox(height: 16),
                     Row(
                       children: <Widget>[
-                        Expanded(
-                          child: _StartField(controller: controller),
-                        ),
+                        Expanded(child: _StartField(controller: controller)),
                         const SizedBox(width: 16),
-                        Expanded(
-                          child: _PaddingField(controller: controller),
-                        ),
+                        Expanded(child: _PaddingField(controller: controller)),
                       ],
                     ),
                   ],
@@ -129,9 +164,7 @@ class RenameView extends StatelessWidget {
                     ],
                   ],
                 ),
-                const SizedBox(height: 16),
-                _PreviewSection(controller: controller, palette: palette),
-                const SizedBox(height: 28),
+                const SizedBox(height: 20),
                 _RenameButton(
                   busy: busy,
                   enabled: controller.itemCount > 0,
@@ -141,7 +174,63 @@ class RenameView extends StatelessWidget {
             ),
           ),
         ),
-      );
+        const SizedBox(width: 20),
+        Expanded(
+          child: SingleChildScrollView(
+            child: _PreviewSection(controller: controller, palette: palette),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Single-column body for narrow windows. Scrolls as a fallback so the form
+  /// stays usable when there isn't room for the side-by-side preview.
+  Widget _buildNarrowBody(BuildContext context, QpicPalette? palette) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _SectionCard(
+            title: 'Naming',
+            palette: palette,
+            children: <Widget>[
+              _PatternField(controller: controller),
+              const SizedBox(height: 16),
+              Row(
+                children: <Widget>[
+                  Expanded(child: _StartField(controller: controller)),
+                  const SizedBox(width: 16),
+                  Expanded(child: _PaddingField(controller: controller)),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Output',
+            palette: palette,
+            children: <Widget>[
+              _OutputFormatSelector(controller: controller),
+              if (controller.outputFormat == RenameOutputFormat.jpg ||
+                  controller.outputFormat ==
+                      RenameOutputFormat.jpeg) ...<Widget>[
+                const SizedBox(height: 16),
+                _JpgQualitySlider(controller: controller),
+              ],
+            ],
+          ),
+          const SizedBox(height: 16),
+          _PreviewSection(controller: controller, palette: palette),
+          const SizedBox(height: 20),
+          _RenameButton(
+            busy: busy,
+            enabled: controller.itemCount > 0,
+            onRename: onRename,
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -149,41 +238,71 @@ class RenameView extends StatelessWidget {
 //  Private widgets
 // =============================================================================
 
-class _Header extends StatelessWidget {
-  const _Header({required this.palette});
+class _HeaderBar extends StatelessWidget {
+  const _HeaderBar({
+    required this.palette,
+    required this.onClear,
+    required this.busy,
+  });
 
   final QpicPalette? palette;
+  final VoidCallback? onClear;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          'Rename Batch',
-          key: const ValueKey<String>('rename-title'),
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: palette?.text ?? theme.colorScheme.onSurface,
-            letterSpacing: -0.3,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Rename Batch',
+                key: const ValueKey<String>('rename-title'),
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: palette?.text ?? theme.colorScheme.onSurface,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Add images or a PDF, set a naming pattern, then download.',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          'Add images or a PDF, set a naming pattern, then download.',
-          style: TextStyle(
-            fontSize: 13.5,
-            color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-            height: 1.4,
+        if (onClear != null) ...<Widget>[
+          const SizedBox(width: 16),
+          TextButton.icon(
+            key: const ValueKey<String>('rename-clear'),
+            onPressed: busy ? null : onClear,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Clear'),
+            style: TextButton.styleFrom(
+              foregroundColor:
+                  palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
 }
 
+/// File picker styled as a horizontal drop zone to match the Auto Crop and
+/// Manual Crop tools. The icon + count sit on the left; the Add Images / Add
+/// Folder actions sit on the right so every tool presents the same file
+/// affordance instead of three different blocks.
 class _FilePickerRow extends StatelessWidget {
   const _FilePickerRow({required this.itemCount, required this.onPickFiles, this.onPickFolder});
 
@@ -195,25 +314,73 @@ class _FilePickerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+    final bool hasItems = itemCount > 0;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: palette?.field ?? theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: palette?.border ?? theme.dividerColor,
+          width: 1.5,
         ),
       ),
       child: Row(
         children: <Widget>[
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: brand.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              hasItems ? Icons.collections_rounded : Icons.cloud_upload_outlined,
+              color: brand,
+              size: 21,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  itemCount > 0
+                      ? '$itemCount file${itemCount == 1 ? '' : 's'} loaded'
+                      : 'No files added',
+                  key: const ValueKey<String>('rename-file-count'),
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: itemCount > 0
+                        ? (palette?.text ?? theme.colorScheme.onSurface)
+                        : (palette?.text ?? theme.colorScheme.onSurface),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Add images or a PDF to rename',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color:
+                        palette?.mutedAlt ?? theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
           FilledButton.icon(
             key: const ValueKey<String>('rename-pick-files'),
             onPressed: onPickFiles,
             icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
             label: const Text('Add Images'),
             style: FilledButton.styleFrom(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
           ),
           const SizedBox(width: 8),
@@ -223,26 +390,7 @@ class _FilePickerRow extends StatelessWidget {
             icon: const Icon(Icons.folder_open, size: 18),
             label: const Text('Add Folder'),
             style: OutlinedButton.styleFrom(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Text(
-            itemCount > 0
-                ? '$itemCount file${itemCount == 1 ? '' : 's'} loaded'
-                : 'No files added',
-            key: const ValueKey<String>('rename-file-count'),
-            style: TextStyle(
-              fontSize: 13,
-              color: itemCount > 0
-                  ? (palette?.text ?? theme.colorScheme.onSurface)
-                  : (palette?.mutedAlt ??
-                      theme.colorScheme.onSurfaceVariant),
-              fontStyle:
-                  itemCount > 0 ? FontStyle.normal : FontStyle.italic,
-              fontWeight:
-                  itemCount > 0 ? FontWeight.w500 : FontWeight.normal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
             ),
           ),
         ],
@@ -636,7 +784,7 @@ class _PreviewSection extends StatelessWidget {
     final theme = Theme.of(context);
 
     if (controller.itemCount == 0) {
-      return const SizedBox.shrink();
+      return _EmptyPreviewCard(palette: palette);
     }
 
     return Material(
@@ -684,6 +832,63 @@ class _PreviewSection extends StatelessWidget {
             _PreviewList(
               items: controller.previewPairs,
               palette: palette,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Empty-state shown in the preview column before any files are loaded, so the
+/// right side of the wide layout is never a blank void (it mirrors the titled
+/// card surface used everywhere else).
+class _EmptyPreviewCard extends StatelessWidget {
+  const _EmptyPreviewCard({required this.palette});
+
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+
+    return Material(
+      color: palette?.panel ?? theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: palette?.border ?? theme.dividerColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 44),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: brand.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(Icons.visibility_outlined, color: brand, size: 26),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Preview',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: palette?.text ?? theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Add images or a PDF to see the before / after names here.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                height: 1.45,
+              ),
             ),
           ],
         ),
