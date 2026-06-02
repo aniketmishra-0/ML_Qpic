@@ -2,10 +2,10 @@
 //
 // These verify the contract the shell promises in Requirement 4:
 //
-//  * 4.2 — exactly four tool tabs labeled Auto Crop / Manual Crop /
-//          Rename Batch / Tools.
+//  * 4.2 — exactly five tool tabs labeled Auto Crop / Manual Crop /
+//          Rename Batch / PDF Enhancer / Tools.
 //  * 4.3 — selecting a tab shows only that tool's view and hides the other
-//          three, and the shell's `IndexedStack` keeps every view mounted so
+//          four, and the shell's `IndexedStack` keeps every view mounted so
 //          each one retains its state across tab switches (text entered in one
 //          tab survives switching away and back).
 //  * 4.4 — the default selected tab on launch is Auto Crop.
@@ -75,7 +75,7 @@ Widget _host(
   );
 }
 
-/// Widens the test surface so the app bar (brand + four tabs + Help + the
+/// Widens the test surface so the app bar (brand + five tabs + Help + the
 /// segmented theme switcher) lays out without the actions overlapping the
 /// tabs. At the default 800×600 surface the switcher sits on top of the tab
 /// hit-targets, which would make tab taps land on the wrong widget.
@@ -89,7 +89,7 @@ void _useWideSurface(WidgetTester tester) {
 void main() {
   group('AppShell tab behaviour', () {
     testWidgets(
-        'exposes exactly the four tool tabs in order (Requirement 4.2)',
+        'exposes exactly the five tool tabs in order (Requirement 4.2)',
         (tester) async {
       final theme = ThemeController();
       addTearDown(theme.dispose);
@@ -123,7 +123,7 @@ void main() {
       expect(stack.index, QpicTool.autoCrop.index);
       expect(stack.index, 0);
 
-      // Only the Auto Crop view is on stage; the other three are hidden.
+      // Only the Auto Crop view is on stage; the other four are hidden.
       expect(
         find.byKey(const ValueKey('tool-title-Auto Crop')),
         findsOneWidget,
