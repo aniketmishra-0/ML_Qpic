@@ -129,7 +129,7 @@ class QpicPalette extends ThemeExtension<QpicPalette> {
 
   /// `.sel-box` fill while drawing — `color-mix(in srgb, var(--accent) 16%,
   /// transparent)`, i.e. the brand color at 16% opacity over the page.
-  Color get selectionFill => brand.withOpacity(0.16);
+  Color get selectionFill => brand.withValues(alpha: 0.16);
 
   /// `.note.gap` accent dot/border — `var(--accent)`.
   Color get noteGap => brand;
@@ -293,6 +293,143 @@ class QpicTheme {
         backgroundColor: palette.appBar,
         foregroundColor: palette.appBarText,
         elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+      ),
+      // Refined input decoration for text fields — tighter, more polished.
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: palette.field,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: palette.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: palette.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: palette.brand, width: 1.5),
+        ),
+        labelStyle: TextStyle(color: palette.muted, fontSize: 13),
+        hintStyle: TextStyle(color: palette.mutedAlt, fontSize: 13),
+        helperStyle: TextStyle(color: palette.mutedAlt, fontSize: 11),
+      ),
+      // Refined slider theme — brand-colored, compact.
+      sliderTheme: SliderThemeData(
+        activeTrackColor: palette.brand,
+        inactiveTrackColor: palette.border,
+        thumbColor: palette.brand,
+        overlayColor: palette.brand.withValues(alpha: 0.12),
+        trackHeight: 3,
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+      ),
+      // Refined switch theme.
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return palette.brand;
+          return palette.muted;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return palette.brand.withValues(alpha: 0.35);
+          }
+          return palette.border;
+        }),
+        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+      ),
+      // Refined filled button style — brand gradient feel.
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: palette.brand,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(9),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.2,
+          ),
+        ),
+      ),
+      // Outlined button style.
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: palette.brand,
+          side: BorderSide(color: palette.brand.withValues(alpha: 0.5)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(9),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      // Dropdown menu style.
+      dropdownMenuTheme: DropdownMenuThemeData(
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: palette.field,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide(color: palette.border),
+          ),
+        ),
+      ),
+      // Segmented button refinements.
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return palette.brand.withValues(alpha: 0.15);
+            }
+            return palette.field;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) return palette.brand;
+            return palette.muted;
+          }),
+          side: WidgetStateProperty.all(
+            BorderSide(color: palette.border),
+          ),
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          textStyle: WidgetStateProperty.all(
+            const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+      // Card theme.
+      cardTheme: CardThemeData(
+        color: palette.panel,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: palette.border),
+        ),
+      ),
+      // Tooltip.
+      tooltipTheme: TooltipThemeData(
+        decoration: BoxDecoration(
+          color: palette.panelAlt,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: palette.border),
+        ),
+        textStyle: TextStyle(color: palette.text, fontSize: 12),
+      ),
+      // ScrollbarTheme — subtle, app-like.
+      scrollbarTheme: ScrollbarThemeData(
+        radius: const Radius.circular(4),
+        thickness: WidgetStateProperty.all(6),
+        thumbColor: WidgetStateProperty.all(palette.border),
       ),
       extensions: <ThemeExtension<dynamic>>[palette],
     );

@@ -1,0 +1,2498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qpic Desktop — Redesign Mockup</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root, [data-theme="dark"] {
+  --accent: #7c6cff;
+  --accent-2: #b14eff;
+  --accent-3: #a78bfa;
+  --accent-grad: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  --bg: #0c0b15;
+  --bg-2: #14121f;
+  --panel: #181626;
+  --panel-2: #131120;
+  --field: #211e33;
+  --border: #2f2b46;
+  --border-soft: #262339;
+  --text: #f4f3fb;
+  --muted: #b5b1cc;
+  --muted-2: #7d789a;
+  --success: #2dd4bf;
+  --warn: #fbbf24;
+  --danger: #fb7185;
+  --sidebar-w: 72px;
+  --radius: 14px;
+  --radius-sm: 10px;
+}
+[data-theme="light"] {
+  --bg: #f8f7ff;
+  --bg-2: #f0eef9;
+  --panel: #ffffff;
+  --panel-2: #f7f6fd;
+  --field: #f1effb;
+  --border: #e0dcf0;
+  --border-soft: #ebe8f7;
+  --text: #1b1830;
+  --muted: #58536f;
+  --muted-2: #8b86a3;
+  --success: #0d9488;
+  --warn: #d97706;
+  --danger: #e11d48;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  transition: background-color 300ms ease, color 300ms ease;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    radial-gradient(58% 42% at 14% 0%, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 60%),
+    radial-gradient(50% 40% at 92% 8%, color-mix(in srgb, var(--accent-2) 14%, transparent) 0%, transparent 62%);
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  width: var(--sidebar-w);
+  height: 100vh;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 0;
+  gap: 8px;
+  flex-shrink: 0;
+  transition: background-color 300ms ease, border-color 300ms ease;
+}
+.sidebar-brand {
+  margin-bottom: 20px;
+}
+.brand-icon {
+  width: 40px; height: 40px;
+  border-radius: 11px;
+  background: linear-gradient(160deg, #6a5cf0, #574bd4);
+  display: grid; place-items: center;
+  color: #fff;
+  box-shadow: 0 6px 18px -6px rgba(90, 79, 214, 0.7);
+}
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+.nav-item {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted-2);
+  width: 56px; height: 52px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  transition: all 150ms ease;
+}
+.nav-item:hover { color: var(--muted); background: var(--field); }
+.nav-item.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--field));
+  box-shadow: inset 3px 0 0 var(--accent);
+  border-radius: 0 12px 12px 0;
+}
+.nav-item span { letter-spacing: 0.02em; }
+.sidebar-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.theme-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: var(--field);
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+}
+.theme-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 12px;
+  display: grid; place-items: center;
+  transition: background 150ms;
+}
+.theme-btn.active {
+  background: var(--panel);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+/* ===== MAIN AREA ===== */
+.main-area {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+.tool-view {
+  display: none;
+  height: 100%;
+}
+.tool-view.active { display: block; }
+
+/* ===== SPLIT LAYOUT ===== */
+.split-layout {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  height: 100%;
+}
+
+/* When review is open, controls stay on left, review takes right */
+#view-auto-crop .split-layout {
+  position: relative;
+}
+
+/* ===== CONTROLS PANEL ===== */
+.controls-panel {
+  padding: 32px 28px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  border-right: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--panel) 60%, transparent);
+  backdrop-filter: blur(12px);
+  position: relative;
+  transition: background-color 300ms ease, border-color 300ms ease;
+}
+/* Close button for drawer mode — hidden by default, shown when overlaying */
+.panel-close-btn {
+  display: none;
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--muted);
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: all 150ms;
+  z-index: 5;
+}
+.panel-close-btn:hover { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, var(--field)); }
+.panel-header { margin-bottom: 4px; }
+.panel-title {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: var(--accent-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.panel-subtitle {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+/* ===== DROP ZONE ===== */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 28px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 200ms ease;
+  background: color-mix(in srgb, var(--accent) 4%, var(--field));
+}
+.drop-zone:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--field));
+  box-shadow: 0 0 30px -10px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.drop-zone.small { padding: 18px 16px; }
+.drop-zone-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.drop-icon { color: var(--accent); opacity: 0.7; }
+.drop-icon.small svg { width: 24px; height: 24px; }
+.drop-text { font-size: 14px; font-weight: 700; color: var(--text); }
+.drop-subtext { font-size: 12px; color: var(--muted-2); }
+.drop-file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.file-badge { font-size: 12px; font-weight: 600; color: var(--text); }
+.file-size { font-size: 11px; color: var(--muted-2); }
+
+/* ===== WIZARD STEPS ===== */
+.wizard-steps { padding: 4px 0; }
+.step-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+}
+.step-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--border);
+  border: 2px solid var(--border);
+  transition: all 200ms;
+}
+.step-dot.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+.step-dot.done {
+  background: var(--success);
+  border-color: var(--success);
+}
+.step-line {
+  width: 40px; height: 2px;
+  background: var(--border);
+  transition: background 200ms;
+}
+.step-line.done { background: var(--success); }
+.step-labels {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 6px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-2);
+}
+.step-labels .active { color: var(--accent); }
+.step-labels .done { color: var(--success); }
+
+/* ===== CONFIG CARDS ===== */
+.config-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: background-color 300ms ease, border-color 300ms ease;
+}
+.card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-row-left { display: flex; flex-direction: column; gap: 2px; }
+.card-label { font-size: 14px; font-weight: 700; color: var(--text); }
+.card-hint { font-size: 11.5px; color: var(--muted-2); }
+.toggle {
+  width: 40px; height: 22px;
+  border-radius: 11px;
+  background: var(--border);
+  position: relative;
+  cursor: pointer;
+  transition: background 200ms;
+}
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: all 200ms;
+}
+.toggle.on { background: var(--accent); }
+.toggle.on::after { left: 21px; background: #fff; }
+.card-field { display: flex; flex-direction: column; gap: 6px; }
+.card-field-row { display: flex; gap: 12px; }
+.card-field.half { flex: 1; }
+.field-label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.field-hint { font-size: 11px; color: var(--muted-2); }
+.input-field {
+  width: 100%;
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 150ms, box-shadow 150ms, background-color 300ms ease, color 300ms ease;
+}
+.input-field:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.input-field.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.input-with-btn { display: flex; gap: 8px; }
+.input-with-btn input { flex: 1; }
+.var-insert-btn {
+  appearance: none;
+  background: color-mix(in srgb, var(--accent) 12%, var(--field));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 650;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--field);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+}
+.seg-btn {
+  flex: 1;
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 150ms;
+}
+.seg-btn.active {
+  background: var(--panel);
+  color: var(--accent);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+
+/* ===== ACTION BAR ===== */
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+.btn-primary {
+  appearance: none;
+  border: none;
+  background: var(--accent-grad);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  padding: 12px 22px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--accent) 60%, transparent);
+  transition: transform 120ms, box-shadow 120ms;
+}
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px -8px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+.btn-secondary {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms;
+}
+.btn-secondary:hover { color: var(--text); border-color: var(--muted); }
+.file-count { font-size: 13px; color: var(--muted); }
+.file-count .count-num { font-weight: 800; color: var(--accent); font-size: 16px; }
+
+/* ===== PREVIEW PANEL ===== */
+.preview-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--bg);
+  transition: background-color 300ms ease;
+}
+.preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.preview-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.preview-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--field));
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.zoom-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--muted);
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  display: grid; place-items: center;
+}
+.zoom-val { font-size: 12px; color: var(--muted); font-weight: 600; width: 42px; text-align: center; }
+
+/* ===== PAGE GRID ===== */
+.page-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 16px;
+}
+.page-thumb {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.page-mock {
+  width: 100%;
+  aspect-ratio: 0.7;
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  border: 2px solid transparent;
+  transition: border-color 200ms;
+}
+.q-page .page-mock { border-color: var(--accent); }
+.s-page .page-mock { border-color: var(--success); }
+.page-mock.sol { background: linear-gradient(180deg, #fff 0%, #f0fdf4 100%); }
+.page-label { font-size: 11px; color: var(--muted-2); }
+.page-badge {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 20px; height: 20px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  display: grid; place-items: center;
+  color: #fff;
+}
+.page-badge.q { background: var(--accent); }
+.page-badge.s { background: var(--success); }
+
+/* ===== RENAME PREVIEW ===== */
+.rename-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rename-row-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  transition: border-color 150ms, background-color 300ms ease;
+}
+.rename-row-item:hover { border-color: var(--accent); }
+.r-old {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.r-arrow { color: var(--accent); font-weight: 700; flex-shrink: 0; }
+.r-new {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted-2); }
+
+/* ===== REVIEW CANVAS LAYOUT ===== */
+.review-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Review Toolbar */
+.review-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  height: 56px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.review-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.toolbar-back-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--muted);
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid; place-items: center;
+  transition: all 150ms;
+}
+.toolbar-back-btn:hover { color: var(--text); border-color: var(--muted); }
+.toolbar-title {
+  font-size: 15px;
+  font-weight: 750;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.review-toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.page-nav-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--muted);
+  width: 30px; height: 30px;
+  border-radius: 7px;
+  cursor: pointer;
+  display: grid; place-items: center;
+  transition: all 150ms;
+}
+.page-nav-btn:hover { color: var(--text); border-color: var(--accent); }
+.page-indicator {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.page-num { color: var(--muted-2); font-weight: 500; }
+.review-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.zoom-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  background: var(--field);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+}
+.zoom-group .zoom-btn {
+  width: 30px; height: 28px;
+  border: none;
+  font-size: 14px;
+}
+.zoom-group .zoom-val {
+  width: 38px;
+  font-size: 11.5px;
+}
+.finalize-btn {
+  appearance: none;
+  border: none;
+  background: var(--accent-grad);
+  color: #fff;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 18px;
+  border-radius: 9px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--accent) 55%, transparent);
+  transition: transform 120ms, box-shadow 120ms;
+}
+.finalize-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px -6px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+
+/* Advisory Banner */
+.advisory-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: color-mix(in srgb, var(--success) 8%, var(--panel));
+  border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0;
+}
+.advisory-banner svg { color: var(--success); flex-shrink: 0; }
+.advisory-banner span { font-size: 12.5px; color: var(--text); line-height: 1.4; }
+
+/* Review Body (Canvas + Notes) */
+.review-body {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Canvas Area */
+.canvas-area {
+  overflow: auto;
+  background: var(--bg);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px;
+}
+.canvas-scroll {
+  width: 100%;
+  max-width: 760px;
+}
+.pdf-page-canvas {
+  background: #fff;
+  border-radius: 4px;
+  padding: 40px 48px;
+  box-shadow: 0 8px 40px -12px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+  min-height: 600px;
+  position: relative;
+}
+.pdf-header-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 32px;
+  font-size: 11px;
+  color: #666;
+}
+.pdf-title { font-weight: 600; color: #333; }
+.pdf-org { font-weight: 700; color: #333; }
+
+/* Detection Boxes */
+.detection-box {
+  position: relative;
+  border: 2px dashed var(--success);
+  border-radius: 6px;
+  padding: 16px;
+  margin-bottom: 18px;
+  background: color-mix(in srgb, var(--success) 4%, transparent);
+  transition: border-color 150ms, background 150ms;
+}
+.detection-box:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.detection-box.highlight-flash {
+  border-color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 15%, transparent) !important;
+  animation: boxFlash 1.5s ease;
+}
+@keyframes boxFlash {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+  30% { box-shadow: 0 0 20px 4px color-mix(in srgb, var(--accent) 40%, transparent); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.detection-box.flagged {
+  border-color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 6%, transparent);
+}
+.box-tag {
+  position: absolute;
+  top: -10px; left: 12px;
+  font-size: 10.5px;
+  font-weight: 750;
+  padding: 2px 8px;
+  border-radius: 4px;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+.box-tag.normal { background: var(--success); }
+.box-tag.flagged { background: var(--warn); color: #1a1a1a; }
+.box-content { color: #1a1a1a; }
+.box-content.dim { opacity: 0.5; }
+.q-text { font-size: 13px; margin-bottom: 6px; line-height: 1.5; color: #1a1a1a; }
+.q-option { font-size: 12.5px; margin-bottom: 3px; color: #333; }
+.q-options-row { display: flex; gap: 40px; }
+
+/* Notes Panel */
+.notes-panel {
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.notes-title {
+  font-size: 14px;
+  font-weight: 750;
+  color: var(--text);
+}
+.notes-count {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  display: grid; place-items: center;
+}
+
+/* Note Cards */
+.note-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: var(--panel-2);
+  transition: border-color 150ms, background-color 300ms ease;
+}
+.note-card:hover { border-color: var(--border); }
+.note-card.danger { border-left: 3px solid var(--warn); }
+.note-card.info { border-left: 3px solid var(--accent); }
+.note-card.warn { border-left: 3px solid var(--danger); }
+.note-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.note-body { flex: 1; min-width: 0; }
+.note-text {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.note-text strong { color: var(--text); font-weight: 700; }
+.note-fix-btn {
+  appearance: none;
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: center;
+  transition: transform 120ms, opacity 120ms;
+}
+.note-fix-btn:hover { transform: scale(1.05); opacity: 0.9; }
+
+/* ===== PAGE STRIP (bottom thumbnail bar) ===== */
+.page-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  transition: background-color 300ms ease;
+}
+.page-strip::-webkit-scrollbar { height: 4px; }
+.page-strip-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  position: relative;
+  padding: 4px;
+  border-radius: 6px;
+  transition: all 150ms;
+}
+.page-strip-item:hover { background: var(--field); }
+.page-strip-item.active {
+  background: color-mix(in srgb, var(--accent) 15%, var(--field));
+  box-shadow: 0 0 0 2px var(--accent);
+  border-radius: 6px;
+}
+.strip-thumb {
+  width: 36px;
+  height: 48px;
+  background: #fff;
+  border-radius: 3px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.strip-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted-2);
+}
+.page-strip-item.active .strip-label { color: var(--accent); }
+.strip-issue-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  display: grid; place-items: center;
+}
+
+/* ===== STATUS BAR ===== */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  background: var(--panel-2);
+  border-top: 1px solid var(--border-soft);
+  flex-shrink: 0;
+  font-size: 11px;
+  transition: background-color 300ms ease;
+}
+.status-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+.status-icon { font-size: 12px; }
+.status-text { font-weight: 500; }
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.status-shortcut {
+  color: var(--muted-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 150ms;
+}
+.status-shortcut:hover { color: var(--accent); }
+.status-shortcut kbd {
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
+  font-size: 10px;
+  font-family: inherit;
+  color: var(--muted);
+}
+.status-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.progress-text { color: var(--muted); font-weight: 600; }
+.progress-bar-mini {
+  width: 60px; height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-fill-mini {
+  height: 100%;
+  background: var(--accent-grad);
+  border-radius: 2px;
+  transition: width 500ms ease;
+}
+
+/* ===== NOTES PROGRESS ===== */
+.notes-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+.notes-progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.notes-progress-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 2px;
+  transition: width 500ms ease;
+}
+.notes-progress-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* ===== NOTE GROUPS (collapsible) ===== */
+.note-group {
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: background-color 300ms ease;
+}
+.note-group-header {
+  appearance: none;
+  border: none;
+  background: var(--panel-2);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 150ms;
+}
+.note-group-header:hover { background: var(--field); }
+.note-group-chevron {
+  transition: transform 200ms ease;
+  flex-shrink: 0;
+}
+.note-group.collapsed .note-group-chevron { transform: rotate(-90deg); }
+.note-group.collapsed .note-group-body { display: none; }
+.note-group-count {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 800;
+  background: var(--border);
+  color: var(--muted);
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+.note-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+}
+.note-group-body .note-card {
+  cursor: pointer;
+}
+.note-group-body .note-card:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--panel-2));
+}
+.note-group-body .note-card.highlighted {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel-2));
+  animation: highlightPulse 600ms ease;
+}
+@keyframes highlightPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+/* Fix All button */
+.fix-all-btn {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--field));
+  color: var(--accent);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 8px;
+  transition: all 150ms;
+}
+.fix-all-btn:hover {
+  background: color-mix(in srgb, var(--accent) 15%, var(--field));
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+/* ===== KEYBOARD SHORTCUTS MODAL ===== */
+.shortcuts-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(8, 6, 20, 0.7);
+  backdrop-filter: blur(6px);
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 150ms ease;
+}
+.shortcuts-modal.open { display: flex; }
+.shortcuts-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  width: 480px;
+  max-height: 80vh;
+  overflow: hidden;
+  animation: scaleIn 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes scaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.shortcuts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.shortcuts-title { font-size: 15px; font-weight: 750; color: var(--text); }
+.shortcuts-close {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--muted);
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  display: grid; place-items: center;
+  transition: all 150ms;
+}
+.shortcuts-close:hover { color: var(--danger); border-color: var(--danger); }
+.shortcuts-body {
+  padding: 16px 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  overflow-y: auto;
+  max-height: 60vh;
+}
+.shortcut-group h4 {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+}
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 0;
+  font-size: 12px;
+  color: var(--text);
+}
+.shortcut-row kbd {
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+  min-width: 22px;
+  text-align: center;
+}
+.shortcut-row span { color: var(--muted); margin-left: auto; }
+
+/* ===== COLLAPSIBLE PANELS ===== */
+.controls-panel.collapsed {
+  display: none !important;
+}
+.inline-notes.collapsed {
+  transform: translateX(100%);
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  overflow: hidden;
+}
+
+/* When review is open and left panel is toggled back, it overlays as a drawer */
+#auto-crop-split:has(#auto-crop-review[style*="flex"]) #auto-crop-controls {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 20;
+  width: 380px;
+  box-shadow: 8px 0 30px rgba(0,0,0,0.5);
+  animation: slideInLeft 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  backdrop-filter: blur(16px);
+}
+#auto-crop-split:has(#auto-crop-review[style*="flex"]) #auto-crop-controls .panel-close-btn {
+  display: flex;
+}
+@keyframes slideInLeft {
+  from { transform: translateX(-380px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Toggle panel buttons in review toolbar */
+.panel-toggle-btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--field);
+  color: var(--muted);
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid; place-items: center;
+  transition: all 150ms;
+  position: relative;
+}
+.panel-toggle-btn:hover { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--field)); }
+.panel-toggle-btn.active { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--field)); }
+.panel-toggle-btn .btn-tooltip {
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms;
+}
+.panel-toggle-btn:hover .btn-tooltip { opacity: 1; }
+.review-inline-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+  animation: slideInRight 350ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(40px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Inline Review Toolbar */
+.inline-review-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+  height: 48px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  transition: background-color 300ms ease, border-color 300ms ease;
+}
+.irt-left { display: flex; align-items: center; gap: 10px; }
+.irt-title { font-size: 13.5px; font-weight: 750; color: var(--text); }
+.irt-center { display: flex; align-items: center; gap: 6px; }
+.irt-right { display: flex; align-items: center; gap: 10px; }
+.zoom-group.compact { padding: 2px; }
+.zoom-group.compact .zoom-btn { width: 26px; height: 24px; }
+.zoom-group.compact .zoom-val { width: 34px; font-size: 11px; }
+.finalize-btn.compact { padding: 7px 14px; font-size: 12px; }
+.advisory-banner.compact { padding: 8px 14px; }
+.advisory-banner.compact span { font-size: 11.5px; }
+
+/* Inline Review Body (Canvas + Notes) */
+.inline-review-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.inline-canvas {
+  flex: 1;
+  overflow: auto;
+  padding: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  transition: all 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pdf-page-canvas.compact { padding: 28px 36px; min-height: 400px; }
+.inline-notes {
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 300px;
+  min-width: 300px;
+  transition: transform 300ms cubic-bezier(0.22, 1, 0.36, 1), width 300ms cubic-bezier(0.22, 1, 0.36, 1), min-width 300ms cubic-bezier(0.22, 1, 0.36, 1), padding 300ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease, background-color 300ms ease, border-color 300ms ease;
+  position: relative;
+}
+
+/* ===== EDITABLE DETECTION BOX ===== */
+.detection-box {
+  cursor: pointer;
+  user-select: none;
+}
+.detection-box.editing {
+  border: 2px solid var(--accent) !important;
+  border-style: solid !important;
+  background: color-mix(in srgb, var(--accent) 8%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  cursor: default;
+  position: relative;
+}
+.detection-box .resize-handles {
+  display: none;
+}
+.detection-box.editing .resize-handles {
+  display: block;
+}
+.resize-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  background: var(--accent);
+  border: 2px solid #fff;
+  border-radius: 2px;
+  z-index: 5;
+}
+.resize-handle.tl { top: -5px; left: -5px; cursor: nwse-resize; }
+.resize-handle.tr { top: -5px; right: -5px; cursor: nesw-resize; }
+.resize-handle.bl { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.resize-handle.br { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.resize-handle.tm { top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.resize-handle.bm { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.resize-handle.ml { top: 50%; left: -5px; transform: translateY(-50%); cursor: ew-resize; }
+.resize-handle.mr { top: 50%; right: -5px; transform: translateY(-50%); cursor: ew-resize; }
+
+/* Edit Toolbar (appears above the box when editing) */
+.box-edit-toolbar {
+  display: none;
+  position: absolute;
+  top: -44px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 6px;
+  gap: 4px;
+  align-items: center;
+  box-shadow: 0 8px 24px -8px rgba(0,0,0,0.6);
+  white-space: nowrap;
+  z-index: 10;
+}
+.detection-box.editing .box-edit-toolbar {
+  display: flex;
+}
+.edit-toolbar-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  transition: all 150ms;
+}
+.edit-toolbar-btn:hover {
+  background: var(--field);
+  color: var(--text);
+}
+.edit-toolbar-btn.confirm {
+  color: var(--success);
+}
+.edit-toolbar-btn.confirm:hover {
+  background: color-mix(in srgb, var(--success) 15%, var(--field));
+}
+.edit-toolbar-btn.delete {
+  color: var(--danger);
+}
+.edit-toolbar-btn.delete:hover {
+  background: color-mix(in srgb, var(--danger) 15%, var(--field));
+}
+.edit-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  margin: 0 2px;
+}
+.edit-label-input {
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+  width: 52px;
+  font-family: inherit;
+  outline: none;
+}
+.edit-label-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+/* Double-click hint tooltip */
+.dblclick-hint {
+  position: absolute;
+  bottom: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--muted-2);
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  padding: 3px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms;
+}
+.detection-box:hover .dblclick-hint {
+  opacity: 1;
+}
+.detection-box.editing .dblclick-hint {
+  display: none;
+}
+
+/* ===== ANALYZING OVERLAY ===== */
+.analyze-overlay {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  z-index: 10;
+  animation: fadeIn 200ms ease;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.analyze-spinner {
+  width: 48px; height: 48px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.analyze-text { font-size: 14px; font-weight: 600; color: var(--text); }
+.analyze-sub { font-size: 12px; color: var(--muted-2); }
+.analyze-progress {
+  width: 200px; height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.analyze-progress-bar {
+  height: 100%;
+  background: var(--accent-grad);
+  border-radius: 2px;
+  animation: progressGrow 2.5s ease forwards;
+}
+@keyframes progressGrow {
+  0% { width: 0%; }
+  30% { width: 25%; }
+  60% { width: 60%; }
+  80% { width: 85%; }
+  100% { width: 95%; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== LEFT SIDEBAR (Navigation Rail) ===== -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+    </div>
+  </div>
+  <nav class="sidebar-nav">
+    <button class="nav-item active" data-tool="auto-crop">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6.13 1L6 16a2 2 0 002 2h15"/><path d="M1 6.13L16 6a2 2 0 012 2v15"/></svg>
+      <span>Auto</span>
+    </button>
+    <button class="nav-item" data-tool="manual-crop">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h18"/></svg>
+      <span>Manual</span>
+    </button>
+    <button class="nav-item" data-tool="rename">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      <span>Rename</span>
+    </button>
+    <button class="nav-item" data-tool="tools">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15 1.65 1.65 0 003.17 14H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68 1.65 1.65 0 0010 3.17V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1h.09a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span>Tools</span>
+    </button>
+    <div style="height:1px; background:var(--border-soft); margin:8px 8px;"></div>
+    <button class="nav-item" data-tool="review" style="opacity:0.6" title="Opens after Smart Crop analyze">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span>Review</span>
+    </button>
+  </nav>
+  <div class="sidebar-bottom">
+    <button class="nav-item" data-tool="help">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><circle cx="12" cy="17" r=".5" fill="currentColor"/></svg>
+      <span>Help</span>
+    </button>
+    <div class="theme-pill">
+      <button class="theme-btn" title="Dark" onclick="setTheme('dark')">🌙</button>
+      <button class="theme-btn" title="Light" onclick="setTheme('light')">☀️</button>
+      <button class="theme-btn active" title="System" onclick="setTheme('system')">💻</button>
+    </div>
+  </div>
+</aside>
+
+<!-- ===== MAIN CONTENT AREA ===== -->
+<main class="main-area">
+
+  <!-- Tool views are shown one at a time -->
+  <!-- ===== AUTO CROP VIEW ===== -->
+  <section class="tool-view active" id="view-auto-crop">
+    <div class="split-layout" id="auto-crop-split">
+
+      <!-- LEFT: Controls Panel -->
+      <div class="controls-panel" id="auto-crop-controls">
+        <!-- Close button (visible only in drawer/overlay mode) -->
+        <button class="panel-close-btn" onclick="toggleLeftPanel()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+
+        <div class="panel-header">
+          <h1 class="panel-title">Auto Crop</h1>
+          <p class="panel-subtitle">Detect and extract questions from your PDF automatically.</p>
+        </div>
+
+        <!-- Drop Zone -->
+        <div class="drop-zone">
+          <div class="drop-zone-inner">
+            <div class="drop-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9,15 12,12 15,15"/></svg>
+            </div>
+            <span class="drop-text">Drop your PDF here</span>
+            <span class="drop-subtext">or click to browse</span>
+            <div class="drop-file-info">
+              <span class="file-badge">📄 exam_2024_math.pdf</span>
+              <span class="file-size">2.4 MB</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Wizard Steps -->
+        <div class="wizard-steps">
+          <div class="step-indicator">
+            <div class="step-dot done"></div>
+            <div class="step-line done"></div>
+            <div class="step-dot active"></div>
+            <div class="step-line"></div>
+            <div class="step-dot"></div>
+            <div class="step-line"></div>
+            <div class="step-dot"></div>
+          </div>
+          <div class="step-labels">
+            <span class="done">File</span>
+            <span class="active">Pages</span>
+            <span>Detect</span>
+            <span>Output</span>
+          </div>
+        </div>
+
+        <!-- Active Step Content: Pages -->
+        <div class="step-content">
+          <div class="config-card">
+            <div class="card-row">
+              <div class="card-row-left">
+                <span class="card-label">Questions</span>
+                <span class="card-hint">Pages containing questions</span>
+              </div>
+              <div class="toggle on"></div>
+            </div>
+            <div class="card-field">
+              <input type="text" placeholder="e.g. 1-5, 8" value="1-12" class="input-field">
+            </div>
+          </div>
+
+          <div class="config-card">
+            <div class="card-row">
+              <div class="card-row-left">
+                <span class="card-label">Solutions</span>
+                <span class="card-hint">Pages with answers</span>
+              </div>
+              <div class="toggle on"></div>
+            </div>
+            <div class="card-field">
+              <input type="text" placeholder="e.g. 13-20" value="13-24" class="input-field">
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-bar">
+          <button class="btn-secondary">← Back</button>
+          <button class="btn-primary" id="analyze-btn" onclick="startAnalyze()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            Analyze &amp; Review
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT: Preview Panel -->
+      <div class="preview-panel" id="auto-crop-preview">
+        <div class="preview-header">
+          <span class="preview-title">Preview</span>
+          <div class="zoom-controls">
+            <button class="zoom-btn">−</button>
+            <span class="zoom-val">100%</span>
+            <button class="zoom-btn">+</button>
+          </div>
+        </div>
+        <div class="preview-area">
+          <!-- PDF page thumbnails grid -->
+          <div class="page-grid">
+            <div class="page-thumb q-page">
+              <div class="page-mock"></div>
+              <span class="page-label">Page 1</span>
+              <span class="page-badge q">Q</span>
+            </div>
+            <div class="page-thumb q-page">
+              <div class="page-mock"></div>
+              <span class="page-label">Page 2</span>
+              <span class="page-badge q">Q</span>
+            </div>
+            <div class="page-thumb q-page">
+              <div class="page-mock"></div>
+              <span class="page-label">Page 3</span>
+              <span class="page-badge q">Q</span>
+            </div>
+            <div class="page-thumb s-page">
+              <div class="page-mock sol"></div>
+              <span class="page-label">Page 13</span>
+              <span class="page-badge s">S</span>
+            </div>
+            <div class="page-thumb s-page">
+              <div class="page-mock sol"></div>
+              <span class="page-label">Page 14</span>
+              <span class="page-badge s">S</span>
+            </div>
+            <div class="page-thumb s-page">
+              <div class="page-mock sol"></div>
+              <span class="page-label">Page 15</span>
+              <span class="page-badge s">S</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Review Canvas (hidden initially, replaces preview after analyze) -->
+      <div class="review-inline-panel" id="auto-crop-review" style="display:none;">
+        <!-- Review Toolbar inside the right panel -->
+        <div class="inline-review-toolbar">
+          <div class="irt-left">
+            <!-- Toggle Settings Panel button -->
+            <button class="panel-toggle-btn" onclick="toggleLeftPanel()" title="Toggle Settings">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+              <span class="btn-tooltip">Settings</span>
+            </button>
+            <button class="toolbar-back-btn" onclick="closeReview()" title="Back to form">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15,18 9,12 15,6"/></svg>
+            </button>
+            <span class="irt-title">Review detections</span>
+          </div>
+          <div class="irt-center">
+            <button class="page-nav-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15,18 9,12 15,6"/></svg></button>
+            <span class="page-indicator">Page 4 / 4 <span class="page-num">(p4)</span></span>
+            <button class="page-nav-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9,6 15,12 9,18"/></svg></button>
+          </div>
+          <div class="irt-right">
+            <div class="zoom-group compact">
+              <button class="zoom-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+              <span class="zoom-val">80%</span>
+              <button class="zoom-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg></button>
+            </div>
+            <button class="finalize-btn compact">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20,6 9,17 4,12"/></svg>
+              Finalize
+            </button>
+            <!-- Toggle Notes Panel button -->
+            <button class="panel-toggle-btn active" onclick="toggleNotesPanel()" title="Toggle Notes">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+              <span class="btn-tooltip">Notes</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Answer sheet advisory -->
+        <div class="advisory-banner compact">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          <span>Answer key detected (23 answers). Download WILL include an answer sheet.</span>
+        </div>
+
+        <!-- Canvas + Notes split inside the right panel -->
+        <div class="inline-review-body">
+          <div class="inline-canvas">
+            <div class="pdf-page-canvas compact">
+              <div class="pdf-header-info">
+                <span class="pdf-date">13/05/2026</span>
+                <span class="pdf-title">UPSC Weekly Test DPP</span>
+                <span class="pdf-org">UPSC</span>
+              </div>
+              <div class="detection-box flagged" ondblclick="startEditBox(this)">
+                <div class="box-tag flagged">⚠️ Q19</div>
+                <div class="box-content">
+                  <p class="q-text">2. The right to health also includes access to essential medicines.</p>
+                  <p class="q-text">Which of the statements given above is/are correct?</p>
+                  <p class="q-option">(A) 1 only</p>
+                  <p class="q-option">(B) 2 only</p>
+                  <p class="q-option">(C) Both 1 and 2</p>
+                </div>
+                <div class="resize-handles">
+                  <div class="resize-handle tl"></div>
+                  <div class="resize-handle tr"></div>
+                  <div class="resize-handle bl"></div>
+                  <div class="resize-handle br"></div>
+                  <div class="resize-handle tm"></div>
+                  <div class="resize-handle bm"></div>
+                  <div class="resize-handle ml"></div>
+                  <div class="resize-handle mr"></div>
+                </div>
+                <div class="box-edit-toolbar">
+                  <input class="edit-label-input" value="Q19" title="Edit label">
+                  <div class="edit-toolbar-divider"></div>
+                  <button class="edit-toolbar-btn" title="Move up" onclick="moveBox(this, -1)">↑</button>
+                  <button class="edit-toolbar-btn" title="Move down" onclick="moveBox(this, 1)">↓</button>
+                  <div class="edit-toolbar-divider"></div>
+                  <button class="edit-toolbar-btn delete" title="Delete this box" onclick="deleteBox(this)">🗑</button>
+                  <button class="edit-toolbar-btn confirm" title="Confirm changes" onclick="confirmEditBox(this)">✓</button>
+                </div>
+                <div class="dblclick-hint">Double-click to edit</div>
+              </div>
+              <div class="detection-box" ondblclick="startEditBox(this)">
+                <div class="box-tag normal">Q20</div>
+                <div class="box-content">
+                  <p class="q-text">Which Article of the Indian Constitution protects an individual's right to marry a person of their choice?</p>
+                  <div class="q-options-row">
+                    <div><p class="q-option">(A) Article 19</p><p class="q-option">(C) Article 25</p></div>
+                    <div><p class="q-option">(B) Article 21</p><p class="q-option">(D) Article 29</p></div>
+                  </div>
+                </div>
+                <div class="resize-handles">
+                  <div class="resize-handle tl"></div>
+                  <div class="resize-handle tr"></div>
+                  <div class="resize-handle bl"></div>
+                  <div class="resize-handle br"></div>
+                  <div class="resize-handle tm"></div>
+                  <div class="resize-handle bm"></div>
+                  <div class="resize-handle ml"></div>
+                  <div class="resize-handle mr"></div>
+                </div>
+                <div class="box-edit-toolbar">
+                  <input class="edit-label-input" value="Q20" title="Edit label">
+                  <div class="edit-toolbar-divider"></div>
+                  <button class="edit-toolbar-btn" title="Move up" onclick="moveBox(this, -1)">↑</button>
+                  <button class="edit-toolbar-btn" title="Move down" onclick="moveBox(this, 1)">↓</button>
+                  <div class="edit-toolbar-divider"></div>
+                  <button class="edit-toolbar-btn delete" title="Delete this box" onclick="deleteBox(this)">🗑</button>
+                  <button class="edit-toolbar-btn confirm" title="Confirm changes" onclick="confirmEditBox(this)">✓</button>
+                </div>
+                <div class="dblclick-hint">Double-click to edit</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Notes panel (collapsible sidebar within right panel) -->
+          <div class="inline-notes" id="review-notes-panel">
+            <div class="notes-header">
+              <span class="notes-title">Items to Fix</span>
+              <span class="notes-count">6</span>
+            </div>
+
+            <!-- Progress -->
+            <div class="notes-progress">
+              <div class="notes-progress-bar"><div class="notes-progress-fill" style="width:50%"></div></div>
+              <span class="notes-progress-text">3 of 6 resolved</span>
+            </div>
+
+            <!-- Grouped: Warnings (collapsible) -->
+            <div class="note-group">
+              <button class="note-group-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                <svg class="note-group-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6,9 12,15 18,9"/></svg>
+                <span>Warnings</span>
+                <span class="note-group-count">4</span>
+              </button>
+              <div class="note-group-body">
+                <div class="note-card danger" onclick="highlightBox('Q4')">
+                  <div class="note-icon">⚠️</div>
+                  <div class="note-body"><p class="note-text"><strong>Q4:</strong> Looks shorter — may be half. Re-select.</p></div>
+                  <button class="note-fix-btn" onclick="event.stopPropagation(); fixNote(this)">Fix</button>
+                </div>
+                <div class="note-card danger" onclick="highlightBox('Q9')">
+                  <div class="note-icon">⚠️</div>
+                  <div class="note-body"><p class="note-text"><strong>Q9:</strong> Looks shorter — may be half. Re-select.</p></div>
+                  <button class="note-fix-btn" onclick="event.stopPropagation(); fixNote(this)">Fix</button>
+                </div>
+                <div class="note-card danger" onclick="highlightBox('Q19')">
+                  <div class="note-icon">⚠️</div>
+                  <div class="note-body"><p class="note-text"><strong>Q19:</strong> Text above isn't covered. Re-select.</p></div>
+                  <button class="note-fix-btn" onclick="event.stopPropagation(); fixNote(this)">Fix</button>
+                </div>
+                <div class="note-card danger" onclick="highlightBox('Q20')">
+                  <div class="note-icon">⚠️</div>
+                  <div class="note-body"><p class="note-text"><strong>Q20:</strong> Looks shorter — may be half. Re-select.</p></div>
+                  <button class="note-fix-btn" onclick="event.stopPropagation(); fixNote(this)">Fix</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Grouped: Info -->
+            <div class="note-group">
+              <button class="note-group-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                <svg class="note-group-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6,9 12,15 18,9"/></svg>
+                <span>Info</span>
+                <span class="note-group-count">1</span>
+              </button>
+              <div class="note-group-body">
+                <div class="note-card info">
+                  <div class="note-icon">💡</div>
+                  <div class="note-body"><p class="note-text">Answer key lists 25 questions but 21–25 weren't detected. Add manually.</p></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Grouped: Missing -->
+            <div class="note-group">
+              <button class="note-group-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                <svg class="note-group-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="6,9 12,15 18,9"/></svg>
+                <span>Missing Coverage</span>
+                <span class="note-group-count">1</span>
+              </button>
+              <div class="note-group-body">
+                <div class="note-card warn">
+                  <div class="note-icon">⚠️</div>
+                  <div class="note-body"><p class="note-text">Text on page 1, 4 isn't covered — a question may have been missed.</p></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Fix All button -->
+            <button class="fix-all-btn" onclick="fixAllNotes()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20,6 9,17 4,12"/></svg>
+              Fix All (Navigate Issues)
+            </button>
+          </div>
+        </div>
+
+        <!-- Page Strip (horizontal thumbnail bar) -->
+        <!-- REMOVED: page strip takes too much space, page nav is already in toolbar -->
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+          <div class="status-left">
+            <span class="status-icon">📄</span>
+            <span class="status-text">exam_2024_math.pdf — 24 pages, 12 questions detected</span>
+          </div>
+          <div class="status-right">
+            <span class="status-shortcut" title="Keyboard shortcuts">
+              <kbd>?</kbd> Shortcuts
+            </span>
+            <span class="status-progress">
+              <span class="progress-text">3/6 issues resolved</span>
+              <span class="progress-bar-mini"><span class="progress-fill-mini" style="width:50%"></span></span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ===== RENAME VIEW (hidden by default, switch via sidebar) ===== -->
+  <section class="tool-view" id="view-rename">
+    <div class="split-layout">
+      <div class="controls-panel">
+        <div class="panel-header">
+          <h1 class="panel-title">Rename Batch</h1>
+          <p class="panel-subtitle">Rename and organize your images with patterns.</p>
+        </div>
+
+        <div class="drop-zone small">
+          <div class="drop-zone-inner">
+            <div class="drop-icon small">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21,15 16,10 5,21"/></svg>
+            </div>
+            <span class="drop-text">Drop images or PDF</span>
+            <span class="drop-subtext">PNG, JPG, WebP, or PDF</span>
+          </div>
+        </div>
+
+        <div class="config-card">
+          <div class="card-field">
+            <label class="field-label">Pattern</label>
+            <div class="input-with-btn">
+              <input type="text" value="Q#" class="input-field mono">
+              <button class="var-insert-btn">{x} Vars</button>
+            </div>
+            <span class="field-hint"># = number · (name) (width) (date) (ext)</span>
+          </div>
+          <div class="card-field-row">
+            <div class="card-field half">
+              <label class="field-label">Start</label>
+              <input type="number" value="1" class="input-field">
+            </div>
+            <div class="card-field half">
+              <label class="field-label">Zero-pad</label>
+              <input type="number" value="2" class="input-field">
+            </div>
+          </div>
+          <div class="card-field">
+            <label class="field-label">Output Format</label>
+            <div class="segmented">
+              <button class="seg-btn active">Original</button>
+              <button class="seg-btn">PNG</button>
+              <button class="seg-btn">JPG</button>
+              <button class="seg-btn">WebP</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-bar">
+          <div class="file-count">
+            <span class="count-num">12</span> files loaded
+          </div>
+          <button class="btn-primary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Rename &amp; Download
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT: Live Rename Preview -->
+      <div class="preview-panel">
+        <div class="preview-header">
+          <span class="preview-title">Live Preview</span>
+          <span class="preview-badge">12 items</span>
+        </div>
+        <div class="rename-preview-list">
+          <div class="rename-row-item">
+            <span class="r-old">IMG_20240315_001.png</span>
+            <span class="r-arrow">→</span>
+            <span class="r-new">Q01.png</span>
+          </div>
+          <div class="rename-row-item">
+            <span class="r-old">IMG_20240315_002.png</span>
+            <span class="r-arrow">→</span>
+            <span class="r-new">Q02.png</span>
+          </div>
+          <div class="rename-row-item">
+            <span class="r-old">IMG_20240315_003.png</span>
+            <span class="r-arrow">→</span>
+            <span class="r-new">Q03.png</span>
+          </div>
+          <div class="rename-row-item">
+            <span class="r-old">screenshot_math_q4.jpg</span>
+            <span class="r-arrow">→</span>
+            <span class="r-new">Q04.jpg</span>
+          </div>
+          <div class="rename-row-item">
+            <span class="r-old">scan_page5.png</span>
+            <span class="r-arrow">→</span>
+            <span class="r-new">Q05.png</span>
+          </div>
+          <div class="rename-row-item">
+            <span class="r-old">photo_2024_06.png</span>
+            <span class="r-arrow">→</span>
+            <span class="r-new">Q06.png</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== REVIEW CANVAS VIEW ===== -->
+  <section class="tool-view" id="view-review">
+    <div class="review-layout">
+
+      <!-- TOP: Review Toolbar -->
+      <div class="review-toolbar">
+        <div class="review-toolbar-left">
+          <button class="toolbar-back-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15,18 9,12 15,6"/></svg>
+          </button>
+          <span class="toolbar-title">Review detections</span>
+        </div>
+        <div class="review-toolbar-center">
+          <button class="page-nav-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15,18 9,12 15,6"/></svg>
+          </button>
+          <span class="page-indicator">Page 4 / 4 <span class="page-num">(p4)</span></span>
+          <button class="page-nav-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9,6 15,12 9,18"/></svg>
+          </button>
+        </div>
+        <div class="review-toolbar-right">
+          <div class="zoom-group">
+            <button class="zoom-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+            </button>
+            <span class="zoom-val">80%</span>
+            <button class="zoom-btn">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+            </button>
+            <button class="zoom-btn" title="Fit width">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+            </button>
+          </div>
+          <button class="finalize-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20,6 9,17 4,12"/></svg>
+            Finalize
+          </button>
+        </div>
+      </div>
+
+      <!-- ADVISORY BANNER -->
+      <div class="advisory-banner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        <span>An answer key was detected (23 answers). The finalized download WILL include an answer sheet.</span>
+      </div>
+
+      <!-- MAIN: Canvas + Notes Panel -->
+      <div class="review-body">
+
+        <!-- Canvas Area -->
+        <div class="canvas-area">
+          <div class="canvas-scroll">
+            <!-- Simulated PDF page with detection boxes -->
+            <div class="pdf-page-canvas">
+              <!-- Page header info -->
+              <div class="pdf-header-info">
+                <span class="pdf-date">13/05/2026, 12:53</span>
+                <span class="pdf-title">UPSC Weekly Test-17th May, 2026 DPP</span>
+                <span class="pdf-org">UPSC</span>
+              </div>
+
+              <!-- Detection box: question with issue -->
+              <div class="detection-box flagged" ondblclick="startEditBox(this)">
+                <div class="box-tag flagged">⚠️ Q19</div>
+                <div class="box-content">
+                  <p class="q-text">2. The right to health also includes access to essential medicines.</p>
+                  <p class="q-text">Which of the statements given above is/are correct?</p>
+                  <p class="q-option">(A) 1 only</p>
+                  <p class="q-option">(B) 2 only</p>
+                  <p class="q-option">(C) Both 1 and 2</p>
+                </div>
+                <!-- Resize handles (visible only in edit mode) -->
+                <div class="resize-handles">
+                  <div class="resize-handle tl"></div>
+                  <div class="resize-handle tr"></div>
+                  <div class="resize-handle bl"></div>
+                  <div class="resize-handle br"></div>
+                  <div class="resize-handle tm"></div>
+                  <div class="resize-handle bm"></div>
+                  <div class="resize-handle ml"></div>
+                  <div class="resize-handle mr"></div>
+                </div>
+                <!-- Edit toolbar -->
+                <div class="box-edit-toolbar">
+                  <input class="edit-label-input" value="Q19" title="Edit label">
+                  <div class="edit-toolbar-divider"></div>
+                  <button class="edit-toolbar-btn" title="Move up" onclick="moveBox(this, -1)">↑</button>
+                  <button class="edit-toolbar-btn" title="Move down" onclick="moveBox(this, 1)">↓</button>
+                  <div class="edit-toolbar-divider"></div>
+                  <button class="edit-toolbar-btn delete" title="Delete this box" onclick="deleteBox(this)">🗑</button>
+                  <button class="edit-toolbar-btn confirm" title="Confirm changes" onclick="confirmEditBox(this)">✓</button>
+                </div>
+                <div class="dblclick-hint">Double-click to edit</div>
+              </div>
+
+              <!-- Detection box: normal -->
+              <div class="detection-box" ondblclick="startEditBox(this)">
+                <div class="box-tag normal">Q20</div>
+                <div class="box-content">
+                  <p class="q-text">Which Article of the Indian Constitution protects an individual's right to marry a person of their choice?</p>
+                  <div class="q-options-row">
+                    <div>
+                      <p class="q-option">(A) Article 19</p>
+                      <p class="q-option">(C) Article 25</p>
+                    </div>
+                    <div>
+                      <p class="q-option">(B) Article 21</p>
+                      <p class="q-option">(D) Article 29</p>
+                    </div>
+                  </div>
+                </div>
+                <!-- Resize handles -->
+                <div class="resize-handles">
+                  <div class="resize-handle tl"></div>
+                  <div class="resize-handle tr"></div>
+                  <div class="resize-handle bl"></div>
+                  <div class="resize-handle br"></div>
+                  <div class="resize-handle tm"></div>
+                  <div class="resize-handle bm"></div>
+                  <div class="resize-handle ml"></div>
+                  <div class="resize-handle mr"></div>
+                </div>
+                <!-- Edit toolbar -->
+                <div class="box-edit-toolbar">
+                  <input class="edit-label-input" value="Q20" title="Edit label">
+                  <div class="edit-toolbar-divider"></div>
+                  <button class="edit-toolbar-btn" title="Move up" onclick="moveBox(this, -1)">↑</button>
+                  <button class="edit-toolbar-btn" title="Move down" onclick="moveBox(this, 1)">↓</button>
+                  <div class="edit-toolbar-divider"></div>
+                  <button class="edit-toolbar-btn delete" title="Delete this box" onclick="deleteBox(this)">🗑</button>
+                  <button class="edit-toolbar-btn confirm" title="Confirm changes" onclick="confirmEditBox(this)">✓</button>
+                </div>
+                <div class="dblclick-hint">Double-click to edit</div>
+              </div>
+
+              <!-- Detection box: another normal -->
+              <div class="detection-box" ondblclick="startEditBox(this)">
+                <div class="box-tag normal">Q21</div>
+                <div class="box-content dim">
+                  <p class="q-text">(D) Neither 1 nor 2</p>
+                </div>
+                <!-- Resize handles -->
+                <div class="resize-handles">
+                  <div class="resize-handle tl"></div>
+                  <div class="resize-handle tr"></div>
+                  <div class="resize-handle bl"></div>
+                  <div class="resize-handle br"></div>
+                  <div class="resize-handle tm"></div>
+                  <div class="resize-handle bm"></div>
+                  <div class="resize-handle ml"></div>
+                  <div class="resize-handle mr"></div>
+                </div>
+                <!-- Edit toolbar -->
+                <div class="box-edit-toolbar">
+                  <input class="edit-label-input" value="Q21" title="Edit label">
+                  <div class="edit-toolbar-divider"></div>
+                  <button class="edit-toolbar-btn" title="Move up" onclick="moveBox(this, -1)">↑</button>
+                  <button class="edit-toolbar-btn" title="Move down" onclick="moveBox(this, 1)">↓</button>
+                  <div class="edit-toolbar-divider"></div>
+                  <button class="edit-toolbar-btn delete" title="Delete this box" onclick="deleteBox(this)">🗑</button>
+                  <button class="edit-toolbar-btn confirm" title="Confirm changes" onclick="confirmEditBox(this)">✓</button>
+                </div>
+                <div class="dblclick-hint">Double-click to edit</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Notes Sidebar -->
+        <div class="notes-panel">
+          <div class="notes-header">
+            <span class="notes-title">Items to Fix</span>
+            <span class="notes-count">6</span>
+          </div>
+
+          <div class="note-card danger">
+            <div class="note-icon">⚠️</div>
+            <div class="note-body">
+              <p class="note-text"><strong>Question 4:</strong> Looks shorter than the other items — it may be only half the question. Re-select the full region.</p>
+            </div>
+            <button class="note-fix-btn">Fix</button>
+          </div>
+
+          <div class="note-card danger">
+            <div class="note-icon">⚠️</div>
+            <div class="note-body">
+              <p class="note-text"><strong>Question 9:</strong> Looks shorter than the other items — it may be only half the question. Re-select the full region.</p>
+            </div>
+            <button class="note-fix-btn">Fix</button>
+          </div>
+
+          <div class="note-card danger">
+            <div class="note-icon">⚠️</div>
+            <div class="note-body">
+              <p class="note-text"><strong>Question 19:</strong> Text above this crop isn't covered by any box — the crop may have started too low (its opening line was cut off). Re-select the full region.</p>
+            </div>
+            <button class="note-fix-btn">Fix</button>
+          </div>
+
+          <div class="note-card danger">
+            <div class="note-icon">⚠️</div>
+            <div class="note-body">
+              <p class="note-text"><strong>Question 20:</strong> Looks shorter than the other items — it may be only half the question. Re-select the full region.</p>
+            </div>
+            <button class="note-fix-btn">Fix</button>
+          </div>
+
+          <div class="note-card info">
+            <div class="note-icon">💡</div>
+            <div class="note-body">
+              <p class="note-text">The answer key lists 25 questions but these weren't detected: 21, 22, 23, 24, 25. Add them manually.</p>
+            </div>
+          </div>
+
+          <div class="note-card warn">
+            <div class="note-icon">⚠️</div>
+            <div class="note-body">
+              <p class="note-text">Some text on page 1, 4 isn't covered by any crop — a question or solution may have been missed. Check the page and add it by hand if so.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== KEYBOARD SHORTCUTS MODAL ===== -->
+  <div class="shortcuts-modal" id="shortcuts-modal" onclick="if(event.target===this)closeShortcuts()">
+    <div class="shortcuts-card">
+      <div class="shortcuts-header">
+        <span class="shortcuts-title">⌨️ Keyboard Shortcuts</span>
+        <button class="shortcuts-close" onclick="closeShortcuts()">✕</button>
+      </div>
+      <div class="shortcuts-body">
+        <div class="shortcut-group">
+          <h4>Navigation</h4>
+          <div class="shortcut-row"><kbd>←</kbd> <kbd>→</kbd><span>Previous / Next page</span></div>
+          <div class="shortcut-row"><kbd>N</kbd><span>Jump to next issue</span></div>
+          <div class="shortcut-row"><kbd>Space</kbd><span>Next page</span></div>
+        </div>
+        <div class="shortcut-group">
+          <h4>Zoom</h4>
+          <div class="shortcut-row"><kbd>+</kbd> <kbd>−</kbd><span>Zoom in / out</span></div>
+          <div class="shortcut-row"><kbd>0</kbd><span>Fit to width</span></div>
+          <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Scroll</kbd><span>Zoom</span></div>
+        </div>
+        <div class="shortcut-group">
+          <h4>Editing</h4>
+          <div class="shortcut-row"><kbd>D</kbd><span>Draw new box</span></div>
+          <div class="shortcut-row"><kbd>Del</kbd><span>Delete selected box</span></div>
+          <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>Undo</span></div>
+          <div class="shortcut-row"><kbd>Esc</kbd><span>Cancel / Deselect</span></div>
+        </div>
+        <div class="shortcut-group">
+          <h4>Actions</h4>
+          <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Enter</kbd><span>Finalize</span></div>
+          <div class="shortcut-row"><kbd>?</kbd><span>Show this help</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+// ===== THEME SWITCHER =====
+function setTheme(theme) {
+  // Update active button
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  
+  if (theme === 'system') {
+    // Follow OS preference
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+  } else {
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+}
+// Default to dark
+document.documentElement.setAttribute('data-theme', 'dark');
+
+// Simple tab switching for the mockup
+document.querySelectorAll('.nav-item[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tool = btn.dataset.tool;
+    document.querySelectorAll('.tool-view').forEach(v => v.classList.remove('active'));
+    const view = document.getElementById('view-' + tool);
+    if (view) view.classList.add('active');
+  });
+});
+
+// Toggle click
+document.querySelectorAll('.toggle').forEach(t => {
+  t.addEventListener('click', () => t.classList.toggle('on'));
+});
+
+// ===== STATE =====
+let leftPanelOpen = false;
+let notesPanelOpen = true;
+
+// ===== ANALYZE FLOW =====
+function startAnalyze() {
+  const splitLayout = document.getElementById('auto-crop-split');
+  
+  // 1. Show full-screen analyzing overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'analyze-overlay';
+  overlay.id = 'analyze-overlay';
+  overlay.innerHTML = `
+    <div class="analyze-spinner"></div>
+    <span class="analyze-text">Analyzing PDF…</span>
+    <span class="analyze-sub">Detecting questions on 24 pages</span>
+    <div class="analyze-progress"><div class="analyze-progress-bar"></div></div>
+  `;
+  splitLayout.style.position = 'relative';
+  splitLayout.appendChild(overlay);
+
+  // 2. Disable the button
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<div style="width:16px;height:16px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.8s linear infinite;"></div> Analyzing…';
+
+  // 3. After 2.5s — transition to review mode
+  setTimeout(() => {
+    overlay.remove();
+    
+    // Hide controls (collapsed — toggle button will bring it back)
+    document.getElementById('auto-crop-controls').classList.add('collapsed');
+    // Hide preview
+    document.getElementById('auto-crop-preview').style.display = 'none';
+    
+    // Show review panel
+    document.getElementById('auto-crop-review').style.display = 'flex';
+    
+    // Update grid
+    updateReviewGrid();
+
+    // Restore button
+    btn.disabled = false;
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Analyze & Review';
+    
+    leftPanelOpen = false;
+  }, 2500);
+}
+
+// Toggle left settings panel (drawer overlay - slides in from left)
+function toggleLeftPanel() {
+  leftPanelOpen = !leftPanelOpen;
+  const panel = document.getElementById('auto-crop-controls');
+  const toggleBtn = document.querySelector('.irt-left .panel-toggle-btn');
+  
+  if (leftPanelOpen) {
+    panel.classList.remove('collapsed');
+    panel.style.display = 'flex';
+    if (toggleBtn) toggleBtn.classList.add('active');
+  } else {
+    panel.classList.add('collapsed');
+    if (toggleBtn) toggleBtn.classList.remove('active');
+  }
+}
+
+// Toggle right notes panel (slides in/out)
+function toggleNotesPanel() {
+  notesPanelOpen = !notesPanelOpen;
+  const panel = document.getElementById('review-notes-panel');
+  const toggleBtn = document.querySelector('.irt-right .panel-toggle-btn');
+  
+  if (notesPanelOpen) {
+    panel.classList.remove('collapsed');
+    if (toggleBtn) toggleBtn.classList.add('active');
+  } else {
+    panel.classList.add('collapsed');
+    if (toggleBtn) toggleBtn.classList.remove('active');
+  }
+}
+
+// Update the grid columns based on which panels are open
+function updateReviewGrid() {
+  const splitLayout = document.getElementById('auto-crop-split');
+  // Always single column in review mode - left panel overlays as drawer
+  splitLayout.style.gridTemplateColumns = '1fr';
+}
+
+// Close review → back to form + preview
+function closeReview() {
+  const splitLayout = document.getElementById('auto-crop-split');
+  
+  // Hide review
+  document.getElementById('auto-crop-review').style.display = 'none';
+  
+  // Restore 2-column grid
+  splitLayout.style.gridTemplateColumns = '420px 1fr';
+  
+  // Show controls and preview
+  const controls = document.getElementById('auto-crop-controls');
+  controls.classList.remove('collapsed');
+  controls.style.display = 'flex';
+  document.getElementById('auto-crop-preview').style.display = 'flex';
+  
+  leftPanelOpen = false;
+  notesPanelOpen = true;
+  
+  // Reset notes panel
+  const notesPanel = document.getElementById('review-notes-panel');
+  if (notesPanel) notesPanel.classList.remove('collapsed');
+}
+
+// ===== PAGE STRIP =====
+function goToPage(pageNum) {
+  // Update active page strip item
+  document.querySelectorAll('.page-strip-item').forEach(item => item.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  
+  // Update page indicator in toolbar
+  const indicator = document.querySelector('.irt-center .page-indicator');
+  if (indicator) {
+    indicator.innerHTML = `Page ${pageNum} / 4 <span class="page-num">(p${pageNum})</span>`;
+  }
+}
+
+// ===== KEYBOARD SHORTCUTS MODAL =====
+function openShortcuts() {
+  document.getElementById('shortcuts-modal').classList.add('open');
+}
+function closeShortcuts() {
+  document.getElementById('shortcuts-modal').classList.remove('open');
+}
+
+// Listen for ? key to open shortcuts
+document.addEventListener('keydown', function(e) {
+  if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+    const modal = document.getElementById('shortcuts-modal');
+    if (modal.classList.contains('open')) {
+      closeShortcuts();
+    } else {
+      openShortcuts();
+    }
+  }
+  if (e.key === 'Escape') {
+    closeShortcuts();
+  }
+});
+
+// Make the status bar shortcut clickable
+document.querySelectorAll('.status-shortcut').forEach(el => {
+  el.addEventListener('click', openShortcuts);
+});
+
+// ===== FIX NOTE — highlight box on canvas =====
+function highlightBox(label) {
+  // Find the detection box with that label on canvas
+  const boxes = document.querySelectorAll('.inline-canvas .detection-box');
+  boxes.forEach(box => {
+    box.classList.remove('highlight-flash');
+    const tag = box.querySelector('.box-tag');
+    if (tag && tag.textContent.includes(label.replace('Q', ''))) {
+      box.classList.add('highlight-flash');
+      box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => box.classList.remove('highlight-flash'), 1500);
+    }
+  });
+}
+
+function fixNote(btn) {
+  const card = btn.closest('.note-card');
+  card.style.opacity = '0.4';
+  card.style.textDecoration = 'line-through';
+  btn.textContent = '✓';
+  btn.style.background = 'var(--success)';
+  btn.disabled = true;
+}
+
+function fixAllNotes() {
+  const fixBtns = document.querySelectorAll('.inline-notes .note-fix-btn');
+  let delay = 0;
+  fixBtns.forEach(btn => {
+    if (!btn.disabled) {
+      setTimeout(() => fixNote(btn), delay);
+      delay += 400;
+    }
+  });
+}
+</script>
+
+</body>
+</html>

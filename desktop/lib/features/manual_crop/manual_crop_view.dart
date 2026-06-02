@@ -102,49 +102,49 @@ class _OpenForm extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 720),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              _Header(palette: palette),
-              const SizedBox(height: 16),
-              _FilePickerRow(
-                fileName: controller.fileName,
-                busy: controller.busy,
-                onPickFile: onPickFile,
-              ),
-              if (error != null) ...<Widget>[
+                _Header(palette: palette),
+                const SizedBox(height: 20),
+                _FilePickerRow(
+                  fileName: controller.fileName,
+                  busy: controller.busy,
+                  onPickFile: onPickFile,
+                ),
+                if (error != null) ...<Widget>[
+                  const SizedBox(height: 16),
+                  _ErrorBanner(message: error, palette: palette),
+                ],
+                const SizedBox(height: 28),
+                _SectionCard(
+                  title: 'Output',
+                  palette: palette,
+                  children: <Widget>[
+                    _OutputConfig(controller: controller),
+                  ],
+                ),
                 const SizedBox(height: 16),
-                _ErrorBanner(message: error, palette: palette),
+                _SectionCard(
+                  title: 'Render',
+                  palette: palette,
+                  children: <Widget>[
+                    _BoundedSlider(
+                      sliderKey: const ValueKey<String>('manual-crop-dpi'),
+                      label: 'DPI',
+                      value: controller.dpi,
+                      min: AutoCropBounds.dpiMin,
+                      max: AutoCropBounds.dpiMax,
+                      onChanged: (v) => controller.dpi = v,
+                    ),
+                  ],
+                ),
               ],
-              const SizedBox(height: 24),
-              _SectionCard(
-                title: 'Output',
-                palette: palette,
-                children: <Widget>[
-                  _OutputConfig(controller: controller),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _SectionCard(
-                title: 'Render',
-                palette: palette,
-                children: <Widget>[
-                  _BoundedSlider(
-                    sliderKey: const ValueKey<String>('manual-crop-dpi'),
-                    label: 'DPI',
-                    value: controller.dpi,
-                    min: AutoCropBounds.dpiMin,
-                    max: AutoCropBounds.dpiMax,
-                    onChanged: (v) => controller.dpi = v,
-                  ),
-                ],
-              ),
-            ],
+            ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -162,16 +162,20 @@ class _Header extends StatelessWidget {
         Text(
           'Manual Crop',
           key: const ValueKey<String>('manual-crop-title'),
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
             color: palette?.text ?? theme.colorScheme.onSurface,
+            letterSpacing: -0.3,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           'Open a PDF to draw every crop by hand — no auto-detection.',
-          style: theme.textTheme.bodyMedium?.copyWith(
+          style: TextStyle(
+            fontSize: 13.5,
             color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+            height: 1.4,
           ),
         ),
       ],
@@ -194,35 +198,55 @@ class _FilePickerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
-    return Row(
-      children: <Widget>[
-        OutlinedButton.icon(
-          key: const ValueKey<String>('manual-crop-pick-file'),
-          onPressed: busy ? null : onPickFile,
-          icon: busy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.upload_file),
-          label: const Text('Choose PDF'),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: palette?.field ?? theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: palette?.border ?? theme.dividerColor,
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            fileName ?? 'No PDF selected',
-            key: const ValueKey<String>('manual-crop-file-name'),
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: fileName == null
-                  ? (palette?.muted ?? theme.colorScheme.onSurfaceVariant)
-                  : (palette?.text ?? theme.colorScheme.onSurface),
-              fontStyle: fileName == null ? FontStyle.italic : FontStyle.normal,
+      ),
+      child: Row(
+        children: <Widget>[
+          FilledButton.icon(
+            key: const ValueKey<String>('manual-crop-pick-file'),
+            onPressed: busy ? null : onPickFile,
+            icon: busy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.upload_file, size: 18),
+            label: const Text('Choose PDF'),
+            style: FilledButton.styleFrom(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             ),
           ),
-        ),
-      ],
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(
+              fileName ?? 'No PDF selected',
+              key: const ValueKey<String>('manual-crop-file-name'),
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                color: fileName == null
+                    ? (palette?.mutedAlt ??
+                        theme.colorScheme.onSurfaceVariant)
+                    : (palette?.text ?? theme.colorScheme.onSurface),
+                fontStyle:
+                    fileName == null ? FontStyle.italic : FontStyle.normal,
+                fontWeight:
+                    fileName != null ? FontWeight.w500 : FontWeight.normal,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -284,19 +308,20 @@ class _SectionCard extends StatelessWidget {
         side: BorderSide(color: palette?.border ?? theme.dividerColor),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Text(
               title,
-              style: theme.textTheme.titleSmall?.copyWith(
+              style: TextStyle(
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
                 color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                letterSpacing: 0.4,
+                letterSpacing: 0.8,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             ...children,
           ],
         ),

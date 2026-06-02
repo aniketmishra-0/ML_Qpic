@@ -63,6 +63,11 @@ class QpicApp extends StatefulWidget {
 class _QpicAppState extends State<QpicApp> {
   late final ThemeController _controller;
 
+  /// Navigator key shared with [QpicPlatformMenuBar] so the Help dialog can be
+  /// opened through the MaterialApp's navigator even though the menu bar sits
+  /// above it (avoids the PlatformMenuBar context-lock assertion).
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
   /// Backs the Auto Crop form (Requirement 5). Owned by the app so the form
   /// retains its state across tab switches (the shell keeps every tool view
   /// mounted). Bound to the engine on ready so its non-Smart crop (task 9.2)
@@ -368,20 +373,27 @@ class _QpicAppState extends State<QpicApp> {
 
   @override
   Widget build(BuildContext context) {
-    // Rebuild MaterialApp whenever the selected theme mode changes so the
-    // palette is re-applied live, without an app restart (Requirement 4.6).
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return MaterialApp(
-          title: 'Qpic',
-          debugShowCheckedModeBanner: false,
-          theme: QpicTheme.light,
-          darkTheme: QpicTheme.dark,
-          themeMode: _controller.themeMode,
-          home: _buildHome(),
-        );
-      },
+    // PlatformMenuBar must live ABOVE MaterialApp so it keeps a stable
+    // BuildContext across MaterialApp rebuilds (theme changes). Flutter's
+    // PlatformMenuBar locks onto its element's context — if a second context
+    // tries to lock while the first is still active, an assertion fires.
+    return QpicPlatformMenuBar(
+      zoomRegistry: _zoomRegistry,
+      navigatorKey: _navigatorKey,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return MaterialApp(
+            title: 'Qpic',
+            debugShowCheckedModeBanner: false,
+            theme: QpicTheme.light,
+            darkTheme: QpicTheme.dark,
+            themeMode: _controller.themeMode,
+            navigatorKey: _navigatorKey,
+            home: _buildHome(),
+          );
+        },
+      ),
     );
   }
 
@@ -404,19 +416,17 @@ class _QpicAppState extends State<QpicApp> {
     );
   }
 
-  /// Builds the shell chrome (menu bar + zoom scope + [AppShell]). [enabled]
-  /// gates the shell's tabs and Help control on engine readiness
-  /// (Requirement 3.4).
+  /// Builds the shell chrome (zoom scope + [AppShell]). [enabled] gates the
+  /// shell's tabs and Help control on engine readiness (Requirement 3.4).
+  /// The [QpicPlatformMenuBar] now lives above [MaterialApp] in [build], so
+  /// it's not repeated here.
   Widget _buildShellChrome({required bool enabled}) {
-    return QpicPlatformMenuBar(
-      zoomRegistry: _zoomRegistry,
-      child: DocumentZoomScope(
-        registry: _zoomRegistry,
-        child: AppShell(
-          themeController: _controller,
-          toolViewBuilder: _buildToolView,
-          enabled: enabled,
-        ),
+    return DocumentZoomScope(
+      registry: _zoomRegistry,
+      child: AppShell(
+        themeController: _controller,
+        toolViewBuilder: _buildToolView,
+        enabled: enabled,
       ),
     );
   }

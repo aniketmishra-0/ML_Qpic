@@ -1,5 +1,8 @@
+import 'dart:io' show Platform;
+
 import 'package:file_selector/file_selector.dart' as fs;
 import 'package:file_selector/file_selector.dart' show XFile, XTypeGroup;
+import 'package:flutter/services.dart';
 
 /// Native file-open dialogs for the Qpic desktop client (Requirement 17).
 ///
@@ -11,6 +14,11 @@ import 'package:file_selector/file_selector.dart' show XFile, XTypeGroup;
 /// * Rename Batch shows a dialog allowing image files **and** PDF files (17.2),
 ///   with multi-select support.
 ///
+/// On macOS, the Rename Batch multi-select dialog uses a custom method channel
+/// that opens the panel as a standalone modal (runModal) rather than a sheet
+/// (beginSheetModal). This fixes the known macOS issue where CMD+A does not
+/// work for select-all in sheet-modal panels.
+///
 /// Loading the returned [XFile]s into the active tool is the responsibility of
 /// feature code wired up by later tasks (17.3); this service only resolves the
 /// selection. On cancel it returns `null` (single pick) or an empty list
@@ -19,6 +27,10 @@ import 'package:file_selector/file_selector.dart' show XFile, XTypeGroup;
 class FilePickerService {
   /// Creates a file-picker service.
   const FilePickerService();
+
+  /// Method channel for the custom macOS file picker that uses runModal().
+  static const MethodChannel _macChannel =
+      MethodChannel('com.qpic.desktop/file_picker');
 
   /// Image extensions accepted by the Rename Batch open dialog.
   ///
@@ -65,10 +77,35 @@ class FilePickerService {
   ///
   /// Used by the Rename Batch flow, which accepts a batch of inputs. Returns an
   /// empty list when the user cancels.
-  Future<List<XFile>> pickImagesAndPdf() {
+  ///
+  /// On macOS this uses a custom method channel that opens the panel via
+  /// `runModal()` (standalone) instead of `beginSheetModal` (sheet attached to
+  /// window). Sheet-modal panels on macOS have a known limitation where CMD+A
+  /// does not trigger select-all. The standalone modal has no such limitation.
+  Future<List<XFile>> pickImagesAndPdf() async {
+    if (Platform.isMacOS) {
+      return _pickImagesAndPdfMacOS();
+    }
     return fs.openFiles(
       acceptedTypeGroups: const <XTypeGroup>[_imageGroup, _pdfGroup],
     );
+  }
+
+  /// macOS-specific picker using custom method channel with runModal().
+  Future<List<XFile>> _pickImagesAndPdfMacOS() async {
+    final String home = Platform.environment['HOME'] ?? '/tmp';
+    final String initialDir = '$home/Desktop';
+
+    final List<dynamic>? paths = await _macChannel.invokeMethod<List<dynamic>>(
+      'pickImagesAndPdf',
+      <String, dynamic>{'initialDirectory': initialDir},
+    );
+
+    if (paths == null || paths.isEmpty) return <XFile>[];
+    return paths
+        .cast<String>()
+        .map((String path) => XFile(path))
+        .toList();
   }
 
   /// Presents a native open dialog allowing a single image or PDF file.
@@ -79,5 +116,14 @@ class FilePickerService {
     return fs.openFile(
       acceptedTypeGroups: const <XTypeGroup>[_imageGroup, _pdfGroup],
     );
+  }
+
+  /// Presents a native folder picker dialog. Returns the selected directory
+  /// path, or `null` when the user cancels.
+  ///
+  /// Used as a workaround for macOS's CMD+A limitation in file-open dialogs:
+  /// the user picks the folder and the caller loads all matching files from it.
+  Future<String?> pickFolder() {
+    return fs.getDirectoryPath();
   }
 }

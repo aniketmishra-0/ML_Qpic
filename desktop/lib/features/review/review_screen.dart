@@ -21,9 +21,9 @@
 
 import 'package:flutter/material.dart';
 
+import '../../core/download_service.dart';
 import '../../core/theme_controller.dart';
 import '../auto_crop/auto_crop_controller.dart' show CropArchive;
-import '../../core/download_service.dart';
 import 'review_canvas.dart';
 import 'review_controller.dart';
 import 'review_notes_panel.dart';

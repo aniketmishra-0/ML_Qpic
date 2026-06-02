@@ -35,15 +35,31 @@ import 'help_screen.dart';
 /// The [zoomRegistry] is the shell's [ActiveDocumentZoom] that forwards zoom
 /// commands to whichever document view is currently active. When no document
 /// view is active, zoom commands are harmless no-ops.
+///
+/// **Important:** This widget must be placed in a stable position in the widget
+/// tree — specifically _outside_ any widget that might rebuild with a new
+/// `BuildContext` (such as `MaterialApp`'s `home:`). Flutter's
+/// `PlatformMenuBar` locks onto its element's context and asserts if a second
+/// context tries to acquire the lock before the first releases it. Placing
+/// this widget above `MaterialApp` avoids that race. Use [navigatorKey] to
+/// provide a `GlobalKey<NavigatorState>` from the `MaterialApp` so the Help
+/// dialog can route correctly.
 class QpicPlatformMenuBar extends StatelessWidget {
   const QpicPlatformMenuBar({
     super.key,
     required this.zoomRegistry,
+    this.navigatorKey,
     required this.child,
   });
 
   /// The shell-wide zoom registry that zoom shortcuts drive.
   final ActiveDocumentZoom zoomRegistry;
+
+  /// Optional navigator key from the `MaterialApp`. Used by the Help menu to
+  /// open a dialog through the app's navigator when this widget sits above the
+  /// `MaterialApp` (and therefore lacks a `Navigator` ancestor in its own
+  /// context).
+  final GlobalKey<NavigatorState>? navigatorKey;
 
   /// The app content below the menu bar.
   final Widget child;
@@ -291,13 +307,20 @@ class QpicPlatformMenuBar extends StatelessWidget {
   }
 
   /// Help menu — opens the in-app walkthrough (Requirement 19.1).
+  ///
+  /// When a [navigatorKey] is available (widget sits above `MaterialApp`), the
+  /// dialog is opened through the navigator's overlay context. Otherwise falls
+  /// back to the widget's own [context] (for legacy placement or tests).
   PlatformMenu _buildHelpMenu(BuildContext context) {
     return PlatformMenu(
       label: 'Help',
       menus: <PlatformMenuItem>[
         PlatformMenuItem(
           label: 'How to Use Qpic',
-          onSelected: () => HelpScreen.open(context),
+          onSelected: () {
+            final navContext = navigatorKey?.currentContext;
+            HelpScreen.open(navContext ?? context);
+          },
         ),
       ],
     );

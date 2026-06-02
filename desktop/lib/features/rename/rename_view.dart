@@ -28,6 +28,7 @@ class RenameView extends StatelessWidget {
     super.key,
     required this.controller,
     this.onPickFiles,
+    this.onPickFolder,
     this.onRename,
     this.errorText,
     this.statusText,
@@ -40,6 +41,10 @@ class RenameView extends StatelessWidget {
   /// Invoked when the user taps the "Add Images" affordance. Wired by the
   /// file-picker integration (task 15.2); when null the affordance is disabled.
   final VoidCallback? onPickFiles;
+
+  /// Invoked when the user taps the "Add Folder" affordance. Picks a directory
+  /// and loads all image/PDF files from it. Workaround for macOS CMD+A issue.
+  final VoidCallback? onPickFolder;
 
   /// Invoked when the user taps the "Rename & Download" button. Wired by
   /// task 15.2; when null the button is disabled.
@@ -71,70 +76,72 @@ class RenameView extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 900),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              _Header(palette: palette),
-              const SizedBox(height: 16),
-              _FilePickerRow(
-                itemCount: controller.itemCount,
-                onPickFiles: onPickFiles,
-              ),
-              if (statusText != null) ...<Widget>[
-                const SizedBox(height: 12),
-                _StatusLine(message: statusText!, palette: palette),
-              ],
-              if (errorText != null) ...<Widget>[
-                const SizedBox(height: 16),
-                _ErrorBanner(message: errorText!, palette: palette),
-              ],
-              const SizedBox(height: 24),
-              _SectionCard(
-                title: 'Naming',
-                palette: palette,
-                children: <Widget>[
-                  _PatternField(controller: controller),
+                _Header(palette: palette),
+                const SizedBox(height: 20),
+                _FilePickerRow(
+                  itemCount: controller.itemCount,
+                  onPickFiles: onPickFiles,
+                  onPickFolder: onPickFolder,
+                ),
+                if (statusText != null) ...<Widget>[
+                  const SizedBox(height: 12),
+                  _StatusLine(message: statusText!, palette: palette),
+                ],
+                if (errorText != null) ...<Widget>[
                   const SizedBox(height: 16),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: _StartField(controller: controller),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _PaddingField(controller: controller),
-                      ),
-                    ],
-                  ),
+                  _ErrorBanner(message: errorText!, palette: palette),
                 ],
-              ),
-              const SizedBox(height: 16),
-              _SectionCard(
-                title: 'Output',
-                palette: palette,
-                children: <Widget>[
-                  _OutputFormatSelector(controller: controller),
-                  if (controller.outputFormat == RenameOutputFormat.jpg ||
-                      controller.outputFormat == RenameOutputFormat.jpeg) ...<Widget>[
+                const SizedBox(height: 28),
+                _SectionCard(
+                  title: 'Naming',
+                  palette: palette,
+                  children: <Widget>[
+                    _PatternField(controller: controller),
                     const SizedBox(height: 16),
-                    _JpgQualitySlider(controller: controller),
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: _StartField(controller: controller),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: _PaddingField(controller: controller),
+                        ),
+                      ],
+                    ),
                   ],
-                ],
-              ),
-              const SizedBox(height: 16),
-              _PreviewSection(controller: controller, palette: palette),
-              const SizedBox(height: 24),
-              _RenameButton(
-                busy: busy,
-                enabled: controller.itemCount > 0,
-                onRename: onRename,
-              ),
-            ],
+                ),
+                const SizedBox(height: 16),
+                _SectionCard(
+                  title: 'Output',
+                  palette: palette,
+                  children: <Widget>[
+                    _OutputFormatSelector(controller: controller),
+                    if (controller.outputFormat == RenameOutputFormat.jpg ||
+                        controller.outputFormat ==
+                            RenameOutputFormat.jpeg) ...<Widget>[
+                      const SizedBox(height: 16),
+                      _JpgQualitySlider(controller: controller),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _PreviewSection(controller: controller, palette: palette),
+                const SizedBox(height: 28),
+                _RenameButton(
+                  busy: busy,
+                  enabled: controller.itemCount > 0,
+                  onRename: onRename,
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -156,16 +163,20 @@ class _Header extends StatelessWidget {
         Text(
           'Rename Batch',
           key: const ValueKey<String>('rename-title'),
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
             color: palette?.text ?? theme.colorScheme.onSurface,
+            letterSpacing: -0.3,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           'Add images or a PDF, set a naming pattern, then download.',
-          style: theme.textTheme.bodyMedium?.copyWith(
+          style: TextStyle(
+            fontSize: 13.5,
             color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+            height: 1.4,
           ),
         ),
       ],
@@ -174,35 +185,68 @@ class _Header extends StatelessWidget {
 }
 
 class _FilePickerRow extends StatelessWidget {
-  const _FilePickerRow({required this.itemCount, required this.onPickFiles});
+  const _FilePickerRow({required this.itemCount, required this.onPickFiles, this.onPickFolder});
 
   final int itemCount;
   final VoidCallback? onPickFiles;
+  final VoidCallback? onPickFolder;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
-    return Row(
-      children: <Widget>[
-        OutlinedButton.icon(
-          key: const ValueKey<String>('rename-pick-files'),
-          onPressed: onPickFiles,
-          icon: const Icon(Icons.add_photo_alternate_outlined),
-          label: const Text('Add Images'),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: palette?.field ?? theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: palette?.border ?? theme.dividerColor,
         ),
-        const SizedBox(width: 12),
-        Text(
-          itemCount > 0 ? '$itemCount file${itemCount == 1 ? '' : 's'} loaded' : 'No files added',
-          key: const ValueKey<String>('rename-file-count'),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: itemCount > 0
-                ? (palette?.text ?? theme.colorScheme.onSurface)
-                : (palette?.muted ?? theme.colorScheme.onSurfaceVariant),
-            fontStyle: itemCount > 0 ? FontStyle.normal : FontStyle.italic,
+      ),
+      child: Row(
+        children: <Widget>[
+          FilledButton.icon(
+            key: const ValueKey<String>('rename-pick-files'),
+            onPressed: onPickFiles,
+            icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+            label: const Text('Add Images'),
+            style: FilledButton.styleFrom(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
           ),
-        ),
-      ],
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            key: const ValueKey<String>('rename-pick-folder'),
+            onPressed: onPickFolder,
+            icon: const Icon(Icons.folder_open, size: 18),
+            label: const Text('Add Folder'),
+            style: OutlinedButton.styleFrom(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Text(
+            itemCount > 0
+                ? '$itemCount file${itemCount == 1 ? '' : 's'} loaded'
+                : 'No files added',
+            key: const ValueKey<String>('rename-file-count'),
+            style: TextStyle(
+              fontSize: 13,
+              color: itemCount > 0
+                  ? (palette?.text ?? theme.colorScheme.onSurface)
+                  : (palette?.mutedAlt ??
+                      theme.colorScheme.onSurfaceVariant),
+              fontStyle:
+                  itemCount > 0 ? FontStyle.normal : FontStyle.italic,
+              fontWeight:
+                  itemCount > 0 ? FontWeight.w500 : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -297,19 +341,20 @@ class _SectionCard extends StatelessWidget {
         side: BorderSide(color: palette?.border ?? theme.dividerColor),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Text(
               title,
-              style: theme.textTheme.titleSmall?.copyWith(
+              style: TextStyle(
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
                 color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                letterSpacing: 0.4,
+                letterSpacing: 0.8,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             ...children,
           ],
         ),

@@ -24,7 +24,7 @@
 // computed in Dart.
 
 import 'dart:math' as math;
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Size;
 
 import 'package:flutter/foundation.dart';
 
@@ -170,6 +170,8 @@ class ReviewCanvasController extends ChangeNotifier {
     if (clamped == _currentPageIndex) return;
     _currentPageIndex = clamped;
     _hoveredItemIndex = -1;
+    // Reset pan to top of new page.
+    _panOffset = _clampPan(Offset.zero);
     _bump();
   }
 
@@ -195,6 +197,8 @@ class ReviewCanvasController extends ChangeNotifier {
     final double next = clampZoom(value);
     if (next == _zoom) return;
     _zoom = next;
+    // Re-clamp pan offset since page size changed with zoom.
+    _panOffset = _clampPan(_panOffset);
     _bump();
   }
 
@@ -206,19 +210,77 @@ class ReviewCanvasController extends ChangeNotifier {
 
   // ---- Pan (Req 8.8) ------------------------------------------------------
 
+  /// The viewport size used for clamping pan bounds. Updated by the canvas
+  /// widget on each layout.
+  Size _viewportSize = Size.zero;
+
+  /// Sets the viewport size for pan clamping. Called by the canvas widget
+  /// every time layout recalculates geometry.
+  void setViewportSize(Size size) {
+    _viewportSize = size;
+  }
+
   /// Translates the displayed page by [delta] (widget px), changing ONLY the
   /// pan offset — never a box's page-percentage coordinates (Req 8.8).
+  /// The offset is clamped so the page cannot scroll beyond its edges.
   void panBy(Offset delta) {
     if (delta == Offset.zero) return;
-    _panOffset += delta;
+    _panOffset = _clampPan(_panOffset + delta);
     _bump();
   }
 
   /// Sets an absolute pan offset (widget px). See [panBy] for the invariant.
   void setPan(Offset offset) {
-    if (offset == _panOffset) return;
-    _panOffset = offset;
+    final Offset clamped = _clampPan(offset);
+    if (clamped == _panOffset) return;
+    _panOffset = clamped;
     _bump();
+  }
+
+  /// Clamps the pan offset so the page image doesn't scroll away from the
+  /// viewport. Horizontal is centered when the page fits; vertical scrolls
+  /// within the page bounds.
+  Offset _clampPan(Offset raw) {
+    if (_viewportSize == Size.zero) return raw;
+
+    // Compute the page display size at current zoom (same calc as the canvas).
+    // We need the page aspect ratio to derive page display size.
+    double aspect = 0;
+    if (_pages.isNotEmpty) {
+      final PageInfo page = _pages[_currentPageIndex];
+      if (page.widthPt > 0) aspect = page.heightPt / page.widthPt;
+    }
+    if (aspect <= 0) aspect = 1.4142; // A-series fallback (sqrt2)
+
+    final double fitWidth =
+        _viewportSize.width > 0 ? _viewportSize.width : 1.0;
+    final double pageW = fitWidth * _zoom;
+    final double pageH = fitWidth * aspect * _zoom;
+
+    final double vw = _viewportSize.width;
+    final double vh = _viewportSize.height;
+
+    double dx = raw.dx;
+    double dy = raw.dy;
+
+    // Horizontal: if page fits within viewport, center it; otherwise clamp.
+    if (pageW <= vw) {
+      dx = (vw - pageW) / 2;
+    } else {
+      // Page wider than viewport: allow scrolling left/right within bounds.
+      dx = dx.clamp(vw - pageW, 0.0);
+    }
+
+    // Vertical: if page fits within viewport, align to top (or center);
+    // otherwise clamp so user can scroll from top to bottom.
+    if (pageH <= vh) {
+      dy = 0.0; // page fits — pin to top
+    } else {
+      // Page taller than viewport: scroll between top edge and bottom edge.
+      dy = dy.clamp(vh - pageH, 0.0);
+    }
+
+    return Offset(dx, dy);
   }
 
   // ---- Draw-kind / numbering ---------------------------------------------
@@ -284,14 +346,23 @@ class ReviewCanvasController extends ChangeNotifier {
   /// editing target and jumps to the page its first segment lives on so the
   /// user can immediately draw (Req 8.6, and the Fix-action target of 10.4).
   /// Subsequent drawn boxes are APPENDED to this item (additive re-select).
+  ///
+  /// If the user is already viewing a page that contains a segment of this
+  /// item, the page stays (no jump) — this avoids the jarring UX of
+  /// double-clicking Q19b on page 4 and being taken to Q19a on page 3.
   void startEditing(int index) {
     if (index < 0 || index >= _items.length) return;
     _editingIndex = index;
     final AnalyzedItem it = _items[index];
     if (it.segments.isNotEmpty) {
-      final int startPage =
-          it.segments.map((QuestionSegment s) => s.page).reduce(math.min);
-      gotoPageNumber(startPage);
+      // Only navigate away if the current page has NO segment of this item.
+      final bool currentPageHasSegment = it.segments
+          .any((QuestionSegment s) => s.page == currentPageNumber);
+      if (!currentPageHasSegment) {
+        final int startPage =
+            it.segments.map((QuestionSegment s) => s.page).reduce(math.min);
+        gotoPageNumber(startPage);
+      }
     }
     _bump();
   }

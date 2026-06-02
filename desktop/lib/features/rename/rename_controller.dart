@@ -14,6 +14,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_selector/file_selector.dart' show XFile, XTypeGroup;
 import 'package:flutter/foundation.dart';
@@ -431,6 +432,32 @@ class RenameController extends ChangeNotifier {
     final List<XFile> picked = await _filePickerService.pickImagesAndPdf();
     if (picked.isEmpty) return;
     await addXFiles(picked);
+  }
+
+  /// Opens a native folder picker and loads all image/PDF files from the
+  /// selected directory. This is a workaround for macOS where CMD+A (select-all)
+  /// does not work properly in the native file-open dialog. Users pick the
+  /// folder and all matching files are loaded automatically.
+  Future<void> pickAndAddFolder() async {
+    final String? dirPath = await _filePickerService.pickFolder();
+    if (dirPath == null) return;
+
+    final dir = Directory(dirPath);
+    if (!dir.existsSync()) return;
+
+    final List<XFile> files = <XFile>[];
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+      if (_isImageName(name) || _isPdfName(name)) {
+        files.add(XFile(entity.path));
+      }
+    }
+
+    if (files.isEmpty) return;
+    // Sort by name for predictable ordering.
+    files.sort((a, b) => a.name.compareTo(b.name));
+    await addXFiles(files);
   }
 
   /// Adds already-selected files (from the native picker or a drop target) to

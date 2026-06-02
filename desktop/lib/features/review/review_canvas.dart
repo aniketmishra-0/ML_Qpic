@@ -35,6 +35,7 @@ import '../shell/document_zoom_controller.dart';
 import '../shell/document_zoom_scope.dart';
 import 'canvas_geometry.dart';
 import 'review_canvas_controller.dart';
+import 'review_hit_test.dart';
 import 'review_painter.dart';
 
 /// Resolves an engine `preview_url` to a full, fetchable URL. Defaults to
@@ -285,8 +286,16 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
 
   // ---- Scroll / pinch zoom + scroll pan (Req 8.8, 8.9) -------------------
 
+  /// Whether the current primary drag originated from a trackpad pan-zoom event
+  /// (two-finger scroll). When true, the GestureDetector pan callbacks treat it
+  /// as canvas panning rather than drawing a selection box.
+  bool _trackpadPanning = false;
+
   void _onPointerSignal(PointerSignalEvent event) {
     if (event is! PointerScrollEvent) return;
+    // When a trackpad pan-zoom session is active, PointerPanZoomUpdate already
+    // handles the panning — skip the scroll event to avoid double-panning.
+    if (_trackpadPanning) return;
     final bool zoomModifier = HardwareKeyboard.instance.isControlPressed ||
         HardwareKeyboard.instance.isMetaPressed;
     if (zoomModifier) {
@@ -300,12 +309,46 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
     }
   }
 
+  void _onPointerPanZoomStart(PointerPanZoomStartEvent event) {
+    // A trackpad two-finger gesture started — mark it so the GestureDetector
+    // pan callbacks (which will fire on the same pointer) treat it as panning,
+    // not drawing.
+    _trackpadPanning = true;
+  }
+
+  void _onPointerPanZoomUpdate(PointerPanZoomUpdateEvent event) {
+    // Trackpad two-finger scroll → pan the canvas directly.
+    final bool zoomModifier = HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isMetaPressed;
+    if (zoomModifier) {
+      // Pinch-to-zoom on trackpad.
+      widget.controller.zoomBy(event.scale);
+    } else {
+      widget.controller.panBy(event.panDelta);
+    }
+  }
+
+  void _onPointerPanZoomEnd(PointerPanZoomEndEvent event) {
+    _trackpadPanning = false;
+  }
+
   // ---- Middle-button pan (Req 8.8) ---------------------------------------
+
+  /// Tracks the pointer device kind of the current primary pointer so we can
+  /// distinguish a real mouse click-drag (draw) from a trackpad touch-drag
+  /// (scroll/pan). On macOS trackpads, two-finger scrolls can arrive as regular
+  /// pointer-down + pointer-move when `PointerPanZoom` events are not emitted.
+  PointerDeviceKind? _primaryPointerKind;
 
   void _onPointerDown(PointerDownEvent event) {
     if (event.buttons & kMiddleMouseButton != 0) {
       _middlePanning = true;
       _middlePanLast = event.localPosition;
+    }
+    // Record the kind for the primary button so _onPanStart can decide
+    // whether to draw or pan.
+    if (event.buttons & kPrimaryButton != 0) {
+      _primaryPointerKind = event.kind;
     }
   }
 
@@ -317,6 +360,7 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
 
   void _onPointerUp(PointerUpEvent event) {
     _middlePanning = false;
+    _primaryPointerKind = null;
   }
 
   // ---- Tap: per-box delete affordance (Req 8.7) --------------------------
@@ -341,14 +385,40 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
     }
   }
 
+  // ---- Double-tap: enter edit mode on a box (resize/extend/fix) ----------
+
+  void _onDoubleTapDown(TapDownDetails details) {
+    final ReviewCanvasController c = widget.controller;
+    final Offset pos = details.localPosition;
+
+    // Hit-test to find which box was double-tapped.
+    final BoxHit? hit = c.hitTest(pos, _geometry);
+
+    if (hit != null) {
+      // A box was double-tapped: enter edit mode for that item (shows resize
+      // handles, allows extending/adjusting the box boundaries).
+      if (c.editingIndex == hit.itemIndex) {
+        // Already editing this item — double-tap again exits edit mode.
+        c.stopEditing();
+      } else {
+        // Stop any current editing, then start editing the tapped box.
+        if (c.isEditing) c.stopEditing();
+        c.startEditing(hit.itemIndex);
+      }
+    } else {
+      // Double-tapped empty space — exit edit mode if active.
+      if (c.isEditing) c.stopEditing();
+    }
+  }
+
   // ---- Primary-button drag: draw / re-select / handle resize / pan -------
 
   void _onPanStart(DragStartDetails details) {
     final ReviewCanvasController c = widget.controller;
     final Offset pos = details.localPosition;
 
-    // Pan when the space key is held (web pan-with-space).
-    if (_spacePressed) {
+    // Trackpad two-finger scroll: treat as pan, not draw.
+    if (_trackpadPanning || _spacePressed) {
       _dragMode = _DragMode.pan;
       return;
     }
@@ -507,36 +577,54 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
       builder: (BuildContext context, BoxConstraints constraints) {
         final Size viewport = constraints.biggest;
         _geometry = _computeGeometry(viewport);
+        // Keep the controller aware of the viewport size for pan clamping.
+        widget.controller.setViewportSize(viewport);
 
         return Listener(
           onPointerSignal: _onPointerSignal,
           onPointerDown: _onPointerDown,
           onPointerMove: _onPointerMove,
           onPointerUp: _onPointerUp,
+          onPointerPanZoomStart: _onPointerPanZoomStart,
+          onPointerPanZoomUpdate: _onPointerPanZoomUpdate,
+          onPointerPanZoomEnd: _onPointerPanZoomEnd,
           child: MouseRegion(
             onHover: _onHover,
             onExit: _onExit,
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
+              // Only allow mouse and touch (for tests) to trigger pan/draw
+              // gestures. Trackpad two-finger gestures are handled separately
+              // via onPointerSignal (scroll) and onPointerPanZoom (pan/pinch),
+              // preventing accidental box selection while scrolling.
+              supportedDevices: const <PointerDeviceKind>{
+                PointerDeviceKind.mouse,
+                PointerDeviceKind.touch,
+                PointerDeviceKind.stylus,
+                PointerDeviceKind.invertedStylus,
+              },
               onTapUp: _onTapUp,
+              onDoubleTapDown: _onDoubleTapDown,
               onPanStart: _onPanStart,
               onPanUpdate: _onPanUpdate,
               onPanEnd: _onPanEnd,
               onPanCancel: _onPanCancel,
-              child: CustomPaint(
-                size: viewport,
-                painter: ReviewPainter(
-                  geometry: _geometry,
-                  palette: palette,
-                  items: c.items,
-                  pageNumber: c.currentPageNumber,
-                  revision: c.revision,
-                  pageImage: _pageImage,
-                  editingIndex: c.editingIndex,
-                  hoveredIndex: c.hoveredItemIndex,
-                  selection: _selection,
-                  questionPrefix: widget.questionPrefix,
-                  solutionPrefix: widget.solutionPrefix,
+              child: ClipRect(
+                child: CustomPaint(
+                  size: viewport,
+                  painter: ReviewPainter(
+                    geometry: _geometry,
+                    palette: palette,
+                    items: c.items,
+                    pageNumber: c.currentPageNumber,
+                    revision: c.revision,
+                    pageImage: _pageImage,
+                    editingIndex: c.editingIndex,
+                    hoveredIndex: c.hoveredItemIndex,
+                    selection: _selection,
+                    questionPrefix: widget.questionPrefix,
+                    solutionPrefix: widget.solutionPrefix,
+                  ),
                 ),
               ),
             ),
