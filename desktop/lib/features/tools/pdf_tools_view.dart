@@ -7,6 +7,8 @@ import 'compress/compress_controller.dart';
 import 'compress/compress_view.dart';
 import 'preflight/preflight_controller.dart';
 import 'preflight/preflight_view.dart';
+import 'edit/edit_controller.dart';
+import 'edit/edit_view.dart';
 
 /// PDF Tools View.
 ///
@@ -17,10 +19,12 @@ class PdfToolsView extends StatefulWidget {
     super.key,
     required this.apiClient,
     required this.downloadService,
+    this.hideHeader = false,
   });
 
   final ApiClient? apiClient;
   final DownloadService? downloadService;
+  final bool hideHeader;
 
   @override
   State<PdfToolsView> createState() => _PdfToolsViewState();
@@ -32,6 +36,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
 
   CompressController? _compressController;
   PreflightController? _preflightController;
+  EditController? _editController;
   String? _errorText;
 
   void _initControllersIfNeeded() {
@@ -40,6 +45,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
     if (client != null && download != null) {
       _compressController ??= CompressController(apiClient: client, downloadService: download);
       _preflightController ??= PreflightController(apiClient: client, downloadService: download);
+      _editController ??= EditController(api: client, downloadService: download);
     }
   }
 
@@ -47,6 +53,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
   void dispose() {
     _compressController?.dispose();
     _preflightController?.dispose();
+    _editController?.dispose();
     super.dispose();
   }
 
@@ -59,8 +66,9 @@ class _PdfToolsViewState extends State<PdfToolsView> {
 
     final tabs = [
       (label: 'Compress PDF', icon: Icons.compress_rounded, index: 0),
-      (label: 'Preflight PDF', icon: Icons.fact_check_rounded, index: 1),
-      (label: 'Edit PDF', icon: Icons.edit_note_rounded, index: 2),
+      (label: 'Vector Editor', icon: Icons.shape_line_rounded, index: 1),
+      (label: 'Preflight PDF', icon: Icons.fact_check_rounded, index: 2),
+      (label: 'Edit PDF', icon: Icons.edit_note_rounded, index: 3),
     ];
 
     return Container(
@@ -75,7 +83,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
       child: Row(
         children: tabs.map((t) {
           final active = _currentSubTab == t.index;
-          final isSoon = t.index == 2; // Edit PDF is Coming Soon
+          final isSoon = t.index == 3; // Edit PDF is Coming Soon
 
           return Expanded(
             child: GestureDetector(
@@ -294,6 +302,21 @@ class _PdfToolsViewState extends State<PdfToolsView> {
         );
         break;
       case 1:
+        subView = EditView(
+          controller: _editController!,
+          onPickFile: () async {
+            try {
+              final result = await const FilePickerService().pickPdf();
+              if (result == null) return;
+              final bytes = await result.readAsBytes();
+              _editController!.open(fileBytes: bytes, filename: result.name);
+            } catch (e) {
+              setState(() => _errorText = 'Could not load PDF: $e');
+            }
+          },
+        );
+        break;
+      case 2:
         subView = PreflightView(
           controller: _preflightController!,
           onPickFile: () async {
@@ -308,7 +331,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
           },
         );
         break;
-      case 2:
+      case 3:
       default:
         subView = _buildComingSoon(context, palette);
         break;
@@ -319,37 +342,39 @@ class _PdfToolsViewState extends State<PdfToolsView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header Bar
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'PDF Tools',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: palette?.text ?? theme.colorScheme.onSurface,
-                        letterSpacing: -0.3,
+          if (!widget.hideHeader) ...[
+            // Header Bar
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'PDF Tools',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: palette?.text ?? theme.colorScheme.onSurface,
+                          letterSpacing: -0.3,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'Compress PDFs to lower file size, preflight them for quality, or edit them.',
-                      style: TextStyle(
-                        fontSize: 13.5,
-                        color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                        height: 1.4,
+                      const SizedBox(height: 6),
+                      Text(
+                        'Compress PDFs to lower file size, preflight them for quality, or edit them.',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                          height: 1.4,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // Sub-tabs navigation
           _buildSubTabs(context, palette),

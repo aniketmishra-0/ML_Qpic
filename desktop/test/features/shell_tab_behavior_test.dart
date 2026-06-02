@@ -97,15 +97,14 @@ void main() {
 
       await tester.pumpWidget(_host(theme));
 
-      // All five tabs are present...
+      // All four tabs are present...
       expect(find.byKey(const ValueKey('tool-tab-autoCrop')), findsOneWidget);
       expect(find.byKey(const ValueKey('tool-tab-manualCrop')), findsOneWidget);
       expect(find.byKey(const ValueKey('tool-tab-renameBatch')), findsOneWidget);
       expect(find.byKey(const ValueKey('tool-tab-pdfEnhancer')), findsOneWidget);
-      expect(find.byKey(const ValueKey('tool-tab-tools')), findsOneWidget);
 
-      // ...and there are exactly five of them, matching the QpicTool enum.
-      expect(QpicTool.values, hasLength(5));
+      // ...and there are exactly four of them, matching the QpicTool enum.
+      expect(QpicTool.values, hasLength(4));
     });
 
     testWidgets('defaults to the Auto Crop tab on launch (Requirement 4.4)',
@@ -137,7 +136,6 @@ void main() {
         findsNothing,
       );
       expect(find.byKey(const ValueKey('tool-title-PDF Enhancer')), findsNothing);
-      expect(find.byKey(const ValueKey('tool-title-PDF Tools')), findsNothing);
     });
 
     testWidgets(
@@ -180,7 +178,6 @@ void main() {
           'tool-title-Auto Crop',
           'tool-title-Rename Batch',
           'tool-title-PDF Enhancer',
-          'tool-title-PDF Tools',
         ],
       );
 
@@ -192,19 +189,6 @@ void main() {
           'tool-title-Auto Crop',
           'tool-title-Manual Crop',
           'tool-title-Rename Batch',
-          'tool-title-PDF Tools',
-        ],
-      );
-
-      await selectAndExpect(
-        'tool-tab-tools',
-        QpicTool.tools.index,
-        'tool-title-PDF Tools',
-        const <String>[
-          'tool-title-Auto Crop',
-          'tool-title-Manual Crop',
-          'tool-title-Rename Batch',
-          'tool-title-PDF Enhancer',
         ],
       );
 
@@ -216,7 +200,6 @@ void main() {
           'tool-title-Manual Crop',
           'tool-title-Rename Batch',
           'tool-title-PDF Enhancer',
-          'tool-title-PDF Tools',
         ],
       );
     });
@@ -242,7 +225,6 @@ void main() {
       const autoText = 'auto crop notes';
       const manualText = 'manual crop notes';
       const pdfEnhancerText = 'pdf enhancer notes';
-      const toolsText = 'tools notes';
 
       // Enter text in the default (Auto Crop) view.
       await tester.enterText(
@@ -269,15 +251,6 @@ void main() {
       );
       await tester.pump();
 
-      // Switch to Tools and enter a fourth value.
-      await tester.tap(find.byKey(const ValueKey('tool-tab-tools')));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('field-tools')),
-        toolsText,
-      );
-      await tester.pump();
-
       // Back to Auto Crop — its text must still be there.
       await tester.tap(find.byKey(const ValueKey('tool-tab-autoCrop')));
       await tester.pumpAndSettle();
@@ -301,14 +274,6 @@ void main() {
         find.byKey(const ValueKey('field-pdfEnhancer')),
       );
       expect(pdfEnhancerField.controller!.text, pdfEnhancerText);
-
-      // And so did Tools'.
-      await tester.tap(find.byKey(const ValueKey('tool-tab-tools')));
-      await tester.pumpAndSettle();
-      final TextField toolsField = tester.widget(
-        find.byKey(const ValueKey('field-tools')),
-      );
-      expect(toolsField.controller!.text, toolsText);
     });
 
     testWidgets(

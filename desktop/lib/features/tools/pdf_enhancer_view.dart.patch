@@ -1,0 +1,69 @@
+--- desktop/lib/features/tools/pdf_enhancer_view.dart
++++ desktop/lib/features/tools/pdf_enhancer_view.dart
+@@ -10,6 +10,7 @@
+ import '../auto_crop/auto_crop_controller.dart';
+ import '../manual_crop/manual_crop_controller.dart';
++import 'pdf_tools_view.dart';
+ 
+ /// PDF Enhancer and Quality Editor Tool View.
+ ///
+@@ -38,6 +39,8 @@
+ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
+ 
++  int _mainTab = 0; // 0 = Enhance, 1 = Tools
++
+   // File state
+   Uint8List? _fileBytes;
+@@ -275,8 +278,16 @@
+     }
+ 
+-    final subView = _fileBytes == null
+-        ? _buildUploadDropZone(context, palette)
+-        : _buildEnhancerInterface(context, palette);
++    Widget subView;
++    if (_mainTab == 0) {
++      subView = _fileBytes == null
++          ? _buildUploadDropZone(context, palette)
++          : _buildEnhancerInterface(context, palette);
++    } else {
++      subView = PdfToolsView(
++        apiClient: widget.apiClient,
++        downloadService: widget.downloadService,
++      );
++    }
+ 
+     return Padding(
+@@ -288,6 +299,6 @@
+           Row(
+             children: [
+-              Expanded(
++              if (_mainTab == 0) Expanded(
+                 child: Column(
+                   crossAxisAlignment: CrossAxisAlignment.start,
+@@ -310,7 +321,11 @@
+                   ],
+                 ),
+-              ),
+-              if (_fileBytes != null && !_busy)
++              ) else Expanded(
++                child: const SizedBox(),
++              ),
++              if (_mainTab == 0 && _fileBytes != null && !_busy)
+                 TextButton.icon(
+                   onPressed: _clear,
+                   icon: const Icon(Icons.refresh_rounded, size: 18),
+@@ -321,6 +336,7 @@
+                 ),
+             ],
+           ),
++          if (_mainTab == 0)
+             const SizedBox(height: 16),
+ 
+           // Main Layout
+@@ -328,6 +344,8 @@
+             child: subView,
+           ),
+         ],
+       ),
+     );
+   }
