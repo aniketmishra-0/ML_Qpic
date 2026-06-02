@@ -57,6 +57,7 @@ class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
     required this.themeController,
+    this.sidecarBootstrap,
     this.toolViewBuilder,
     this.enabled = true,
   });

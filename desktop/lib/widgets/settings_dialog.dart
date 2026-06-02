@@ -501,11 +501,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
             break;
           case SidecarStatus.starting:
           case SidecarStatus.selectingPort:
+          case SidecarStatus.waitingHealth:
             badgeColor = palette?.warn ?? Colors.orange;
             badgeText = 'Starting...';
             break;
           case SidecarStatus.failed:
           case SidecarStatus.stopped:
+          case SidecarStatus.engineStopped:
             badgeColor = palette?.danger ?? theme.colorScheme.error;
             badgeText = status == SidecarStatus.failed ? 'Failed' : 'Stopped';
             break;

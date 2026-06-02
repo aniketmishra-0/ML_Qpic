@@ -84,6 +84,84 @@ void main() {
     });
   });
 
+  group('ThemeController settings preferences', () {
+    test('defaults are returned before loading', () {
+      final controller = ThemeController();
+      expect(controller.defaultDpi, 200);
+      expect(controller.defaultPadding, 20);
+      expect(controller.defaultQuestionPrefix, 'Q');
+      expect(controller.defaultSolutionPrefix, 'S');
+      expect(controller.defaultImageFormat, 'png');
+      expect(controller.defaultSmartMode, true);
+    });
+
+    test('restores custom preferences from storage', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        ThemeController.dpiKey: 300,
+        ThemeController.paddingKey: 40,
+        ThemeController.questionPrefixKey: 'Quest',
+        ThemeController.solutionPrefixKey: 'Sol',
+        ThemeController.imageFormatKey: 'jpg',
+        ThemeController.smartModeKey: false,
+      });
+      final controller = ThemeController();
+      await controller.load();
+
+      expect(controller.defaultDpi, 300);
+      expect(controller.defaultPadding, 40);
+      expect(controller.defaultQuestionPrefix, 'Quest');
+      expect(controller.defaultSolutionPrefix, 'Sol');
+      expect(controller.defaultImageFormat, 'jpg');
+      expect(controller.defaultSmartMode, false);
+    });
+
+    test('sets and persists preferences', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final controller = ThemeController();
+      await controller.setDefaultDpi(150);
+      await controller.setDefaultPadding(10);
+      await controller.setDefaultQuestionPrefix('A');
+      await controller.setDefaultSolutionPrefix('B');
+      await controller.setDefaultImageFormat('jpg');
+      await controller.setDefaultSmartMode(false);
+
+      final reloaded = ThemeController();
+      await reloaded.load();
+
+      expect(reloaded.defaultDpi, 150);
+      expect(reloaded.defaultPadding, 10);
+      expect(reloaded.defaultQuestionPrefix, 'A');
+      expect(reloaded.defaultSolutionPrefix, 'B');
+      expect(reloaded.defaultImageFormat, 'jpg');
+      expect(reloaded.defaultSmartMode, false);
+    });
+
+    test('resetToDefaults clears custom preferences', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final controller = ThemeController();
+      await controller.setDefaultDpi(150);
+      await controller.setDefaultPadding(10);
+      await controller.setDefaultQuestionPrefix('A');
+      await controller.setDefaultSolutionPrefix('B');
+      await controller.setDefaultImageFormat('jpg');
+      await controller.setDefaultSmartMode(false);
+
+      await controller.resetToDefaults();
+
+      expect(controller.defaultDpi, 200);
+      expect(controller.defaultPadding, 20);
+      expect(controller.defaultQuestionPrefix, 'Q');
+      expect(controller.defaultSolutionPrefix, 'S');
+      expect(controller.defaultImageFormat, 'png');
+      expect(controller.defaultSmartMode, true);
+
+      final reloaded = ThemeController();
+      await reloaded.load();
+      expect(reloaded.defaultDpi, 200);
+      expect(reloaded.defaultPadding, 20);
+    });
+  });
+
   group('QpicPalette reproduces web CSS variables (Req 4.5)', () {
     test('dark palette matches the web :root dark block', () {
       const p = QpicPalette.dark;

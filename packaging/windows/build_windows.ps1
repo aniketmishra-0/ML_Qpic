@@ -312,6 +312,18 @@ switch ($Installer) {
         Write-Step "Building NSIS installer"
         $makensis = Get-Command 'makensis.exe' -ErrorAction SilentlyContinue
         if (-not $makensis) {
+            $defaultPaths = @(
+                "C:\Program Files (x86)\NSIS\makensis.exe",
+                "C:\Program Files\NSIS\makensis.exe"
+            )
+            foreach ($p in $defaultPaths) {
+                if (Test-Path $p) {
+                    $makensis = Get-Command $p -ErrorAction SilentlyContinue
+                    if ($makensis) { break }
+                }
+            }
+        }
+        if (-not $makensis) {
             throw "makensis.exe not found. Install NSIS (choco install nsis) or add it to PATH."
         }
         $nsi = Join-Path $ScriptDir 'installer.nsi'
