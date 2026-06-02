@@ -230,7 +230,7 @@ class AutoCropController extends ChangeNotifier {
 
   bool _smartMode = true;
   bool _onlineMode = false;
-  bool _answerSheet = true;
+  bool _answerSheet = false;
   NumberingMode _numbering = NumberingMode.autoDetect;
 
   /// Smart mode: when on, submit calls `POST /api/analyze` and opens the
@@ -500,7 +500,7 @@ class AutoCropController extends ChangeNotifier {
     // Mode toggles + numbering.
     _smartMode = true;
     _onlineMode = false;
-    _answerSheet = true;
+    _answerSheet = false;
     _numbering = NumberingMode.autoDetect;
 
     // Output configuration.
