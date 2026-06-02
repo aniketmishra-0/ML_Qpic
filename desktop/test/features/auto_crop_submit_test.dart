@@ -129,6 +129,27 @@ String _cropBody({
   });
 }
 
+/// A minimal valid AnalyzeResponse body for the Smart-mode path (task 12.5).
+String _analyzeBody({int answerKeyCount = 0}) {
+  return jsonEncode(<String, dynamic>{
+    'job_id': 'analyze-9',
+    'total_pages': 1,
+    'method_used': 'text',
+    'pages': <Map<String, dynamic>>[
+      <String, dynamic>{
+        'page': 1,
+        'width_pt': 600,
+        'height_pt': 800,
+        'preview_url': '/api/analyze/analyze-9/page/1',
+      },
+    ],
+    'items': <Map<String, dynamic>>[],
+    'notes': <Map<String, dynamic>>[],
+    'needs_review': false,
+    'answer_key_count': answerKeyCount,
+  });
+}
+
 void main() {
   group('validateSubmission guards (Req 5.5, 5.6, 5.7)', () {
     test('both toggles off → ERR_NOTHING_SELECTED prompt', () {
@@ -276,9 +297,9 @@ void main() {
     });
   });
 
-  group('Smart mode runs guards but issues no crop (analyze is task 12.5)', () {
-    test('valid Smart submit sends no /api/crop request', () async {
-      final h = _Harness(statusCode: 200, body: _cropBody());
+  group('Smart mode issues POST /api/analyze, not /api/crop (task 12.5)', () {
+    test('a valid Smart submit hits /api/analyze and not /api/crop', () async {
+      final h = _Harness(statusCode: 200, body: _analyzeBody());
       addTearDown(h.controller.dispose);
       h.controller
         ..setFile(bytes: const <int>[1], filename: 'in.pdf')
@@ -288,9 +309,12 @@ void main() {
 
       final ok = await h.controller.submit();
 
-      expect(ok, isFalse); // no direct crop happened
-      expect(h.adapter.requestCount, 0);
+      expect(ok, isTrue); // analyze succeeded
+      expect(h.adapter.lastRequest?.path, '/api/analyze');
+      expect(h.adapter.requestCount, 1);
       expect(h.controller.errorText, isNull); // guards passed
+      expect(h.controller.analyzeResult, isNotNull); // canvas can open (6.2)
+      expect(h.controller.result, isNull); // no direct crop happened
     });
 
     test('invalid Smart submit still blocks with the matching prompt',
@@ -307,6 +331,7 @@ void main() {
       await h.controller.submit();
 
       expect(h.adapter.requestCount, 0);
+      expect(h.controller.analyzeResult, isNull);
       expect(
         h.controller.errorText,
         AutoCropController.errQuestionPagesRequired,

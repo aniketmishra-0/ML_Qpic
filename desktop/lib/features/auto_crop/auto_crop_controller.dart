@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/api_client.dart';
 import '../../core/download_service.dart';
+import '../../models/analyze.dart';
 import '../../models/crop.dart';
 
 /// Engine-accepted bounds for the Auto Crop controls (Requirement 5.3).
@@ -139,15 +140,45 @@ enum CropArchive {
 class AutoCropController extends ChangeNotifier {
   /// Creates a controller. [apiClient] and [downloadService] are optional so
   /// the form can be exercised on its own (bounds/clamping) without a live
-  /// engine; they are required for [crop] / [download] to issue requests.
+  /// engine; they are required for [crop] / [analyze] / [download] to issue
+  /// requests, and are normally supplied via [bindEngine] once the sidecar
+  /// reports ready.
   AutoCropController({
     ApiClient? apiClient,
     DownloadService? downloadService,
   })  : _apiClient = apiClient,
         _downloadService = downloadService;
 
-  final ApiClient? _apiClient;
-  final DownloadService? _downloadService;
+  ApiClient? _apiClient;
+  DownloadService? _downloadService;
+
+  /// The bound API client, or null before the engine is ready.
+  ApiClient? get apiClient => _apiClient;
+
+  /// Whether the engine-backed services are bound (the sidecar is ready).
+  bool get engineReady => _apiClient != null && _downloadService != null;
+
+  /// Binds the engine-backed services once the sidecar reports ready (or
+  /// re-binds with a fresh Base_URL across a restart). When [downloadService]
+  /// is omitted a default one is built from [apiClient]. Mirrors the
+  /// `RenameController.bindEngine` pattern so the host (`app.dart`) can attach
+  /// the live engine to every feature controller the same way.
+  void bindEngine({
+    required ApiClient apiClient,
+    DownloadService? downloadService,
+  }) {
+    _apiClient = apiClient;
+    _downloadService = downloadService ?? DownloadService(apiClient);
+    notifyListeners();
+  }
+
+  /// Clears the engine-backed services (e.g. when the engine stops), so the
+  /// crop / analyze / download affordances guard against an unavailable engine.
+  void unbindEngine() {
+    _apiClient = null;
+    _downloadService = null;
+    notifyListeners();
+  }
 
   // --- Questions / Solutions selection (Requirement 5.1) -------------------
 
@@ -356,6 +387,7 @@ class AutoCropController extends ChangeNotifier {
   bool _busy = false;
   String? _errorText;
   CropResponse? _result;
+  AnalyzeResponse? _analyzeResult;
 
   /// Name of the currently selected PDF, or null when none is loaded.
   String? get fileName => _fileName;
@@ -375,12 +407,19 @@ class AutoCropController extends ChangeNotifier {
   /// actions (Requirement 5.9, 11.1–11.3).
   CropResponse? get result => _result;
 
+  /// The most recent successful Smart-mode analyze result, or null. The host
+  /// observes this to open the Review Canvas after [submit] / [analyze]
+  /// (Requirement 6.2). Cleared whenever a new file is loaded or a request
+  /// starts so a stale analysis never re-opens the canvas.
+  AnalyzeResponse? get analyzeResult => _analyzeResult;
+
   /// Loads a PDF into the form, clearing any prior result/error so the form
   /// reflects the new selection.
   void setFile({required List<int> bytes, required String filename}) {
     _fileBytes = bytes;
     _fileName = filename;
     _result = null;
+    _analyzeResult = null;
     _errorText = null;
     notifyListeners();
   }
@@ -430,26 +469,29 @@ class AutoCropController extends ChangeNotifier {
 
   // --- Submit + non-Smart crop (Requirements 5.4, 5.8, 5.9) ----------------
 
-  /// Runs the pre-request guards then, when valid and Smart mode is off,
-  /// performs the direct crop.
+  /// Runs the pre-request guards then performs the request matching the mode.
   ///
   /// When [validateSubmission] returns a prompt, submission is blocked: no
   /// request is sent, the entered values are preserved, and the prompt is shown
-  /// via [errorText] (Requirements 5.5–5.7). When Smart mode is on, the guards
-  /// still run but the analyze entry into the Review Canvas is task 12.5, so
-  /// this method does not issue a request — the host wires the Smart path
-  /// separately. Returns true when a direct crop completed successfully.
+  /// via [errorText] (Requirements 5.5–5.7). When Smart mode is on, a valid
+  /// submit issues `POST /api/analyze` and, on success, stores [analyzeResult]
+  /// so the host opens the Review Canvas (Requirement 6.1, 6.2); on an analyze
+  /// error the engine `detail` is surfaced and no analysis is stored, so the
+  /// canvas is NOT opened (Requirement 6.7). When Smart mode is off, a valid
+  /// submit performs the direct crop. Returns true when the request (crop or
+  /// analyze) completed successfully.
   Future<bool> submit() async {
     final guard = validateSubmission();
     if (guard != null) {
       _errorText = guard;
       _result = null;
+      _analyzeResult = null;
       notifyListeners();
       return false;
     }
-    // Smart mode opens the Review Canvas via POST /api/analyze (task 12.5).
+    // Smart mode opens the Review Canvas via POST /api/analyze (Req 6.1, 6.2).
     if (_smartMode) {
-      return false;
+      return analyze();
     }
     return crop();
   }
@@ -506,6 +548,77 @@ class AutoCropController extends ChangeNotifier {
       _busy = false;
       notifyListeners();
     }
+  }
+
+  // --- Smart analyze entry into the Review Canvas (Req 6.1, 6.2, 6.7) -------
+
+  /// Issues `POST /api/analyze` for the selected PDF with the Smart-mode
+  /// parameters and, on success, stores the [AnalyzeResponse] as
+  /// [analyzeResult] so the host opens the Review Canvas (Requirement 6.1,
+  /// 6.2).
+  ///
+  /// The query carries exactly the parameters the task and engine contract
+  /// require — `dpi`, `marker_style`, `has_questions`, `question_pages`,
+  /// `has_answers`, `answer_pages`, `use_ai`, `answer_sheet` — mapped 1:1 from
+  /// the form controls, plus the multipart `file`. `question_pages` /
+  /// `answer_pages` are sent only when their toggle is on, so a disabled side
+  /// never leaks a stale range (the guards in [validateSubmission] already
+  /// ensure an enabled side has a non-empty range before this is reached).
+  ///
+  /// On an engine error the `{"detail": ...}` message is surfaced via
+  /// [errorText] and NO analysis is stored, so the host does not open the
+  /// canvas (Requirement 6.7). A no-op (returns false) when no PDF is loaded, a
+  /// run is already in flight, or no [ApiClient] is bound. The `answer_key_count`
+  /// the engine returns rides along on [analyzeResult] and drives the canvas's
+  /// answer-sheet messaging (Requirement 6.4, 6.5).
+  Future<bool> analyze() async {
+    final client = _apiClient;
+    final bytes = _fileBytes;
+    final name = _fileName;
+    if (client == null || bytes == null || name == null || _busy) {
+      return false;
+    }
+
+    _busy = true;
+    _errorText = null;
+    _result = null;
+    _analyzeResult = null;
+    notifyListeners();
+
+    try {
+      final response = await client.analyze(
+        fileBytes: bytes,
+        filename: name,
+        dpi: _dpi,
+        markerStyle: markerStyle,
+        hasQuestions: _hasQuestions,
+        questionPages: _hasQuestions ? _questionPages : null,
+        hasAnswers: _hasAnswers,
+        answerPages: _hasAnswers ? _answerPages : null,
+        useAi: useAi,
+        answerSheet: _answerSheet,
+      );
+      _analyzeResult = response;
+      return true;
+    } on ApiException catch (e) {
+      // Surface the engine detail and keep no analysis → canvas stays closed
+      // (Requirement 6.7).
+      _errorText = e.detail;
+      _analyzeResult = null;
+      return false;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Clears the stored [analyzeResult] once the host has opened the Review
+  /// Canvas, so returning to the form does not re-open the canvas on the next
+  /// rebuild.
+  void consumeAnalyzeResult() {
+    if (_analyzeResult == null) return;
+    _analyzeResult = null;
+    notifyListeners();
   }
 
   // --- Download (Requirements 5.9, 11.1, 11.2, 11.3, 11.4, 11.5) -----------

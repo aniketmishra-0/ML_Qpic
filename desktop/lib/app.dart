@@ -10,14 +10,19 @@ import 'core/sidecar_manager.dart';
 import 'core/theme_controller.dart';
 import 'features/auto_crop/auto_crop_controller.dart';
 import 'features/auto_crop/auto_crop_view.dart';
+import 'features/manual_crop/manual_crop_controller.dart';
+import 'features/manual_crop/manual_crop_view.dart';
 import 'features/rename/rename_controller.dart';
 import 'features/rename/rename_view.dart';
+import 'features/review/review_controller.dart';
+import 'features/review/review_screen.dart';
 import 'features/shell/app_shell.dart';
 import 'features/shell/document_zoom_controller.dart';
 import 'features/shell/document_zoom_scope.dart';
 import 'features/shell/platform_menu_bar.dart';
 import 'features/shell/startup_gate.dart';
 import 'features/shell/tool_placeholder.dart';
+import 'models/analyze.dart';
 
 /// Root MaterialApp for the Qpic desktop client.
 ///
@@ -60,8 +65,24 @@ class _QpicAppState extends State<QpicApp> {
 
   /// Backs the Auto Crop form (Requirement 5). Owned by the app so the form
   /// retains its state across tab switches (the shell keeps every tool view
-  /// mounted). The submit path is wired by later tasks (9.2 / 12.5).
+  /// mounted). Bound to the engine on ready so its non-Smart crop (task 9.2)
+  /// and Smart analyze (task 12.5) target the live Base_URL.
   final AutoCropController _autoCropController = AutoCropController();
+
+  /// Native PDF picker shared by the crop flows (Requirement 17.1). Loads the
+  /// chosen PDF into the Auto Crop controller before submit.
+  final FilePickerService _filePickerService = const FilePickerService();
+
+  /// Backs the Smart Auto Crop review session (Requirement 6.2). Owned by the
+  /// app so the review state survives tab switches while the canvas is open.
+  /// Populated from a successful `POST /api/analyze` and reset when the user
+  /// leaves the canvas.
+  final ReviewController _autoCropReview = ReviewController();
+
+  /// Whether the Smart Auto Crop Review Canvas is currently shown. Flipped true
+  /// after a successful analyze (Requirement 6.2) and false when the user
+  /// returns to the form.
+  bool _autoCropReviewOpen = false;
 
   /// Backs the Rename Batch form (Requirement 12). Owned by the app so the
   /// form retains its state across tab switches. The session flow (file
@@ -69,6 +90,14 @@ class _QpicAppState extends State<QpicApp> {
   /// Base_URL once the sidecar reports ready.
   final RenameController _renameController =
       RenameController(filePickerService: const FilePickerService());
+
+  /// Backs the Manual Crop tool (Requirement 7). Owned by the app so the tool
+  /// retains its OWN output config (prefix/start/format/quality) independently
+  /// of Auto Crop across tab switches (Requirement 7.3). The open flow
+  /// (`POST /api/prepare-manual` → Review Canvas) is bound to the engine's
+  /// Base_URL once the sidecar reports ready; the manual finalize is task 13.2.
+  final ManualCropController _manualCropController =
+      ManualCropController(filePickerService: const FilePickerService());
 
   /// Tracks the engine lifecycle so feature controllers can be (re)bound to the
   /// published Base_URL on ready and unbound when the engine stops.
@@ -104,13 +133,21 @@ class _QpicAppState extends State<QpicApp> {
     }
   }
 
-  /// Reacts to engine lifecycle transitions: binds the rename controller to a
-  /// fresh [ApiClient] on ready (Requirement 3.4) and unbinds it otherwise so
-  /// the engine-dependent affordances guard against an unavailable engine.
+  /// Reacts to engine lifecycle transitions: binds the auto-crop, rename and
+  /// manual-crop controllers to a fresh [ApiClient] on ready (Requirement 3.4)
+  /// and unbinds them otherwise so the engine-dependent affordances guard
+  /// against an unavailable engine.
   void _onEngineStatus(SidecarStatus status) {
     final bootstrap = widget.sidecarBootstrap;
     final baseUrl = bootstrap?.baseUrl;
     if (status == SidecarStatus.ready && baseUrl != null) {
+      if (_autoCropController.apiClient == null) {
+        final apiClient = ApiClient(baseUrl);
+        _autoCropController.bindEngine(
+          apiClient: apiClient,
+          downloadService: DownloadService(apiClient),
+        );
+      }
       if (_renameController.apiClient == null) {
         final apiClient = ApiClient(baseUrl);
         _renameController.bindEngine(
@@ -118,8 +155,33 @@ class _QpicAppState extends State<QpicApp> {
           downloadService: DownloadService(apiClient),
         );
       }
-    } else if (_renameController.engineReady) {
-      _renameController.unbindEngine();
+      if (_manualCropController.apiClient == null) {
+        final apiClient = ApiClient(baseUrl);
+        _manualCropController.bindEngine(
+          apiClient: apiClient,
+          downloadService: DownloadService(apiClient),
+        );
+      }
+      if (_autoCropReview.apiClient == null) {
+        final apiClient = ApiClient(baseUrl);
+        _autoCropReview.bindEngine(
+          apiClient: apiClient,
+          downloadService: DownloadService(apiClient),
+        );
+      }
+    } else {
+      if (_autoCropController.engineReady) {
+        _autoCropController.unbindEngine();
+      }
+      if (_renameController.engineReady) {
+        _renameController.unbindEngine();
+      }
+      if (_manualCropController.engineReady) {
+        _manualCropController.unbindEngine();
+      }
+      if (_autoCropReview.engineReady) {
+        _autoCropReview.unbindEngine();
+      }
     }
   }
 
@@ -127,12 +189,77 @@ class _QpicAppState extends State<QpicApp> {
   void dispose() {
     _engineStatusSub?.cancel();
     _autoCropController.dispose();
+    _autoCropReview.dispose();
     _renameController.dispose();
+    _manualCropController.dispose();
     _zoomRegistry.dispose();
     if (_ownsController) {
       _controller.dispose();
     }
     super.dispose();
+  }
+
+  // --- Auto Crop file picking + Smart analyze entry (Req 6.1, 6.2, 17.1) ---
+
+  /// Opens the native PDF dialog and loads the chosen file into the Auto Crop
+  /// controller (Req 17.1). A no-op when the user cancels.
+  Future<void> _pickAutoCropPdf() async {
+    final picked = await _filePickerService.pickPdf();
+    if (picked == null) return;
+    final bytes = await picked.readAsBytes();
+    _autoCropController.setFile(bytes: bytes, filename: picked.name);
+  }
+
+  /// Runs the Auto Crop submit. For a non-Smart crop the controller streams the
+  /// archive itself; for a Smart submit a successful `POST /api/analyze` lands
+  /// an [AutoCropController.analyzeResult], which this opens in the shared
+  /// Review Canvas regardless of `needs_review` (Req 6.2). On an analyze error
+  /// the controller surfaces the engine `detail` and stores no analysis, so the
+  /// canvas is NOT opened (Req 6.7).
+  Future<void> _submitAutoCrop() async {
+    await _autoCropController.submit();
+    final analysis = _autoCropController.analyzeResult;
+    if (analysis != null) {
+      _openAutoCropReview(analysis);
+    }
+  }
+
+  /// Loads an analyze response into the shared review session and shows the
+  /// Review Canvas (Req 6.2). The `answer_key_count` carried on the response
+  /// drives the canvas's answer-sheet advisory (Req 6.4, 6.5).
+  void _openAutoCropReview(AnalyzeResponse analysis) {
+    _autoCropReview.loadFromAnalyze(analysis);
+    // Consume the stored result so a later rebuild doesn't re-open the canvas.
+    _autoCropController.consumeAnalyzeResult();
+    setState(() => _autoCropReviewOpen = true);
+  }
+
+  /// Returns from the Review Canvas to the Auto Crop form, clearing the review
+  /// session.
+  void _closeAutoCropReview() {
+    _autoCropReview.reset();
+    setState(() => _autoCropReviewOpen = false);
+  }
+
+  /// Finalizes the reviewed Smart Auto Crop set (Req 6.6): builds a
+  /// `FinalizeRequest` from the kept auto items plus drawn/re-selected items and
+  /// the Auto Crop tool's output config, calls `POST /api/finalize`, and — on
+  /// success — leaves the Combined/Questions/Solutions download actions on the
+  /// Review Canvas (Req 11.1–11.5). The Answer-sheet toggle is honored via
+  /// `answer_sheet` (Req 11.5). On an engine error the canvas keeps the items so
+  /// the user can retry. The review controller owns the call + state, so this
+  /// just forwards the tool's output config.
+  Future<void> _finalizeAutoCropReview() async {
+    await _autoCropReview.finalize(
+      dpi: _autoCropController.dpi,
+      padding: _autoCropController.padding,
+      questionPrefix: _autoCropController.questionPrefix,
+      solutionPrefix: _autoCropController.solutionPrefix,
+      startNumber: _autoCropController.startNumber,
+      imageFormat: _autoCropController.imageFormatValue,
+      jpgQuality: _autoCropController.jpgQuality,
+      answerSheet: _autoCropController.answerSheet,
+    );
   }
 
   /// Builds the view for a given tool tab. Auto Crop and Rename Batch render
@@ -141,10 +268,43 @@ class _QpicAppState extends State<QpicApp> {
   Widget _buildToolView(QpicTool tool) {
     switch (tool) {
       case QpicTool.autoCrop:
-        return AutoCropView(
-          key: const ValueKey<String>('tool-view-autoCrop'),
-          controller: _autoCropController,
-          onSubmit: () => _autoCropController.submit(),
+        // The form drives the submit guards + the non-Smart crop (task 9.2) and
+        // the Smart analyze entry (this task). When a Smart analyze succeeds the
+        // app shows the shared Review Canvas inline (Req 6.2); the form is
+        // restored when the user leaves the canvas. `onPickFile` opens the
+        // native PDF dialog and loads the bytes into the controller (Req 17.1);
+        // both affordances stay disabled until the engine is bound.
+        return AnimatedBuilder(
+          animation: _autoCropController,
+          builder: (context, _) {
+            if (_autoCropReviewOpen) {
+              final apiClient = _autoCropController.apiClient;
+              return ReviewScreen(
+                key: const ValueKey<String>('tool-view-autoCrop'),
+                controller: _autoCropReview,
+                questionPrefix: _autoCropController.questionPrefix,
+                solutionPrefix: _autoCropController.solutionPrefix,
+                previewUrlResolver: apiClient != null
+                    ? (url) => apiClient.resolveUri(url).toString()
+                    : null,
+                onClose: _closeAutoCropReview,
+                onFinalize: _autoCropReview.engineReady
+                    ? _finalizeAutoCropReview
+                    : null,
+              );
+            }
+            final ready = _autoCropController.engineReady;
+            return AutoCropView(
+              key: const ValueKey<String>('tool-view-autoCrop'),
+              controller: _autoCropController,
+              onPickFile: ready && !_autoCropController.busy
+                  ? _pickAutoCropPdf
+                  : null,
+              onSubmit: ready && !_autoCropController.busy
+                  ? _submitAutoCrop
+                  : null,
+            );
+          },
         );
       case QpicTool.renameBatch:
         // The naming controls + live preview (task 15.1) are driven by the
@@ -176,6 +336,28 @@ class _QpicAppState extends State<QpicApp> {
           },
         );
       case QpicTool.manualCrop:
+        // Manual Crop opens a PDF via POST /api/prepare-manual and drives the
+        // shared Review Canvas with an empty item list (Req 7.1, 7.2). Its
+        // output config is held independently of Auto Crop on its own
+        // controller (Req 7.3). The picker/open affordance stays disabled until
+        // the engine is bound; the preview resolver joins each page's
+        // `preview_url` onto the live Base_URL.
+        return AnimatedBuilder(
+          animation: _manualCropController,
+          builder: (context, _) {
+            final ready = _manualCropController.engineReady;
+            final apiClient = _manualCropController.apiClient;
+            return ManualCropView(
+              key: const ValueKey<String>('tool-view-manualCrop'),
+              controller: _manualCropController,
+              onPickFile: ready && !_manualCropController.busy
+                  ? () => _manualCropController.pickPdf()
+                  : null,
+              previewUrlResolver:
+                  apiClient != null ? (url) => apiClient.resolveUri(url).toString() : null,
+            );
+          },
+        );
       case QpicTool.tools:
         return ToolPlaceholder(
           key: ValueKey<String>('tool-view-${tool.name}'),

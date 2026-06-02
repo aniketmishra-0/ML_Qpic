@@ -376,26 +376,46 @@ docker run -p 8000:8000 --env-file .env qpic
 
 ## Desktop app (no terminal, no server to start manually)
 
-The same app can be packaged as a native desktop app. The web server still runs,
-but it's hidden inside the app and started/stopped automatically — you just
-double-click an icon and a normal window opens.
+The desktop client is a **native Flutter app** (`desktop/`, macOS + Windows). It
+bundles the Python engine as a hidden **sidecar** process — double-click the app
+and it launches the server for you, health-checks it, and renders the UI in a
+native window (no browser, no terminal). All processing still happens in the
+unchanged Python engine; the Flutter app only owns the window, the canvas, and
+the HTTP calls.
+
+### Build the installers
+
+Two build drivers wrap the whole pipeline (install sidecar deps → vendor
+Tesseract → build the PyInstaller sidecar → `flutter build` → embed the sidecar →
+package the per-OS installer → optionally sign/notarize):
 
 ```bash
-# macOS / Linux
-./build_desktop.sh
-# -> dist/Qpic.app   (macOS)
+# macOS  → dist/Qpic.dmg
+./build_desktop_flutter.sh
 
-# Windows (run in Command Prompt)
-build_desktop.bat
-# -> dist\Qpic\Qpic.exe
+# Windows (PowerShell)  → MSIX or NSIS installer under dist/
+./build_desktop_flutter.ps1
 ```
 
+Each driver runs the same steps:
+
+1. `pip install -r requirements.txt -r requirements-desktop.txt` — sidecar deps.
+2. `python scripts/vendor_tesseract.py --langs eng,hin,osd` — vendor Tesseract.
+3. `pyinstaller packaging/sidecar.spec --noconfirm` — build the headless sidecar (onedir).
+4. `flutter build macos` / `flutter build windows` — build the native app.
+5. Embed the sidecar into the Flutter bundle and package the installer — `.dmg`
+   on macOS (via `packaging/macos/`), MSIX or NSIS on Windows (via
+   `packaging/windows/`).
+6. Sign/notarize when the cert env vars are present (`MAC_CERT_IDENTITY` /
+   `AC_NOTARY_PROFILE` on macOS, `WIN_CERT_PATH` / `WIN_CERT_PASSWORD` on
+   Windows); the build is **unsigned** when they're absent.
+
 Notes:
-- You can only build the macOS `.app` on a Mac and the Windows `.exe` on Windows;
-  one machine can't build the other's binary. To build **both** without two
+- You can only build the macOS installer on a Mac and the Windows installer on
+  Windows; one machine can't build the other's. To build **both** without two
   machines, use the GitHub Actions workflow (see *CI builds* below).
-- The build is **unsigned**, so the first launch on macOS shows an
-  "unidentified developer" warning — right-click the app → **Open** to allow it.
+- An **unsigned** build shows an "unidentified developer" warning on first launch
+  on macOS — right-click the app → **Open** to allow it.
 - **OCR works offline out of the box.** The build vendors a self-contained
   Tesseract (binary + libraries + `eng`/`hin`/`osd` language data) into the app
   via `scripts/vendor_tesseract.py`, so scanned PDFs are handled with no
@@ -406,32 +426,58 @@ Notes:
   bundled inside the app → a standard system install → whatever is on `PATH`.
   The AI fallback still needs internet + an API key.
 - Cropped images/zips are written to a per-user folder
-  (`~/Library/Application Support/Qpic` on macOS).
+  (`~/Library/Application Support/Qpic` on macOS, `%LOCALAPPDATA%\Qpic` on
+  Windows).
 
-### Qt (PySide6) variant
+### Run from source (development)
 
-There are **two** desktop window backends; both run the same hidden FastAPI
-server and show the same web UI, so feature-wise they're identical:
-
-| | `desktop.py` (default) | `desktop_qt.py` (Qt) |
-|---|---|---|
-| Window | pywebview → OS webview (WKWebView / WebView2) | Qt `QWebEngineView` (bundled Chromium) |
-| Rendering | depends on the OS webview | identical Chromium on every OS |
-| Bundle size | smaller | larger (~150-200 MB, ships Chromium) |
-| Build spec | `desktop.spec` | `desktop_qt.spec` |
-| Build script | `build_desktop.sh` | `build_desktop_qt.sh` |
-
-Use the Qt variant when you want pixel-identical rendering across macOS and
-Windows and don't mind the larger download.
+For day-to-day development you don't need to build the PyInstaller bundle. Run
+the Flutter app straight from `desktop/` and it auto-starts the sidecar from
+source:
 
 ```bash
-# Run from source
-pip install -r requirements.txt -r requirements-desktop-qt.txt
-python desktop_qt.py
+# one-time: install the sidecar's Python deps
+pip install -r requirements.txt -r requirements-desktop.txt
 
-# Build the bundle
-./build_desktop_qt.sh        # -> dist/Qpic.app (macOS)
+# run the native app (it starts the sidecar for you)
+cd desktop
+flutter run -d macos      # or: flutter run -d windows
 ```
+
+When no packaged sidecar binary is present, `desktop/lib/core/paths.dart` falls
+back to launching the engine via **`python -m packaging.sidecar`** using the
+project's Python, so engine changes are picked up without a rebuild. You can also
+run that headless sidecar on its own for debugging:
+
+```bash
+QPIC_PORT=8000 QPIC_TEMP_DIR=/tmp/qpic python -m packaging.sidecar
+```
+
+### Retiring the legacy desktop shells (`desktop.py` / `desktop_qt.py`)
+
+The repo still contains the older Python desktop wrappers `desktop.py`
+(pywebview) and `desktop_qt.py` (PySide6/Qt), which embed the **web UI** in a
+native window. The Flutter app in `desktop/` supersedes both — it reproduces
+their entire role (window shell, server bootstrap, native Save-As bridge, Help
+menus, zoom shortcuts) in `SidecarManager` + `packaging/sidecar.py`.
+
+**Recommendation: retire `desktop.py` and `desktop_qt.py` once the Flutter build
+is validated on both macOS and Windows — but not before.** Reasoning:
+
+- They are **not** part of the engine, so removing them changes nothing about the
+  API or processing.
+- Keeping them during the transition is useful as a behavior-parity reference
+  (especially the review canvas and Save-As streaming) and as a fallback if a
+  Flutter platform issue blocks a release.
+- Once CI produces Flutter installers for both OSes and the canvas parity
+  checklist passes, delete `desktop.py`, `desktop_qt.py`, `desktop.spec`,
+  `desktop_qt.spec`, `build_desktop.sh`, `build_desktop.bat`,
+  `build_desktop_qt.sh`, and the pywebview/PySide6 entries in
+  `requirements-desktop-qt.txt`, trimming `requirements-desktop.txt` to the
+  sidecar's needs.
+
+Until then they remain in-tree and functional; the engine keeps serving
+`static/`, so the legacy shells work as a fallback during the transition.
 
 
 ## CI builds (both macOS + Windows, no second machine)

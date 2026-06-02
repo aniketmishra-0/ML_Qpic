@@ -33,8 +33,10 @@
 // canvas toolbar can drive re-select without reaching into the canvas layer.
 //
 // SEAMS FOR LATER TASKS — structured here, implemented elsewhere:
-//   * Snap (task 12.2): [snapInterceptor] forwards to the canvas controller's
-//     segment interceptor; the actual `POST /api/snap` call lives in 12.2.
+//   * Snap (task 12.2): [attachSnap] installs a [SegmentInterceptor] that calls
+//     `POST /api/snap` on box-end (while [snapEnabled]) and replaces the box
+//     with the tightened rect, falling back to the drawn box on error/unchanged
+//     (Req 9). The HTTP call itself lives in `snap_interceptor.dart`.
 //   * Notes panel (task 12.4): [notes] + [startReselectForNote] expose the data
 //     and the Fix action's controller side; the panel widget is built in 12.4.
 //   * Analyze entry (task 12.5): [loadFromAnalyze] populates state; the API call,
@@ -51,12 +53,17 @@
 
 import 'dart:ui' show Offset;
 
+import 'package:file_selector/file_selector.dart' show XTypeGroup;
 import 'package:flutter/foundation.dart';
 
+import '../../core/api_client.dart';
+import '../../core/download_service.dart';
 import '../../models/analyze.dart';
 import '../../models/crop.dart';
+import '../auto_crop/auto_crop_controller.dart' show CropArchive;
 import 'canvas_geometry.dart' show kFitWidthZoom;
 import 'review_canvas_controller.dart';
+import 'snap_interceptor.dart';
 
 /// Which tool opened the current review session.
 ///
@@ -211,10 +218,24 @@ class ReviewController extends ChangeNotifier {
   /// this controller. When a [canvas] is supplied, this controller does NOT
   /// dispose it unless [ownsCanvas] is explicitly set true, so a widget can
   /// keep ownership of a shared canvas.
-  ReviewController({ReviewCanvasController? canvas, bool ownsCanvas = false})
-      : _canvas = canvas ?? ReviewCanvasController(),
+  ///
+  /// When an [apiClient] is supplied, snap-to-content (Req 9) is wired
+  /// automatically: a [SegmentInterceptor] is installed on the canvas that
+  /// calls `POST /api/snap` on box-end while [snapEnabled] is true, replacing
+  /// the drawn box with the tightened rect and falling back to the drawn box on
+  /// any error/unchanged response. Omit [apiClient] (e.g. in pure canvas tests)
+  /// to leave the snap seam untouched.
+  ReviewController({
+    ReviewCanvasController? canvas,
+    bool ownsCanvas = false,
+    ApiClient? apiClient,
+    DownloadService? downloadService,
+  })  : _canvas = canvas ?? ReviewCanvasController(),
         _ownsCanvas = canvas == null || ownsCanvas {
     _canvas.addListener(_onCanvasChanged);
+    if (apiClient != null) {
+      bindEngine(apiClient: apiClient, downloadService: downloadService);
+    }
   }
 
   /// The wrapped canvas-input controller (task 11.5). The `ReviewCanvas` widget
@@ -223,12 +244,59 @@ class ReviewController extends ChangeNotifier {
   final ReviewCanvasController _canvas;
   final bool _ownsCanvas;
 
+  ApiClient? _apiClient;
+  DownloadService? _downloadService;
   String _jobId = '';
   int? _answerKeyCount;
   ReviewSource _source = ReviewSource.smartAutoCrop;
+  bool _snapEnabled = true;
+
+  // Finalize run state (task 12.6).
+  bool _finalizing = false;
+  String? _finalizeError;
+  CropResponse? _finalizeResult;
+  String _finalizeQuestionPrefix = 'Q';
+  String _finalizeSolutionPrefix = 'S';
 
   /// The wrapped canvas-input controller.
   ReviewCanvasController get canvas => _canvas;
+
+  // ---- Engine binding (tasks 12.2 snap / 12.6 finalize+download) ----------
+
+  /// The bound API client, or null before the engine is ready.
+  ApiClient? get apiClient => _apiClient;
+
+  /// The bound download service, or null before the engine is ready.
+  DownloadService? get downloadService => _downloadService;
+
+  /// Whether the engine-backed services are bound (the sidecar is ready).
+  bool get engineReady => _apiClient != null && _downloadService != null;
+
+  /// Binds the engine-backed services once the sidecar reports ready (or
+  /// re-binds with a fresh Base_URL across a restart). Wires snap-to-content
+  /// (Req 9) via [attachSnap] and enables finalize + download (Req 6.6,
+  /// 11.1–11.5). When [downloadService] is omitted a default one is built from
+  /// [apiClient], mirroring the `AutoCropController.bindEngine` pattern so the
+  /// host (`app.dart`) can attach the live engine the same way.
+  void bindEngine({
+    required ApiClient apiClient,
+    DownloadService? downloadService,
+  }) {
+    _apiClient = apiClient;
+    _downloadService = downloadService ?? DownloadService(apiClient);
+    attachSnap(apiClient);
+    notifyListeners();
+  }
+
+  /// Clears the engine-backed services (e.g. when the engine stops), so the
+  /// finalize/download affordances guard against an unavailable engine. The
+  /// snap interceptor is left attached but becomes a no-op without a live
+  /// client; re-binding restores it.
+  void unbindEngine() {
+    _apiClient = null;
+    _downloadService = null;
+    notifyListeners();
+  }
 
   // ---- Session identity ---------------------------------------------------
 
@@ -302,6 +370,7 @@ class ReviewController extends ChangeNotifier {
     _jobId = response.jobId;
     _answerKeyCount = response.answerKeyCount;
     _source = ReviewSource.smartAutoCrop;
+    _clearFinalizeState();
     _canvas.load(
       pages: response.pages,
       items: response.items,
@@ -318,6 +387,7 @@ class ReviewController extends ChangeNotifier {
     _jobId = response.jobId;
     _answerKeyCount = null;
     _source = ReviewSource.manualCrop;
+    _clearFinalizeState();
     _canvas.load(
       pages: response.pages,
       items: const <AnalyzedItem>[],
@@ -331,8 +401,18 @@ class ReviewController extends ChangeNotifier {
   void reset() {
     _jobId = '';
     _answerKeyCount = null;
+    _clearFinalizeState();
     _canvas.load(pages: const <PageInfo>[]);
     notifyListeners();
+  }
+
+  /// Clears the finalize run state (result/error/in-flight flag). Called on
+  /// every (re)load and reset so a stale result never offers downloads for a
+  /// different session.
+  void _clearFinalizeState() {
+    _finalizing = false;
+    _finalizeError = null;
+    _finalizeResult = null;
   }
 
   // ---- Canvas operation forwarding (page nav / zoom / draw kind) ---------
@@ -420,8 +500,44 @@ class ReviewController extends ChangeNotifier {
 
   // ---- Snap seam (task 12.2) ---------------------------------------------
 
+  /// Whether snap-to-content is on (the Snap toggle, Req 9). Defaults to true,
+  /// matching the web canvas where the "Snap to content" checkbox is checked by
+  /// default. When off, a freshly drawn box is committed verbatim and no
+  /// `POST /api/snap` request is made — manual selection still works exactly as
+  /// drawn. The interceptor installed by [attachSnap] reads this live, so
+  /// toggling it takes effect on the next drawn box without re-wiring.
+  bool get snapEnabled => _snapEnabled;
+
+  /// Turns snap-to-content on/off (Req 9). Notifies listeners so a toggle
+  /// control re-renders.
+  set snapEnabled(bool value) {
+    if (value == _snapEnabled) return;
+    _snapEnabled = value;
+    notifyListeners();
+  }
+
+  /// Toggles snap-to-content (convenience for a checkbox/switch).
+  void toggleSnap() => snapEnabled = !_snapEnabled;
+
+  /// Wires snap-to-content (Req 9) using [apiClient]: installs a
+  /// [SegmentInterceptor] on the wrapped canvas that, on box-end and while
+  /// [snapEnabled] is true, calls `POST /api/snap` with the current [jobId] and
+  /// the box's `x_start_pct/x_end_pct/y_start_pct/y_end_pct`, then replaces the
+  /// box with the engine's tightened rect (Req 9.1, 9.2). On any error or an
+  /// unchanged (echoed-back) response the user's drawn box is kept unchanged so
+  /// selection never degrades (Req 9.3, 9.4). The interceptor reads [jobId] and
+  /// [snapEnabled] lazily, so loading a new session or flipping the toggle needs
+  /// no re-wiring.
+  void attachSnap(ApiClient apiClient) {
+    snapInterceptor = buildSnapInterceptor(
+      apiClient: apiClient,
+      jobId: () => _jobId,
+      enabled: () => _snapEnabled,
+    );
+  }
+
   /// The snap-to-content interceptor applied to a freshly drawn box before it
-  /// is committed (Req 9). Task 12.2 sets this to a function that calls
+  /// is committed (Req 9). [attachSnap] sets this to a function that calls
   /// `POST /api/snap` and replaces the box with the tightened rect — falling
   /// back to the drawn box on error/unchanged so selection never degrades
   /// (Req 9.3/9.4). Null (the default) commits drawn boxes verbatim.
@@ -429,13 +545,31 @@ class ReviewController extends ChangeNotifier {
   set snapInterceptor(SegmentInterceptor? interceptor) =>
       _canvas.segmentInterceptor = interceptor;
 
-  // ---- Finalize seam (task 12.6) -----------------------------------------
+  // ---- Finalize + download from review (task 12.6, Req 6.6, 11.1–11.5) ----
+
+  /// Whether a `POST /api/finalize` request is in flight.
+  bool get finalizing => _finalizing;
+
+  /// The engine `detail` (or a transport message) from the last finalize
+  /// attempt, or null when there is none (Req 6.7-style surfacing for finalize).
+  String? get finalizeError => _finalizeError;
+
+  /// The most recent successful finalize result, or null. Drives the
+  /// Combined/Questions/Solutions download actions (Req 11.1–11.3). Cleared when
+  /// a new session is loaded or a fresh finalize starts.
+  CropResponse? get finalizeResult => _finalizeResult;
+
+  /// Prompt shown when Finalize is attempted with no items to crop (Req 7.5).
+  /// The engine would reject an empty list with HTTP 400 (`ERR_NO_QUESTIONS`);
+  /// guarding here avoids a wasted round-trip and gives clearer guidance.
+  static const String errNoItems =
+      'Draw at least one crop box before finalizing.';
 
   /// Builds the finalize item payload from the kept review items (Req 6.6/7.4):
   /// every item carrying at least one segment becomes a [FinalizeItem] with its
   /// type, page-percentage region, and source. Items left with zero segments
   /// are skipped (the same cleanup [doneReselecting] applies, here defensively).
-  /// Task 12.6 combines this with the active tool's output config and calls
+  /// [finalize] combines this with the active tool's output config and calls
   /// `POST /api/finalize`.
   List<FinalizeItem> toFinalizeItems() {
     return <FinalizeItem>[
@@ -451,10 +585,10 @@ class ReviewController extends ChangeNotifier {
   }
 
   /// Assembles a [FinalizeRequest] from the kept items ([toFinalizeItems]) plus
-  /// the active tool's output config. This is a PURE builder (no HTTP); task
-  /// 12.6 issues the `POST /api/finalize` call and the download. `answerSheet`
-  /// defaults to whether an answer key was detected, but the caller may override
-  /// it from the tool's Answer-sheet toggle (Req 11.5).
+  /// the active tool's output config. This is a PURE builder (no HTTP);
+  /// [finalize] issues the `POST /api/finalize` call and the download.
+  /// `answerSheet` defaults to whether an answer key was detected, but the
+  /// caller may override it from the tool's Answer-sheet toggle (Req 11.5).
   FinalizeRequest buildFinalizeRequest({
     int dpi = 200,
     int padding = 20,
@@ -478,6 +612,171 @@ class ReviewController extends ChangeNotifier {
       answerSheet: answerSheet ?? finalizeWillIncludeAnswerSheet,
     );
   }
+
+  /// Finalizes the reviewed item set into the downloadable ZIP (Req 6.6).
+  ///
+  /// Builds a [FinalizeRequest] from the kept auto items plus drawn/re-selected
+  /// items (each carrying its type + page-percentage region, via
+  /// [buildFinalizeRequest]) together with the active tool's output config, and
+  /// issues `POST /api/finalize`. On success the engine's [CropResponse] is
+  /// stored as [finalizeResult] so the host can offer the Combined / Questions
+  /// / Solutions downloads (Req 11.1–11.3); the configured [questionPrefix] /
+  /// [solutionPrefix] are retained so [download] can pass them to
+  /// `GET /api/crop/download/{job_id}` (Req 11.4). On an engine error the
+  /// `{"detail": ...}` message is surfaced via [finalizeError] and the items are
+  /// retained so the user can retry (Req 7.7).
+  ///
+  /// Blocks (returns false) with the [errNoItems] prompt when there are no items
+  /// to crop (Req 7.5). A no-op (returns false) when no engine is bound or a run
+  /// is already in flight.
+  Future<bool> finalize({
+    int dpi = 200,
+    int padding = 20,
+    String questionPrefix = 'Q',
+    String solutionPrefix = 'S',
+    int startNumber = 1,
+    String imageFormat = 'png',
+    int jpgQuality = 90,
+    bool? answerSheet,
+  }) async {
+    final ApiClient? client = _apiClient;
+    if (client == null || _finalizing) return false;
+
+    // Guard: nothing to crop (Req 7.5). Block before any request, retain items.
+    if (toFinalizeItems().isEmpty) {
+      _finalizeError = errNoItems;
+      _finalizeResult = null;
+      notifyListeners();
+      return false;
+    }
+
+    _finalizing = true;
+    _finalizeError = null;
+    _finalizeResult = null;
+    // Retain the prefixes the download endpoint needs (Req 11.4).
+    _finalizeQuestionPrefix = questionPrefix;
+    _finalizeSolutionPrefix = solutionPrefix;
+    notifyListeners();
+
+    try {
+      final CropResponse response = await client.finalize(
+        buildFinalizeRequest(
+          dpi: dpi,
+          padding: padding,
+          questionPrefix: questionPrefix,
+          solutionPrefix: solutionPrefix,
+          startNumber: startNumber,
+          imageFormat: imageFormat,
+          jpgQuality: jpgQuality,
+          answerSheet: answerSheet,
+        ),
+      );
+      _finalizeResult = response;
+      return true;
+    } on ApiException catch (e) {
+      // Surface the engine detail; items are untouched so the user can retry
+      // (Req 7.7).
+      _finalizeError = e.detail;
+      _finalizeResult = null;
+      return false;
+    } finally {
+      _finalizing = false;
+      notifyListeners();
+    }
+  }
+
+  /// Whether [archive] is available to download from the current
+  /// [finalizeResult] (Req 11.1–11.3).
+  ///
+  /// The combined archive is always available once finalize succeeds; the
+  /// per-type archives are available only when the engine returned a non-null
+  /// `questions_download_url` / `solutions_download_url`.
+  bool canDownload(CropArchive archive) {
+    final CropResponse? response = _finalizeResult;
+    if (response == null || _finalizing) return false;
+    switch (archive) {
+      case CropArchive.combined:
+        return true;
+      case CropArchive.questions:
+        return response.questionsDownloadUrl != null;
+      case CropArchive.solutions:
+        return response.solutionsDownloadUrl != null;
+    }
+  }
+
+  /// Saves the given [archive] via a native Save-As dialog + streamed download
+  /// (Req 11.1–11.4, 16). Returns the [DownloadResult], or null when the archive
+  /// isn't available or no engine is bound. A failed download surfaces its
+  /// message in [finalizeError].
+  ///
+  /// The download is wired through `GET /api/crop/download/{job_id}` built by
+  /// [ApiClient.cropDownloadUri], passing the `kind` of the requested archive
+  /// (`combined` / `questions` / `solutions`) plus the prefixes the finalize
+  /// used (Req 11.4). The Answer-sheet setting (Req 11.5) was carried on the
+  /// upstream `POST /api/finalize` request via `answer_sheet`, which determined
+  /// whether the produced archive bundles an answer sheet; the download endpoint
+  /// itself takes no `answer_sheet` query.
+  Future<DownloadResult?> download(CropArchive archive) async {
+    final DownloadService? service = _downloadService;
+    final CropResponse? response = _finalizeResult;
+    if (service == null || response == null || !canDownload(archive)) {
+      return null;
+    }
+
+    final Uri downloadUri = service.apiClient.cropDownloadUri(
+      response.jobId,
+      kind: _kindFor(archive),
+      questionPrefix: _finalizeQuestionPrefix,
+      solutionPrefix: _finalizeSolutionPrefix,
+    );
+
+    try {
+      return await service.download(
+        engineUrl: downloadUri.toString(),
+        suggestedName: _suggestedNameFor(archive),
+        acceptedTypeGroups: const <XTypeGroup>[_zipTypeGroup],
+      );
+    } on DownloadException catch (e) {
+      _finalizeError = e.message;
+      notifyListeners();
+      return null;
+    }
+  }
+
+  /// The engine `kind` query value for [archive] (`combined` / `questions` /
+  /// `solutions`), matching the values `download_zip` in `app/routers/crop.py`
+  /// accepts.
+  static String _kindFor(CropArchive archive) {
+    switch (archive) {
+      case CropArchive.combined:
+        return 'combined';
+      case CropArchive.questions:
+        return 'questions';
+      case CropArchive.solutions:
+        return 'solutions';
+    }
+  }
+
+  /// The Save-As suggested filename for [archive], mirroring the engine's
+  /// prefix-based download names (`QScombined.zip`, `Q.zip`, `S.zip`).
+  String _suggestedNameFor(CropArchive archive) {
+    switch (archive) {
+      case CropArchive.combined:
+        return '$_finalizeQuestionPrefix${_finalizeSolutionPrefix}combined.zip';
+      case CropArchive.questions:
+        return '$_finalizeQuestionPrefix.zip';
+      case CropArchive.solutions:
+        return '$_finalizeSolutionPrefix.zip';
+    }
+  }
+
+  /// Save-As filter restricting crop output to a `.zip` file.
+  static const XTypeGroup _zipTypeGroup = XTypeGroup(
+    label: 'ZIP archive',
+    extensions: <String>['zip'],
+    uniformTypeIdentifiers: <String>['public.zip-archive'],
+    mimeTypes: <String>['application/zip'],
+  );
 
   // ---- Internals ----------------------------------------------------------
 

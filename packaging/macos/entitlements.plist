@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Code-signing entitlements for the distributed Qpic macOS app (Req 21.1, 21.4,
+  21.7). These are applied by packaging/macos/package_macos.sh during the
+  `codesign` step to BOTH the Flutter app bundle and the embedded PyInstaller
+  sidecar, so the same hardened-runtime grants cover the whole tree.
+
+  Distribution model: direct download (.dmg) + Developer ID signing +
+  notarization — NOT the Mac App Store. We therefore use the Hardened Runtime
+  (codesign --options runtime) rather than the App Sandbox. The App Sandbox is
+  intentionally omitted: the app spawns an embedded Python/PyInstaller sidecar
+  as a child process, and a sandboxed parent cannot reliably exec an embedded
+  interpreter that loads its own (separately built) dylibs. "Sandbox as
+  appropriate" for a direct-distribution embedded-interpreter app means
+  Hardened Runtime without the sandbox. See design "Packaging & Installers —
+  macOS".
+
+  Network: the app's ONLY network use is the loopback channel to the sidecar on
+  http://127.0.0.1:{port}. macOS has no address-scoped network entitlement, so
+  "loopback only" is enforced by app behavior (SidecarManager only ever binds /
+  connects to 127.0.0.1); these two keys are the minimum needed for that:
+    - network.client  : the Flutter app connects to the sidecar.
+    - network.server  : the sidecar binds a 127.0.0.1 listener (uvicorn).
+-->
+<plist version="1.0">
+<dict>
+	<!-- Loopback client: Flutter app -> sidecar (127.0.0.1). -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+
+	<!-- Loopback server: sidecar binds 127.0.0.1:{port} (uvicorn/FastAPI). -->
+	<key>com.apple.security.network.server</key>
+	<true/>
+
+	<!-- Native Save-As / Open dialogs write user-chosen paths. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+
+	<!--
+	  Hardened-runtime grants required by the embedded CPython/PyInstaller
+	  sidecar so it passes notarization while loading its own runtime:
+	    - allow-jit / allow-unsigned-executable-memory: CPython + native
+	      extensions (OpenCV, PyMuPDF, Pillow) use executable memory.
+	    - disable-library-validation: the sidecar loads dylibs built by
+	      PyInstaller that are not signed by this app's Team ID.
+	-->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+</dict>
+</plist>

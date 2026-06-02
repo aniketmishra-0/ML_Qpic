@@ -33,6 +33,24 @@ dev_dependencies:
     sdk: flutter
   # Recommended Flutter lint rule set; configured via analysis_options.yaml.
   flutter_lints: ^5.0.0
+  # Windows installer generation (MSIX, the default installer for Req 21.2).
+  # Used by packaging/windows/build_windows.ps1 via `dart run msix:create`.
+  msix: ^3.16.7
 
 flutter:
   uses-material-design: true
+
+# MSIX installer configuration consumed by `dart run msix:create`
+# (packaging/windows/build_windows.ps1). The runner output already contains the
+# embedded `sidecar\` folder (engine + bundled Tesseract) at package time, so
+# msix bundles it verbatim and lib/core/paths.dart resolves it at runtime
+# (Req 21.2, 21.3). Certificate options are supplied on the command line from
+# WIN_CERT_PATH / WIN_CERT_PASSWORD, so none are hard-coded here — absent =>
+# unsigned build (Req 21.7).
+msix_config:
+  display_name: Qpic
+  publisher_display_name: Qpic
+  identity_name: com.qpic.desktop
+  msix_version: 1.0.0.0
+  # Loopback only: the app talks to its localhost sidecar over 127.0.0.1.
+  capabilities: ""

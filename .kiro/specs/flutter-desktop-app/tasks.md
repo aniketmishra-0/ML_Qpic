@@ -23,7 +23,7 @@ Implementation languages (from the design): **Dart/Flutter** for the desktop cli
     - **Property 11: Offline OCR**
     - **Validates: Requirements 1.8, 2.6, 2.7, 20.4**
 
-- [~] 2. Checkpoint - sidecar boots headless and reports ready
+- [x] 2. Checkpoint - sidecar boots headless and reports ready
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 3. Flutter project scaffolding, platform paths, and theme
@@ -90,7 +90,7 @@ Implementation languages (from the design): **Dart/Flutter** for the desktop cli
     - `desktop_drop` `DropTarget` per tool zone; dropping a PDF loads it; hover state indicates acceptance; non-PDF on a PDF-only target is rejected with a "PDF required" message; Rename target also accepts images
     - _Requirements: 18.1, 18.2, 18.3_
 
-- [~] 8. Checkpoint - core scaffolding wired (shell starts engine, services ready)
+- [x] 8. Checkpoint - core scaffolding wired (shell starts engine, services ready)
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 9. Auto Crop feature
@@ -147,39 +147,39 @@ Implementation languages (from the design): **Dart/Flutter** for the desktop cli
     - **Property 6: Hit-test single-resolution**
     - **Validates: Requirements 8.10**
 
-- [ ] 12. Review controller, snap, notes, and engine wiring
+- [x] 12. Review controller, snap, notes, and engine wiring
   - [x] 12.1 Implement `ReviewController` and `ReviewState`
     - State (`jobId`, `pages`, `items`, `notes`, `currentPageIndex`, `editingIndex`, `zoom`, `pan`, `answerKeyCount`) reused by Smart Auto Crop and Manual Crop; additive re-select semantics (append segments, lock `manualOrder`, set `source=manual`, clear `flagged` and the matching note); "Done" removes any item left with zero segments
     - _Requirements: 6.2, 8.6, 8.7, 8.12, 8.13_
-  - [-] 12.2 Implement snap-to-content
+  - [x] 12.2 Implement snap-to-content
     - On box-end with Snap on, call `POST /api/snap` with `{job_id, page, x_start_pct, x_end_pct, y_start_pct, y_end_pct}` and replace the box with the returned rect; on error or unchanged response keep the drawn box
     - _Requirements: 9.1, 9.2, 9.3, 9.4_
-  - [~] 12.3 Write unit tests that snap never degrades
+  - [x] 12.3 Write unit tests that snap never degrades
     - On snap error or unchanged response, the box equals the user's drawn box
     - **Property 9: Snap never degrades**
     - **Validates: Requirements 9.3, 9.4**
-  - [-] 12.4 Implement `review_notes_panel.dart` and Fix actions
+  - [x] 12.4 Implement `review_notes_panel.dart` and Fix actions
     - Render each note's `kind` + `message`; empty list shows the "detection looks complete" advisory; visually distinguish the five kinds (`duplicate`, `gap`, `tiny`, `incomplete`, `low_confidence`); a note with `kind == "incomplete"` and non-null `q_num` shows a Fix action that navigates to the item's page and enters re-select
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5_
-  - [-] 12.5 Wire Smart analyze entry into the Review Canvas
+  - [x] 12.5 Wire Smart analyze entry into the Review Canvas
     - From Auto Crop with Smart on, call `POST /api/analyze` with `dpi, marker_style, has_questions, question_pages, has_answers, answer_pages, use_ai, answer_sheet`; open the canvas regardless of `needs_review`; load each page from its `preview_url`; message whether finalized output includes an answer sheet based on `answer_key_count`; on engine error show `detail` and do not open the canvas
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.7_
-  - [~] 12.6 Implement finalize and download from review
+  - [x] 12.6 Implement finalize and download from review
     - Build a `FinalizeRequest` from kept auto items plus drawn/re-selected items (each with type and page-percentage region) and the active tool's output config; call `POST /api/finalize`; then offer Combined/Questions/Solutions downloads via the response URLs
     - _Requirements: 6.6, 11.1, 11.2, 11.3, 11.4, 11.5_
   - [x] 12.7 Write widget tests for canvas gesture flows
     - Draw, hover label, additive cross-page re-select, delete box, and page navigation on both supported platforms
     - _Requirements: 8.3, 8.4, 8.6, 8.7, 8.12, 24.2_
 
-- [ ] 13. Manual Crop feature
-  - [-] 13.1 Implement Manual Crop with independent output fields
+- [x] 13. Manual Crop feature
+  - [x] 13.1 Implement Manual Crop with independent output fields
     - On open, `POST /api/prepare-manual` (query `dpi`) and open the Review Canvas with an empty item list and all page previews loaded from `preview_url`; hold prefix/start/format/quality independently of Auto Crop; on `prepare-manual` error do not open the canvas and inform the user
     - _Requirements: 7.1, 7.2, 7.3, 7.6_
-  - [~] 13.2 Implement manual finalize with guards
+  - [x] 13.2 Implement manual finalize with guards
     - `POST /api/finalize` with hand-drawn items and the Manual Crop tool's own output config; block finalize and prompt when the item list is empty; retain items on a finalize error so the user can retry
     - _Requirements: 7.4, 7.5, 7.7_
 
-- [~] 14. Checkpoint - review canvas parity (draw/snap/re-select/overlap/zoom/pan/nav)
+- [x] 14. Checkpoint - review canvas parity (draw/snap/re-select/overlap/zoom/pan/nav)
   - Ensure all tests pass, ask the user if questions arise.
 
 - [x] 15. Rename Batch feature
@@ -222,34 +222,34 @@ Implementation languages (from the design): **Dart/Flutter** for the desktop cli
     - A `HelpScreen` reproducing the How_To_Content (overall guide, How to Crop, How to Rename Batch) as native Flutter with no external links, mirroring the web walkthrough tabs
     - _Requirements: 19.1, 19.2, 19.5_
 
-- [~] 20. Checkpoint - all four tools functional via automated tests
+- [x] 20. Checkpoint - all four tools functional via automated tests
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 21. Packaging and installers
-  - [~] 21.1 macOS packaging: embed sidecar, build `.dmg`, signing/notarization hooks
+- [x] 21. Packaging and installers
+  - [x] 21.1 macOS packaging: embed sidecar, build `.dmg`, signing/notarization hooks
     - `flutter build macos`; copy the PyInstaller sidecar onedir into `Qpic.app/Contents/Resources/sidecar/` so `paths.dart` resolves it; entitlements allowing child-process spawn with loopback-only network; package into a `.dmg`; read `MAC_CERT_IDENTITY`/`AC_NOTARY_PROFILE` to codesign + notarize when present, unsigned when absent
     - _Requirements: 21.1, 21.3, 21.4, 21.6, 21.7_
-  - [~] 21.2 Windows packaging: embed sidecar, build MSIX/NSIS, Authenticode hook
+  - [x] 21.2 Windows packaging: embed sidecar, build MSIX/NSIS, Authenticode hook
     - `flutter build windows`; copy the sidecar onedir into the runner's `sidecar/` subfolder; build MSIX (default) or NSIS embedding `sidecar/` and bundled Tesseract; read `WIN_CERT_PATH`/`WIN_CERT_PASSWORD` to `signtool sign` app, sidecar, and installer when present, unsigned when absent
     - _Requirements: 21.2, 21.3, 21.5, 21.6, 21.7_
-  - [~] 21.3 Write an integration test that the embedded sidecar path resolves and starts
+  - [x] 21.3 Write an integration test that the embedded sidecar path resolves and starts
     - Resolve the per-OS sidecar path and confirm start → health on both packaged and dev paths
     - _Requirements: 21.3, 24.3_
 
-- [ ] 22. Build scripts, dev workflow, and documentation
-  - [~] 22.1 Create `build_desktop_flutter.sh` and `build_desktop_flutter.ps1`
+- [x] 22. Build scripts, dev workflow, and documentation
+  - [x] 22.1 Create `build_desktop_flutter.sh` and `build_desktop_flutter.ps1`
     - Steps: `pip install -r requirements.txt -r requirements-desktop.txt`; `python scripts/vendor_tesseract.py --langs eng,hin,osd`; `pyinstaller packaging/sidecar.spec --noconfirm`; `flutter build macos|windows`; embed sidecar; package `.dmg` / MSIX|NSIS; optional sign/notarize when cert env vars are set; these replace `build_desktop.sh`, `build_desktop.bat`, and `build_desktop_qt.sh`
     - _Requirements: 21.4, 21.5, 22.1, 22.2_
-  - [~] 22.2 Update the README "Desktop app" section and add retirement guidance
+  - [x] 22.2 Update the README "Desktop app" section and add retirement guidance
     - Document the Flutter build and run-from-source flow (dev `python -m packaging.sidecar` fallback); leave all non-desktop README sections unchanged; add written guidance recommending retirement of `desktop.py`/`desktop_qt.py` after the Flutter build is validated on both OSes, with reasoning
     - _Requirements: 22.3, 22.4, 22.5_
 
-- [ ] 23. CI workflow update
-  - [~] 23.1 Update `.github/workflows/build-desktop.yml`
+- [x] 23. CI workflow update
+  - [x] 23.1 Update `.github/workflows/build-desktop.yml`
     - Keep the `macos-latest` + `windows-latest` matrix; install and vendor Tesseract on each runner; build the PyInstaller sidecar; install Flutter (`subosito/flutter-action`) and enable desktop; build the Flutter app; embed the sidecar and package the per-OS installer; sign/notarize when secrets are present; attach packaged installers to a GitHub Release on a version tag
     - _Requirements: 23.1, 23.2, 23.3, 23.4, 23.5, 23.6_
 
-- [~] 24. Final checkpoint - installers build on both OSes; review-canvas parity gate met
+- [x] 24. Final checkpoint - installers build on both OSes; review-canvas parity gate met
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

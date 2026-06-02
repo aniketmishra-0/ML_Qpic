@@ -1,9 +1,18 @@
 name: Build desktop apps
 
-# Builds the Qpic desktop app on macOS and Windows, bundling a self-contained
-# Tesseract into each so OCR works offline with no separate install. Runs on a
-# version tag (v1.2.3 -> attaches the builds to a GitHub Release) and can be
-# kicked off by hand from the Actions tab.
+# Builds the Qpic **Flutter** desktop app on macOS and Windows. Each runner
+# vendors a self-contained Tesseract, builds the headless PyInstaller sidecar,
+# installs Flutter, builds the native app, embeds the sidecar, and packages a
+# per-OS installer (.dmg on macOS, .msix on Windows). The heavy lifting is
+# delegated to the in-repo build drivers (build_desktop_flutter.sh / .ps1),
+# which in turn call the packagers under packaging/. Runs on a version tag
+# (v1.2.3 -> attaches the installers to a GitHub Release) and can be started by
+# hand from the Actions tab.
+#
+# Signing is OPTIONAL and fully gated on repository secrets: when the relevant
+# cert secrets are present the installers are signed (macOS codesign+notarize,
+# Windows Authenticode); when absent the build still succeeds with UNSIGNED
+# artifacts (Req 21.7 / 23.5).
 
 on:
   push:
@@ -12,7 +21,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write  # needed to create a Release when triggered by a tag
+  contents: write  # needed to create/update a Release when triggered by a tag
+
+concurrency:
+  # Serialize builds per ref; don't cancel an in-flight release build.
+  group: build-desktop-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -23,9 +37,27 @@ jobs:
         include:
           - os: macos-latest
             label: macOS
+            installer: dist/Qpic-macOS.dmg
           - os: windows-latest
             label: Windows
+            installer: dist/Qpic-Windows.msix
     runs-on: ${{ matrix.os }}
+
+    env:
+      # Signing secrets are mapped to env so a step `if:` can detect their
+      # presence (the `secrets` context cannot be read directly in `if:`). When
+      # a secret is unset it resolves to an empty string, the matching signing
+      # step is skipped, and the build proceeds UNSIGNED. The packagers read
+      # MAC_CERT_IDENTITY / AC_NOTARY_PROFILE (macOS) and
+      # WIN_CERT_PATH / WIN_CERT_PASSWORD (Windows) from the environment; those
+      # are exported to the build step (via GITHUB_ENV) ONLY after the matching
+      # cert/profile has actually been provisioned, so a stray identity secret
+      # can never force a doomed signing attempt.
+      MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+      AC_API_KEY_BASE64: ${{ secrets.AC_API_KEY_BASE64 }}
+      WIN_CERT_BASE64: ${{ secrets.WIN_CERT_BASE64 }}
+      WIN_CERT_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+      WIN_TIMESTAMP_URL: ${{ secrets.WIN_TIMESTAMP_URL }}
 
     steps:
       - name: Checkout
@@ -36,7 +68,24 @@ jobs:
         with:
           python-version: "3.12"
 
-      # ---- Install a system Tesseract to vendor from -----------------------
+      # ---- Install Flutter + enable desktop (Req 23.4) ---------------------
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Enable macOS desktop
+        if: runner.os == 'macOS'
+        run: flutter config --enable-macos-desktop
+
+      - name: Enable Windows desktop
+        if: runner.os == 'Windows'
+        run: flutter config --enable-windows-desktop
+
+      # ---- System Tesseract to vendor an offline copy from (Req 23.2) ------
+      # The build driver runs scripts/vendor_tesseract.py, which copies an
+      # *installed* Tesseract into vendor/tesseract; install one here first.
       - name: Install Tesseract (macOS)
         if: runner.os == 'macOS'
         run: brew install tesseract tesseract-lang
@@ -45,50 +94,75 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install --no-progress -y tesseract
 
-      # ---- Python deps -----------------------------------------------------
-      - name: Install Python dependencies
+      # ---- Signing setup (only when the matching secrets are present) ------
+      - name: Import macOS signing certificate
+        if: runner.os == 'macOS' && env.MAC_CERT_P12_BASE64 != ''
+        env:
+          MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+          MAC_CERT_IDENTITY: ${{ secrets.MAC_CERT_IDENTITY }}
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -r requirements-desktop.txt
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/qpic-cert.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/qpic-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          CERT_PATH="$CERT_PATH" python3 -c "import base64,os;open(os.environ['CERT_PATH'],'wb').write(base64.b64decode(os.environ['MAC_CERT_P12_BASE64']))"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$MAC_CERT_P12_PASSWORD" -t cert -f pkcs12 -A -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          # Add the signing keychain to the user search list (keep the login keychain).
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          # Hand the identity to the packager only after a successful import.
+          echo "MAC_CERT_IDENTITY=$MAC_CERT_IDENTITY" >> "$GITHUB_ENV"
 
-      # ---- Vendor Tesseract into vendor/tesseract --------------------------
-      - name: Vendor Tesseract (macOS)
-        if: runner.os == 'macOS'
-        run: python scripts/vendor_tesseract.py --langs eng,hin,osd
-
-      - name: Vendor Tesseract (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: python scripts\vendor_tesseract.py --langs eng,hin,osd
-
-      # ---- Build with PyInstaller ------------------------------------------
-      - name: Build app
-        run: pyinstaller desktop.spec --noconfirm
-
-      # ---- Package installer-ready archives --------------------------------
-      - name: Package (macOS)
-        if: runner.os == 'macOS'
+      - name: Set up macOS notarization profile
+        if: runner.os == 'macOS' && env.MAC_CERT_P12_BASE64 != '' && env.AC_API_KEY_BASE64 != ''
+        env:
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
         run: |
-          cd dist
-          ditto -c -k --sequesterRsrc --keepParent "Qpic.app" "Qpic-macOS.zip"
+          set -euo pipefail
+          AC_KEY_PATH="$RUNNER_TEMP/ac_api_key.p8"
+          AC_KEY_PATH="$AC_KEY_PATH" python3 -c "import base64,os;open(os.environ['AC_KEY_PATH'],'wb').write(base64.b64decode(os.environ['AC_API_KEY_BASE64']))"
+          xcrun notarytool store-credentials qpic-notary \
+            --key "$AC_KEY_PATH" \
+            --key-id "$AC_API_KEY_ID" \
+            --issuer "$AC_API_ISSUER_ID"
+          # Enable notarization in the packager only after credentials are stored.
+          echo "AC_NOTARY_PROFILE=qpic-notary" >> "$GITHUB_ENV"
 
-      - name: Package (Windows)
+      - name: Prepare Windows signing certificate
+        if: runner.os == 'Windows' && env.WIN_CERT_BASE64 != ''
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'qpic-codesign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WIN_CERT_BASE64))
+          "WIN_CERT_PATH=$pfx" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # ---- Build: deps -> vendor Tesseract -> sidecar -> Flutter -> embed --
+      #      -> package (-> sign/notarize when secrets present). Delegated to
+      #      the in-repo drivers so CI mirrors a local build exactly.
+      - name: Build macOS installer
+        if: runner.os == 'macOS'
+        run: bash build_desktop_flutter.sh --langs eng,hin,osd
+
+      - name: Build Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path "dist/Qpic/*" -DestinationPath "dist/Qpic-Windows.zip" -Force
+        run: ./build_desktop_flutter.ps1 -Installer msix -Langs eng,hin,osd
 
-      # ---- Upload --------------------------------------------------------
+      # ---- Upload + release ------------------------------------------------
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: Qpic-${{ matrix.label }}
-          path: dist/Qpic-*.zip
+          path: ${{ matrix.installer }}
           if-no-files-found: error
 
       - name: Attach to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/Qpic-*.zip
-          fail_on_unmatched_files: false
+          files: ${{ matrix.installer }}
+          fail_on_unmatched_files: true
