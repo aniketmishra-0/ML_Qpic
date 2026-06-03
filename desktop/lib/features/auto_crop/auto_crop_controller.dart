@@ -107,6 +107,19 @@ enum CropImageFormat {
   final String label;
 }
 
+/// Page layout columns configurations.
+enum LayoutColumnsMode {
+  auto('auto', 'Auto (Automatic)'),
+  one('1', '1 Column'),
+  two('2', '2 Columns'),
+  three('3', '3 Columns');
+
+  const LayoutColumnsMode(this.value, this.label);
+
+  final String value;
+  final String label;
+}
+
 /// Which crop archive a download action targets (Requirement 11.1–11.3).
 ///
 /// The engine always produces the [combined] archive; the per-type

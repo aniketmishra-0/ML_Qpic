@@ -36,6 +36,7 @@ class OCRDetector:
         settings: Settings,
         render_dpi: Optional[int] = None,
         marker_style: str = "auto",
+        layout_columns: Optional[int] = None,
     ) -> list[DetectedQuestion]:
         """Detect questions using OCR word boxes grouped into lines.
 
@@ -126,6 +127,7 @@ class OCRDetector:
             total_pages=len(page_images),
             content_lines=content_lines,
             page_widths=page_widths,
+            layout_columns=layout_columns,
         )
 
     @staticmethod

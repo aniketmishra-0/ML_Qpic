@@ -43,6 +43,7 @@ class DetectionPipeline:
         smart: bool = False,
         prefer_ai: bool = False,
         marker_style: str = "auto",
+        layout_columns: Optional[int] = None,
     ) -> tuple[list[DetectedQuestion], str]:
         """Return (questions, method_used).
 
@@ -105,6 +106,7 @@ class DetectionPipeline:
                 pdf_bytes,
                 settings.QUESTION_PADDING_PX,
                 marker_style,
+                layout_columns,
             )
             if len(text_questions) > len(best_questions):
                 best_questions, best_method = text_questions, "text"
@@ -127,6 +129,7 @@ class DetectionPipeline:
             settings,
             render_dpi,
             marker_style,
+            layout_columns,
         )
         if len(ocr_questions) > len(best_questions):
             best_questions, best_method = ocr_questions, "ocr"

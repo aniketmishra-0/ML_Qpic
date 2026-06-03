@@ -48,6 +48,19 @@ from ..services.zip_service import COMBINED_ZIP, QUESTIONS_ZIP, SOLUTIONS_ZIP, c
 from ..utils.file_utils import create_job_dir, generate_job_id, get_job_dir, safe_cleanup_job
 
 router = APIRouter(tags=["crop"])
+
+
+def _parse_layout_columns(layout: Optional[str]) -> Optional[int]:
+    """Parse layout_columns query parameter into Optional[int] (1, 2, 3, or None)."""
+    clean = (layout or "auto").strip().lower()
+    if clean == "1":
+        return 1
+    elif clean == "2":
+        return 2
+    elif clean == "3":
+        return 3
+    return None
+
 logger = logging.getLogger(__name__)
 
 ERR_INVALID_FILE_TYPE = "Invalid file type. PDF required."
@@ -449,6 +462,10 @@ async def crop_pdf(
         description="Bundle an answer sheet (answers.csv + answers.json mapping each "
         "question image to its correct option) when the paper has an answer key.",
     ),
+    layout_columns: str = Query(
+        "auto",
+        description="Force page layout columns: 'auto', '1', '2', or '3'.",
+    ),
     settings: Settings = Depends(get_settings),
     client: Optional[anthropic.AsyncAnthropic] = Depends(get_anthropic_client_optional),
 ) -> CropResponse:
@@ -546,6 +563,7 @@ async def crop_pdf(
         pipeline = DetectionPipeline(
             ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client)
         )
+        layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
             pdf_bytes=file_bytes,
             page_images=page_images,
@@ -553,6 +571,7 @@ async def crop_pdf(
             render_dpi=dpi,
             prefer_ai=use_ai,
             marker_style=style,
+            layout_columns=layout_val,
         )
 
         # Resolve the paper's answer key for the answer-sheet export while the
@@ -761,6 +780,10 @@ async def analyze_pdf(
         description="Read the paper's answer key during analysis and cache it so "
         "the finalized download can bundle an answer sheet.",
     ),
+    layout_columns: str = Query(
+        "auto",
+        description="Force page layout columns: 'auto', '1', '2', or '3'.",
+    ),
     settings: Settings = Depends(get_settings),
     client: Optional[anthropic.AsyncAnthropic] = Depends(get_anthropic_client_optional),
 ) -> AnalyzeResponse:
@@ -821,6 +844,7 @@ async def analyze_pdf(
         pipeline = DetectionPipeline(
             ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client)
         )
+        layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
             pdf_bytes=file_bytes,
             page_images=page_images,
@@ -831,6 +855,7 @@ async def analyze_pdf(
             marker_style=(marker_style or "auto").strip().lower()
             if (marker_style or "auto").strip().lower() in ("auto", "q", "numbered")
             else "auto",
+            layout_columns=layout_val,
         )
 
         # Resolve the paper's answer key for the answer-sheet export while the
@@ -1121,6 +1146,7 @@ async def auto_detect_job_page(
     page: Optional[int] = Query(None, description="1-indexed page. If null, run on all pages."),
     use_ai: bool = Query(False),
     marker_style: str = Query("auto"),
+    layout_columns: str = Query("auto", description="Force page layout columns: 'auto', '1', '2', or '3'."),
     settings: Settings = Depends(get_settings),
     client: Optional[anthropic.AsyncAnthropic] = Depends(get_anthropic_client_optional),
 ) -> list[AnalyzedItem]:
@@ -1187,6 +1213,7 @@ async def auto_detect_job_page(
         if style not in ("auto", "q", "numbered"):
             style = "auto"
 
+        layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
             pdf_bytes=file_bytes,
             page_images=wrapped_images,
@@ -1195,6 +1222,7 @@ async def auto_detect_job_page(
             smart=True,
             prefer_ai=use_ai,
             marker_style=style,
+            layout_columns=layout_val,
         )
 
         detected = apply_page_ranges(

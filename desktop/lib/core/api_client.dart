@@ -133,6 +133,7 @@ class ApiClient {
     int jpgQuality = 90,
     bool useAi = false,
     bool answerSheet = true,
+    String layoutColumns = 'auto',
   }) {
     return _guard(() async {
       final query = <String, dynamic>{
@@ -148,6 +149,7 @@ class ApiClient {
         'jpg_quality': jpgQuality,
         'use_ai': useAi,
         'answer_sheet': answerSheet,
+        'layout_columns': layoutColumns,
       };
       if (questionPages != null) query['question_pages'] = questionPages;
       if (answerPages != null) query['answer_pages'] = answerPages;
@@ -188,6 +190,7 @@ class ApiClient {
     String? skipPages,
     bool useAi = false,
     bool answerSheet = true,
+    String layoutColumns = 'auto',
   }) {
     return _guard(() async {
       final query = <String, dynamic>{
@@ -197,6 +200,7 @@ class ApiClient {
         'has_answers': hasAnswers,
         'use_ai': useAi,
         'answer_sheet': answerSheet,
+        'layout_columns': layoutColumns,
       };
       if (questionPages != null) query['question_pages'] = questionPages;
       if (answerPages != null) query['answer_pages'] = answerPages;
@@ -258,11 +262,13 @@ class ApiClient {
     int? page,
     bool useAi = false,
     String markerStyle = 'auto',
+    String layoutColumns = 'auto',
   }) {
     return _guard(() async {
       final query = <String, dynamic>{
         'use_ai': useAi,
         'marker_style': markerStyle,
+        'layout_columns': layoutColumns,
       };
       if (page != null) query['page'] = page;
 

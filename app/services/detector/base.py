@@ -1571,6 +1571,7 @@ def starts_to_questions(
     content_lines: Optional[list[ContentLine]] = None,
     page_widths: Optional[dict[int, float]] = None,
     figures: Optional[list[FigureRegion]] = None,
+    layout_columns: Optional[int] = None,
 ) -> list[DetectedQuestion]:
     """Convert question-start markers + content lines into DetectedQuestion objects.
 
@@ -1658,24 +1659,33 @@ def starts_to_questions(
     # Per-page column layouts derived from content-line x-extents.
     page_columns: dict[int, list[tuple[float, float]]] = {}
     for page_num, page_width in widths.items():
-        intervals = [
-            (ln.x_left, ln.x_right)
-            for ln in lines
-            if ln.page_num == page_num and ln.x_right > ln.x_left
-        ]
-        cols = detect_columns(intervals, float(page_width))
-        cols = _validate_columns_with_markers(
-            cols, starts, page_num, float(page_width), lines
-        )
-        # A tight two-column page whose numbered options fill the gutter defeats
-        # the whitespace-based detector, collapsing it to one column and slicing
-        # every question into a sliver. When the markers themselves describe a
-        # clear multi-column layout, trust them instead.
-        if len(cols) <= 1:
-            page_starts = [s for s in starts if s.page_num == page_num]
-            marker_cols = columns_from_markers(page_starts, float(page_width))
-            if marker_cols is not None:
-                cols = marker_cols
+        pw = float(page_width)
+        if layout_columns is not None and layout_columns >= 1:
+            if layout_columns == 1:
+                cols = [(0.0, pw)]
+            elif layout_columns == 2:
+                cols = [(0.0, pw * 0.5), (pw * 0.5, pw)]
+            else: # layout_columns >= 3
+                cols = [(0.0, pw / 3.0), (pw / 3.0, 2.0 * pw / 3.0), (2.0 * pw / 3.0, pw)]
+        else:
+            intervals = [
+                (ln.x_left, ln.x_right)
+                for ln in lines
+                if ln.page_num == page_num and ln.x_right > ln.x_left
+            ]
+            cols = detect_columns(intervals, pw)
+            cols = _validate_columns_with_markers(
+                cols, starts, page_num, pw, lines
+            )
+            # A tight two-column page whose numbered options fill the gutter defeats
+            # the whitespace-based detector, collapsing it to one column and slicing
+            # every question into a sliver. When the markers themselves describe a
+            # clear multi-column layout, trust them instead.
+            if len(cols) <= 1:
+                page_starts = [s for s in starts if s.page_num == page_num]
+                marker_cols = columns_from_markers(page_starts, pw)
+                if marker_cols is not None:
+                    cols = marker_cols
         page_columns[page_num] = cols
 
     # Strip isolated banner/title lines above the first question on a page
