@@ -283,6 +283,11 @@ switch ($Installer) {
                 # Do not auto-install the dev cert into the trust store in CI.
                 $msixArgs += @('--install-certificate', 'false')
             }
+            else {
+                # Sign tool not enabled; build an unsigned MSIX package.
+                # When sign-msix is false, msix requires a publisher name.
+                $msixArgs += @('--sign-msix', 'false', '--publisher', 'CN=Qpic')
+            }
 
             # NOTE: we intentionally do NOT pass --build-windows; the runner is
             # already built and the sidecar copied in, so msix packages the
@@ -306,6 +311,18 @@ switch ($Installer) {
     'nsis' {
         Write-Step "Building NSIS installer"
         $makensis = Get-Command 'makensis.exe' -ErrorAction SilentlyContinue
+        if (-not $makensis) {
+            $defaultPaths = @(
+                "C:\Program Files (x86)\NSIS\makensis.exe",
+                "C:\Program Files\NSIS\makensis.exe"
+            )
+            foreach ($p in $defaultPaths) {
+                if (Test-Path $p) {
+                    $makensis = Get-Command $p -ErrorAction SilentlyContinue
+                    if ($makensis) { break }
+                }
+            }
+        }
         if (-not $makensis) {
             throw "makensis.exe not found. Install NSIS (choco install nsis) or add it to PATH."
         }

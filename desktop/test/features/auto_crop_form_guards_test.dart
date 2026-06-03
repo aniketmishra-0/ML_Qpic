@@ -84,6 +84,7 @@ class _Harness {
     final dio = Dio()..httpClientAdapter = adapter;
     final apiClient = ApiClient(Uri.parse('http://127.0.0.1:54321'), dio: dio);
     controller = AutoCropController(apiClient: apiClient)
+      ..smartMode = false
       // A PDF is loaded so the only thing that can block a crop is the guard
       // under test, not a missing file.
       ..setFile(bytes: const <int>[1, 2, 3], filename: 'paper.pdf');
@@ -258,13 +259,16 @@ void main() {
       await tester.pump();
 
       // ...then turn both off and attempt to crop.
-      await tester.tap(
-        find.byKey(const ValueKey<String>('auto-crop-has-questions')),
-      );
+      final questionsToggle = find.byKey(const ValueKey<String>('auto-crop-has-questions'));
+      await tester.ensureVisible(questionsToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(questionsToggle);
       await tester.pump();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('auto-crop-has-answers')),
-      );
+
+      final answersToggle = find.byKey(const ValueKey<String>('auto-crop-has-answers'));
+      await tester.ensureVisible(answersToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(answersToggle);
       await tester.pump();
 
       await _tapSubmit(tester);

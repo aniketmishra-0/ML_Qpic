@@ -21,8 +21,10 @@ import 'features/shell/document_zoom_controller.dart';
 import 'features/shell/document_zoom_scope.dart';
 import 'features/shell/platform_menu_bar.dart';
 import 'features/shell/startup_gate.dart';
-import 'features/shell/tool_placeholder.dart';
+import 'features/tools/pdf_enhancer_view.dart';
+import 'features/tools/pdf_tools_view.dart';
 import 'models/analyze.dart';
+import 'widgets/pdf_preview_dialog.dart';
 
 /// Root MaterialApp for the Qpic desktop client.
 ///
@@ -62,6 +64,15 @@ class QpicApp extends StatefulWidget {
 
 class _QpicAppState extends State<QpicApp> {
   late final ThemeController _controller;
+
+  /// Navigator key shared with [QpicPlatformMenuBar] so the Help dialog can be
+  /// opened through the MaterialApp's navigator even though the menu bar sits
+  /// above it (avoids the PlatformMenuBar context-lock assertion).
+  final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
+
+  /// Key for programmatic tab switching from tool views (e.g. PDF Enhancer's
+  /// "Send to Auto Crop" action).
+  final GlobalKey<AppShellState> _shellKey = GlobalKey<AppShellState>();
 
   /// Backs the Auto Crop form (Requirement 5). Owned by the app so the form
   /// retains its state across tab switches (the shell keeps every tool view
@@ -117,6 +128,8 @@ class _QpicAppState extends State<QpicApp> {
     super.initState();
     _ownsController = widget.themeController == null;
     _controller = widget.themeController ?? ThemeController();
+    _autoCropController.applyDefaults(_controller);
+    _manualCropController.applyDefaults(_controller);
     // Kick off engine startup so the StartupGate shows the starting overlay
     // immediately and transitions to ready/failed as the manager progresses.
     final bootstrap = widget.sidecarBootstrap;
@@ -210,6 +223,25 @@ class _QpicAppState extends State<QpicApp> {
     _autoCropController.setFile(bytes: bytes, filename: picked.name);
   }
 
+  /// Renders the selected PDF's pages (via the engine) and opens the in-app
+  /// preview popup so the user can eyeball the document without leaving the
+  /// tool. On a render error the controller surfaces the engine `detail` above
+  /// the form and the popup is not shown.
+  Future<void> _viewAutoCropPdf() async {
+    final ok = await _autoCropController.loadPreview();
+    final pages = _autoCropController.previewPages;
+    final apiClient = _autoCropController.apiClient;
+    if (!ok || pages == null || apiClient == null) return;
+    final navigatorContext = _navigatorKey.currentContext;
+    if (navigatorContext == null) return;
+    await PdfPreviewDialog.open(
+      navigatorContext,
+      title: _autoCropController.fileName ?? 'Preview',
+      pages: pages,
+      resolveUrl: (url) => apiClient.resolveUri(url).toString(),
+    );
+  }
+
   /// Runs the Auto Crop submit. For a non-Smart crop the controller streams the
   /// archive itself; for a Smart submit a successful `POST /api/analyze` lands
   /// an [AutoCropController.analyzeResult], which this opens in the shared
@@ -219,6 +251,13 @@ class _QpicAppState extends State<QpicApp> {
   Future<void> _submitAutoCrop() async {
     await _autoCropController.submit();
     final analysis = _autoCropController.analyzeResult;
+    debugPrint(
+      '[Qpic] _submitAutoCrop: busy=${_autoCropController.busy} '
+      'smart=${_autoCropController.smartMode} '
+      'analysis=${analysis != null} '
+      'error=${_autoCropController.errorText} '
+      'reviewOpen=$_autoCropReviewOpen',
+    );
     if (analysis != null) {
       _openAutoCropReview(analysis);
     }
@@ -229,6 +268,14 @@ class _QpicAppState extends State<QpicApp> {
   /// drives the canvas's answer-sheet advisory (Req 6.4, 6.5).
   void _openAutoCropReview(AnalyzeResponse analysis) {
     _autoCropReview.loadFromAnalyze(analysis);
+    // Keep the per-item crop preview in step with the Auto Crop output config
+    // so a preview renders exactly as the finalized download will (Req 6.6).
+    _autoCropReview.setPreviewOutput(
+      dpi: _autoCropController.dpi,
+      padding: _autoCropController.padding,
+      imageFormat: _autoCropController.imageFormatValue,
+      jpgQuality: _autoCropController.jpgQuality,
+    );
     // Consume the stored result so a later rebuild doesn't re-open the canvas.
     _autoCropController.consumeAnalyzeResult();
     setState(() => _autoCropReviewOpen = true);
@@ -303,6 +350,14 @@ class _QpicAppState extends State<QpicApp> {
               onSubmit: ready && !_autoCropController.busy
                   ? _submitAutoCrop
                   : null,
+              onClear: !_autoCropController.busy
+                  ? () => _autoCropController.reset(_controller)
+                  : null,
+              onView: ready &&
+                      _autoCropController.hasFile &&
+                      !_autoCropController.busy
+                  ? _viewAutoCropPdf
+                  : null,
             );
           },
         );
@@ -327,10 +382,16 @@ class _QpicAppState extends State<QpicApp> {
               onPickFiles: ready && !_renameController.busy
                   ? () => _renameController.pickAndAddFiles()
                   : null,
+              onPickFolder: ready && !_renameController.busy
+                  ? () => _renameController.pickAndAddFolder()
+                  : null,
               onRename: ready &&
                       !_renameController.busy &&
                       _renameController.itemCount > 0
                   ? () => _renameController.rename()
+                  : null,
+              onClear: !_renameController.busy
+                  ? _renameController.reset
                   : null,
             );
           },
@@ -353,35 +414,73 @@ class _QpicAppState extends State<QpicApp> {
               onPickFile: ready && !_manualCropController.busy
                   ? () => _manualCropController.pickPdf()
                   : null,
+              onClear: !_manualCropController.busy
+                  ? () => _manualCropController.reset(_controller)
+                  : null,
               previewUrlResolver:
                   apiClient != null ? (url) => apiClient.resolveUri(url).toString() : null,
             );
           },
         );
+      case QpicTool.pdfEnhancer:
+        return AnimatedBuilder(
+          animation: _autoCropController,
+          builder: (context, _) {
+            return PdfEnhancerView(
+              key: const ValueKey<String>('tool-view-pdfEnhancer'),
+              apiClient: _autoCropController.apiClient,
+              downloadService: _autoCropController.downloadService,
+              autoCropController: _autoCropController,
+              manualCropController: _manualCropController,
+              themeController: _controller,
+              onSwitchTab: (index) {
+                if (index == 0) {
+                  _shellKey.currentState?.selectTool(QpicTool.autoCrop);
+                } else if (index == 1) {
+                  _shellKey.currentState?.selectTool(QpicTool.manualCrop);
+                }
+              },
+            );
+          },
+        );
       case QpicTool.tools:
-        return ToolPlaceholder(
-          key: ValueKey<String>('tool-view-${tool.name}'),
-          label: tool.label,
+        return AnimatedBuilder(
+          animation: _autoCropController,
+          builder: (context, _) {
+            return PdfToolsView(
+              key: const ValueKey<String>('tool-view-tools'),
+              apiClient: _autoCropController.apiClient,
+              downloadService: _autoCropController.downloadService,
+            );
+          },
         );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Rebuild MaterialApp whenever the selected theme mode changes so the
-    // palette is re-applied live, without an app restart (Requirement 4.6).
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        return MaterialApp(
-          title: 'Qpic',
-          debugShowCheckedModeBanner: false,
-          theme: QpicTheme.light,
-          darkTheme: QpicTheme.dark,
-          themeMode: _controller.themeMode,
-          home: _buildHome(),
-        );
-      },
+    // PlatformMenuBar must live ABOVE MaterialApp so it keeps a stable
+    // BuildContext across MaterialApp rebuilds (theme changes). Flutter's
+    // PlatformMenuBar locks onto its element's context — if a second context
+    // tries to lock while the first is still active, an assertion fires.
+    return QpicPlatformMenuBar(
+      zoomRegistry: _zoomRegistry,
+      navigatorKey: _navigatorKey,
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (context, _) {
+          return MaterialApp(
+            title: 'Qpic',
+            debugShowCheckedModeBanner: false,
+            theme: QpicTheme.light,
+            darkTheme: QpicTheme.dark,
+            themeMode: _controller.themeMode,
+            themeAnimationStyle: AnimationStyle.noAnimation,
+            navigatorKey: _navigatorKey,
+            home: _buildHome(),
+          );
+        },
+      ),
     );
   }
 
@@ -404,19 +503,19 @@ class _QpicAppState extends State<QpicApp> {
     );
   }
 
-  /// Builds the shell chrome (menu bar + zoom scope + [AppShell]). [enabled]
-  /// gates the shell's tabs and Help control on engine readiness
-  /// (Requirement 3.4).
+  /// Builds the shell chrome (zoom scope + [AppShell]). [enabled] gates the
+  /// shell's tabs and Help control on engine readiness (Requirement 3.4).
+  /// The [QpicPlatformMenuBar] now lives above [MaterialApp] in [build], so
+  /// it's not repeated here.
   Widget _buildShellChrome({required bool enabled}) {
-    return QpicPlatformMenuBar(
-      zoomRegistry: _zoomRegistry,
-      child: DocumentZoomScope(
-        registry: _zoomRegistry,
-        child: AppShell(
-          themeController: _controller,
-          toolViewBuilder: _buildToolView,
-          enabled: enabled,
-        ),
+    return DocumentZoomScope(
+      registry: _zoomRegistry,
+      child: AppShell(
+        key: _shellKey,
+        themeController: _controller,
+        sidecarBootstrap: widget.sidecarBootstrap,
+        toolViewBuilder: _buildToolView,
+        enabled: enabled,
       ),
     );
   }

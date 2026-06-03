@@ -32,9 +32,11 @@ from ..models.schemas import (
     EditExtractResponse,
     EditPageModel,
     EditableSpanModel,
+    VectorObjectModel,
     OcrResponse,
     PreflightFixResponse,
     PreflightResponse,
+    EnhanceResponse,
 )
 from ..services.pdf_service import render_page_image, validate_pdf
 from ..services.pdf_tools.compress_service import LEVELS, compress_pdf
@@ -46,6 +48,7 @@ from ..services.pdf_tools.edit_service import (
     extract_text_spans,
     ocr_pdf,
 )
+from ..services.pdf_tools.enhance_service import enhance_pdf, enhance_page_to_png
 from ..services.pdf_tools.preflight_service import normalize_page_sizes, preflight_pdf
 from ..utils.file_utils import create_job_dir, generate_job_id, get_job_dir, safe_cleanup_job
 from ..utils.image_utils import ensure_rgb
@@ -150,6 +153,21 @@ async def compress_endpoint(
         out_path = job_dir / _COMPRESSED_PDF
         await asyncio.to_thread(out_path.write_bytes, result.data)
 
+        # Write to source.pdf to support lazy page previews
+        source_path = job_dir / _SOURCE_PDF
+        await asyncio.to_thread(source_path.write_bytes, result.data)
+
+        geometry = await asyncio.to_thread(_page_geometry, result.data)
+        page_models = [
+            EditPageModel(
+                page=p,
+                width=w,
+                height=h,
+                preview_url=f"/api/tools/edit/{job_id}/page/{p}",
+            )
+            for (p, w, h) in geometry
+        ]
+
         logger.info(
             "request_id=%s job_id=%s stage=compress_done level=%s original=%s compressed=%s ratio=%.3f",
             request_id, job_id, result.level, result.original_size,
@@ -165,6 +183,7 @@ async def compress_endpoint(
             target_met=result.target_met,
             note=result.note,
             download_url=f"/api/tools/compress/download/{job_id}",
+            pages=page_models,
         )
     except HTTPException:
         if job_dir is not None:
@@ -202,6 +221,7 @@ async def compress_download(
 
 @router.post("/preflight", response_model=PreflightResponse)
 async def preflight_endpoint(
+    request: Request,
     file: UploadFile = File(..., description="The PDF to inspect."),
     settings: Settings = Depends(get_settings),
 ) -> PreflightResponse:
@@ -209,6 +229,23 @@ async def preflight_endpoint(
 
     file_bytes = await _read_pdf_upload(file, settings)
     report = await asyncio.to_thread(preflight_pdf, file_bytes)
+
+    job_id = generate_job_id()
+    temp_root = _get_temp_root(request, settings)
+    job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
+    source_path = job_dir / _SOURCE_PDF
+    await asyncio.to_thread(source_path.write_bytes, file_bytes)
+
+    geometry = await asyncio.to_thread(_page_geometry, file_bytes)
+    page_models = [
+        EditPageModel(
+            page=p,
+            width=w,
+            height=h,
+            preview_url=f"/api/tools/edit/{job_id}/page/{p}",
+        )
+        for (p, w, h) in geometry
+    ]
 
     return PreflightResponse(
         verdict=report.verdict,
@@ -224,6 +261,8 @@ async def preflight_endpoint(
         distinct_page_sizes=report.distinct_page_sizes,
         mixed_page_sizes=report.mixed_page_sizes,
         page_details=report.page_details,
+        job_id=job_id,
+        pages=page_models,
     )
 
 
@@ -297,6 +336,21 @@ async def preflight_fix_page_sizes(
         out_path = job_dir / _NORMALIZED_PDF
         await asyncio.to_thread(out_path.write_bytes, result.data)
 
+        # Write to source.pdf to support lazy page previews
+        source_path = job_dir / _SOURCE_PDF
+        await asyncio.to_thread(source_path.write_bytes, result.data)
+
+        geometry = await asyncio.to_thread(_page_geometry, result.data)
+        page_models = [
+            EditPageModel(
+                page=p,
+                width=w,
+                height=h,
+                preview_url=f"/api/tools/edit/{job_id}/page/{p}",
+            )
+            for (p, w, h) in geometry
+        ]
+
         logger.info(
             "request_id=%s job_id=%s stage=preflight_fix_done target=%s changed=%s/%s",
             request_id, job_id, result.target_label, result.pages_changed, result.pages_total,
@@ -311,6 +365,7 @@ async def preflight_fix_page_sizes(
             pages_changed=result.pages_changed,
             note=result.note,
             download_url=f"/api/tools/preflight/download/{job_id}",
+            pages=page_models,
         )
     except HTTPException:
         if job_dir is not None:
@@ -402,11 +457,18 @@ async def edit_open(
             )
             for s in extracted.spans
         ]
+        vector_models = [
+            VectorObjectModel(
+                id=v.id, page=v.page, type=v.type, bbox=list(v.bbox)
+            )
+            for v in extracted.vector_objects
+        ]
         return EditExtractResponse(
             job_id=job_id,
             has_text=extracted.has_text,
             pages=page_models,
             spans=span_models,
+            vector_objects=vector_models,
         )
     except HTTPException:
         if job_dir is not None:
@@ -466,11 +528,18 @@ async def edit_state(
         )
         for s in extracted.spans
     ]
+    vector_models = [
+        VectorObjectModel(
+            id=v.id, page=v.page, type=v.type, bbox=list(v.bbox)
+        )
+        for v in extracted.vector_objects
+    ]
     return EditExtractResponse(
         job_id=job_id,
         has_text=extracted.has_text,
         pages=page_models,
         spans=span_models,
+        vector_objects=vector_models,
     )
 
 
@@ -671,3 +740,127 @@ async def edit_ocr(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Couldn't OCR that PDF.",
         ) from exc
+
+
+# Filename for stashed enhanced PDF.
+_ENHANCED_PDF = "enhanced.pdf"
+
+@router.post("/enhance", response_model=EnhanceResponse)
+async def enhance_endpoint(
+    request: Request,
+    file: UploadFile = File(..., description="The PDF to enhance."),
+    binarize: bool = Form(False, description="Convert to pure high-contrast B&W."),
+    contrast: float = Form(1.0, description="Contrast factor (e.g. 1.5)."),
+    brightness: float = Form(1.0, description="Brightness factor."),
+    watermark_threshold: int = Form(255, ge=0, le=255, description="RGB threshold below which pixels become white."),
+    dpi: int = Form(200, ge=72, le=300, description="DPI for rendering/processing."),
+    settings: Settings = Depends(get_settings),
+) -> EnhanceResponse:
+    """Enhance a PDF page-by-page by removing watermark background text and boosting text contrast."""
+    
+    file_bytes = await _read_pdf_upload(file, settings)
+    
+    job_id = generate_job_id()
+    temp_root = _get_temp_root(request, settings)
+    request_id = getattr(request.state, "request_id", None)
+    job_dir: Optional[Path] = None
+    try:
+        job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
+        
+        # Save original PDF so we can render live page previews using it
+        await asyncio.to_thread((job_dir / _SOURCE_PDF).write_bytes, file_bytes)
+        
+        # Enhance PDF
+        result_bytes = await asyncio.to_thread(
+            enhance_pdf,
+            file_bytes,
+            binarize=binarize,
+            contrast=contrast,
+            brightness=brightness,
+            watermark_threshold=watermark_threshold,
+            dpi=dpi
+        )
+        
+        out_path = job_dir / _ENHANCED_PDF
+        await asyncio.to_thread(out_path.write_bytes, result_bytes)
+        
+        import fitz
+        with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+            pages_total = doc.page_count
+            
+        logger.info(
+            "request_id=%s job_id=%s stage=enhance_done pages=%s",
+            request_id, job_id, pages_total
+        )
+        
+        return EnhanceResponse(
+            job_id=job_id,
+            pages_total=pages_total,
+            note="PDF enhanced successfully.",
+            download_url=f"/api/tools/enhance/download/{job_id}",
+        )
+    except HTTPException:
+        if job_dir is not None:
+            await asyncio.to_thread(safe_cleanup_job, job_id, temp_root)
+        raise
+    except Exception as exc:
+        logger.exception("request_id=%s job_id=%s stage=enhance_error error=%s", request_id, job_id, str(exc))
+        if job_dir is not None:
+            await asyncio.to_thread(safe_cleanup_job, job_id, temp_root)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Couldn't enhance that PDF.",
+        ) from exc
+
+
+@router.get("/enhance/download/{job_id}")
+async def enhance_download(
+    job_id: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> FileResponse:
+    """Stream a finished enhanced PDF."""
+    
+    temp_root = _get_temp_root(request, settings)
+    path = get_job_dir(job_id, temp_root) / _ENHANCED_PDF
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Nothing to download.")
+    return FileResponse(str(path), media_type="application/pdf", filename="enhanced.pdf")
+
+
+@router.get("/enhance/{job_id}/page/{page_no}")
+async def enhance_page_preview(
+    job_id: str,
+    page_no: int,
+    request: Request,
+    binarize: bool = False,
+    contrast: float = 1.0,
+    brightness: float = 1.0,
+    watermark_threshold: int = 255,
+    dpi: int = 150,
+    settings: Settings = Depends(get_settings),
+):
+    """Render a single page of a staged enhance job as an enhanced PNG (live preview)."""
+    
+    from fastapi.responses import Response
+    
+    temp_root = _get_temp_root(request, settings)
+    source = get_job_dir(job_id, temp_root) / _SOURCE_PDF
+    if not source.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found or expired.")
+        
+    file_bytes = await asyncio.to_thread(source.read_bytes)
+    try:
+        png = await asyncio.to_thread(
+            enhance_page_to_png,
+            file_bytes,
+            page_no,
+            binarize=binarize,
+            contrast=contrast,
+            brightness=brightness,
+            watermark_threshold=watermark_threshold,
+            dpi=dpi
+        )
+    except IndexError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Page out of range.")
+    return Response(content=png, media_type="image/png")

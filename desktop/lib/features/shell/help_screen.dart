@@ -17,7 +17,10 @@ import '../../core/theme_controller.dart';
 ///
 /// Opened from the shell's Help control (task 6.1 / 19.1) via [open].
 class HelpScreen extends StatelessWidget {
-  const HelpScreen({super.key});
+  const HelpScreen({super.key, this.initialTab = 0});
+
+  /// Which tab to show initially (0-indexed into [_helpTabs]).
+  final int initialTab;
 
   /// Opens the Help walkthrough as a modal dialog over the current surface.
   ///
@@ -28,6 +31,20 @@ class HelpScreen extends StatelessWidget {
       context: context,
       barrierDismissible: true,
       builder: (_) => const HelpScreen(),
+    );
+  }
+
+  /// Opens the Help walkthrough directly on the Privacy tab.
+  static Future<void> openPrivacy(BuildContext context) {
+    // Privacy is the last tab.
+    final privacyIndex =
+        _helpTabs.indexWhere((t) => t.id == 'privacy');
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => HelpScreen(
+        initialTab: privacyIndex >= 0 ? privacyIndex : 0,
+      ),
     );
   }
 
@@ -44,6 +61,7 @@ class HelpScreen extends StatelessWidget {
       ),
       child: DefaultTabController(
         length: _helpTabs.length,
+        initialIndex: initialTab.clamp(0, _helpTabs.length - 1),
         child: ConstrainedBox(
           // Mirrors the web modal's max width and tall-but-bounded height.
           constraints: const BoxConstraints(maxWidth: 820, maxHeight: 720),
@@ -413,6 +431,48 @@ const List<_HelpTab> _helpTabs = <_HelpTab>[
         title: 'Rename & Download ZIP',
         detail: 'Preview the new names in the gallery, remove any unwanted '
             'files, then click "Rename & Download ZIP".',
+      ),
+    ],
+  ),
+  _HelpTab(
+    id: 'privacy',
+    title: 'Privacy',
+    heading: 'Your Privacy Matters',
+    steps: <_HelpStep>[
+      _HelpStep(
+        number: 1,
+        title: '100% Local Processing',
+        detail: 'Qpic runs entirely on your machine. All PDF cropping, '
+            'image processing, and file renaming happens locally — nothing '
+            'is uploaded to any server.',
+      ),
+      _HelpStep(
+        number: 2,
+        title: 'No Data Collection',
+        detail: 'We do not collect, store, or transmit any of your data. '
+            'Your PDFs, images, and files never leave your computer. '
+            'There are no analytics, no tracking, and no telemetry.',
+      ),
+      _HelpStep(
+        number: 3,
+        title: 'No Internet Required',
+        detail: 'The core features of Qpic work completely offline. '
+            'You do not need an internet connection to crop PDFs or '
+            'rename files.',
+      ),
+      _HelpStep(
+        number: 4,
+        title: 'AI Tools — Coming Soon',
+        detail: 'The Online AI mode is currently disabled. We plan to '
+            'introduce AI-powered features in a future update. When '
+            'available, AI features will be opt-in and clearly marked.',
+      ),
+      _HelpStep(
+        number: 5,
+        title: 'Open & Transparent',
+        detail: 'Qpic is built with transparency in mind. Your trust is '
+            'our priority — we will always keep you informed about any '
+            'changes to how the app handles your data.',
       ),
     ],
   ),

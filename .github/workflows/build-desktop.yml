@@ -40,7 +40,7 @@ jobs:
             installer: dist/Qpic-macOS.dmg
           - os: windows-latest
             label: Windows
-            installer: dist/Qpic-Windows.msix
+            installer: dist/Qpic-Windows*
     runs-on: ${{ matrix.os }}
 
     env:
@@ -90,9 +90,12 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install tesseract tesseract-lang
 
-      - name: Install Tesseract (Windows)
+      - name: Install Tesseract & NSIS (Windows)
         if: runner.os == 'Windows'
-        run: choco install --no-progress -y tesseract
+        shell: pwsh
+        run: |
+          choco install --no-progress -y tesseract nsis
+          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       # ---- Signing setup (only when the matching secrets are present) ------
       - name: Import macOS signing certificate
@@ -147,10 +150,12 @@ jobs:
         if: runner.os == 'macOS'
         run: bash build_desktop_flutter.sh --langs eng,hin,osd
 
-      - name: Build Windows installer
+      - name: Build Windows installers (MSIX and NSIS)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./build_desktop_flutter.ps1 -Installer msix -Langs eng,hin,osd
+        run: |
+          ./build_desktop_flutter.ps1 -Installer msix -Langs "eng,hin,osd"
+          ./build_desktop_flutter.ps1 -Installer nsis -SkipFlutterBuild -Langs "eng,hin,osd"
 
       # ---- Upload + release ------------------------------------------------
       - name: Upload build artifact

@@ -18,6 +18,13 @@
 /// `xStartPct`/`xEndPct` describe the horizontal extent of the column the
 /// fragment lives in; they default to the full page width so single-column
 /// layouts behave exactly as before.
+///
+/// `xOffsetPct` is a manual horizontal nudge applied only when the part is
+/// stitched into a multi-part crop (the review "Manual align" controls), as a
+/// signed percentage of the page width (positive shifts right, negative left).
+/// It defaults to 0.0 so single-column and auto-detected crops are untouched,
+/// and rides along into both the preview and the finalize payload so the
+/// downloaded crop lines up exactly like the approved preview.
 class QuestionSegment {
   const QuestionSegment({
     required this.page,
@@ -25,6 +32,8 @@ class QuestionSegment {
     required this.yEndPct,
     this.xStartPct = 0.0,
     this.xEndPct = 100.0,
+    this.xOffsetPct = 0.0,
+    this.yOffsetPct = 0.0,
   });
 
   final int page;
@@ -32,6 +41,19 @@ class QuestionSegment {
   final double yEndPct;
   final double xStartPct;
   final double xEndPct;
+  final double xOffsetPct;
+  final double yOffsetPct;
+
+  /// Returns a copy with [xOffsetPct] and [yOffsetPct] replaced, preserving the region.
+  QuestionSegment copyWithOffset({double? xOffsetPct, double? yOffsetPct}) => QuestionSegment(
+        page: page,
+        yStartPct: yStartPct,
+        yEndPct: yEndPct,
+        xStartPct: xStartPct,
+        xEndPct: xEndPct,
+        xOffsetPct: xOffsetPct ?? this.xOffsetPct,
+        yOffsetPct: yOffsetPct ?? this.yOffsetPct,
+      );
 
   factory QuestionSegment.fromJson(Map<String, dynamic> json) {
     return QuestionSegment(
@@ -40,6 +62,8 @@ class QuestionSegment {
       yEndPct: (json['y_end_pct'] as num).toDouble(),
       xStartPct: (json['x_start_pct'] as num?)?.toDouble() ?? 0.0,
       xEndPct: (json['x_end_pct'] as num?)?.toDouble() ?? 100.0,
+      xOffsetPct: (json['x_offset_pct'] as num?)?.toDouble() ?? 0.0,
+      yOffsetPct: (json['y_offset_pct'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -50,6 +74,8 @@ class QuestionSegment {
       'y_end_pct': yEndPct,
       'x_start_pct': xStartPct,
       'x_end_pct': xEndPct,
+      'x_offset_pct': xOffsetPct,
+      'y_offset_pct': yOffsetPct,
     };
   }
 }
@@ -209,6 +235,7 @@ class AnalyzedItem {
     this.source = 'auto',
     this.flagged = false,
     this.flagReason,
+    this.align,
   });
 
   final String qNum;
@@ -217,6 +244,24 @@ class AnalyzedItem {
   final String source;
   final bool flagged;
   final String? flagReason;
+
+  /// Client-only override for left-aligning stitched parts (the review "Align
+  /// parts" toggle). NOT part of the engine contract and never serialized in
+  /// [toJson]; it is carried into the [FinalizeItem]/[CropPreviewRequest] sent
+  /// to the engine so the finalized crop matches the approved preview. `null`
+  /// keeps the engine's per-source default (align manual items only).
+  final bool? align;
+
+  /// Returns a copy with [align] set, preserving all other fields.
+  AnalyzedItem copyWithAlign(bool? align) => AnalyzedItem(
+        qNum: qNum,
+        segments: segments,
+        isSolution: isSolution,
+        source: source,
+        flagged: flagged,
+        flagReason: flagReason,
+        align: align,
+      );
 
   factory AnalyzedItem.fromJson(Map<String, dynamic> json) {
     return AnalyzedItem(
@@ -362,12 +407,19 @@ class FinalizeItem {
     required this.segments,
     this.isSolution = false,
     this.source = 'auto',
+    this.align,
   });
 
   final String qNum;
   final bool isSolution;
   final List<QuestionSegment> segments;
   final String source;
+
+  /// Explicit override for left-aligning stitched column-split parts (the
+  /// review "Align parts" toggle). `null` keeps the engine's legacy default
+  /// (align manual items only); `true`/`false` force the choice so a finalized
+  /// crop matches the preview the user approved.
+  final bool? align;
 
   factory FinalizeItem.fromJson(Map<String, dynamic> json) {
     return FinalizeItem(
@@ -377,6 +429,7 @@ class FinalizeItem {
           .map((e) => QuestionSegment.fromJson(e as Map<String, dynamic>))
           .toList(),
       source: json['source'] as String? ?? 'auto',
+      align: json['align'] as bool?,
     );
   }
 
@@ -386,6 +439,72 @@ class FinalizeItem {
       'is_solution': isSolution,
       'segments': segments.map((e) => e.toJson()).toList(),
       'source': source,
+      'align': align,
+    };
+  }
+}
+
+/// A single item to render as a standalone preview crop (the body of
+/// `POST /api/crop/preview`). Mirrors `CropPreviewRequest` in
+/// `app/models/schemas.py`: the engine renders this one item through the same
+/// crop/stitch pipeline the finalized download uses, so the returned image is a
+/// faithful preview of how the question/solution will look after cropping.
+class CropPreviewRequest {
+  const CropPreviewRequest({
+    required this.jobId,
+    required this.segments,
+    this.qNum = '0',
+    this.isSolution = false,
+    this.source = 'auto',
+    this.align,
+    this.dpi = 200,
+    this.padding = 20,
+    this.imageFormat = 'png',
+    this.jpgQuality = 90,
+  });
+
+  final String jobId;
+  final String qNum;
+  final bool isSolution;
+  final List<QuestionSegment> segments;
+  final String source;
+  final bool? align;
+  final int dpi;
+  final int padding;
+
+  /// One of "png", "jpg", "jpeg".
+  final String imageFormat;
+  final int jpgQuality;
+
+  factory CropPreviewRequest.fromJson(Map<String, dynamic> json) {
+    return CropPreviewRequest(
+      jobId: json['job_id'] as String,
+      qNum: json['q_num'] as String? ?? '0',
+      isSolution: json['is_solution'] as bool? ?? false,
+      segments: (json['segments'] as List<dynamic>)
+          .map((e) => QuestionSegment.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      source: json['source'] as String? ?? 'auto',
+      align: json['align'] as bool?,
+      dpi: (json['dpi'] as num?)?.toInt() ?? 200,
+      padding: (json['padding'] as num?)?.toInt() ?? 20,
+      imageFormat: json['image_format'] as String? ?? 'png',
+      jpgQuality: (json['jpg_quality'] as num?)?.toInt() ?? 90,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'job_id': jobId,
+      'q_num': qNum,
+      'is_solution': isSolution,
+      'segments': segments.map((e) => e.toJson()).toList(),
+      'source': source,
+      'align': align,
+      'dpi': dpi,
+      'padding': padding,
+      'image_format': imageFormat,
+      'jpg_quality': jpgQuality,
     };
   }
 }

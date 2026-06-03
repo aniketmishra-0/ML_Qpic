@@ -6,7 +6,9 @@
     "y_start_pct": 12.5,
     "y_end_pct": 47.25,
     "x_start_pct": 0.0,
-    "x_end_pct": 50.0
+    "x_end_pct": 50.0,
+    "x_offset_pct": 0.0,
+    "y_offset_pct": 0.0
   },
 
   "CropResponse": {
@@ -39,14 +41,18 @@
         "y_start_pct": 30.0,
         "y_end_pct": 55.5,
         "x_start_pct": 0.0,
-        "x_end_pct": 100.0
+        "x_end_pct": 100.0,
+        "x_offset_pct": 0.0,
+        "y_offset_pct": 0.0
       },
       {
         "page": 3,
         "y_start_pct": 0.0,
         "y_end_pct": 18.75,
         "x_start_pct": 0.0,
-        "x_end_pct": 100.0
+        "x_end_pct": 100.0,
+        "x_offset_pct": 0.0,
+        "y_offset_pct": 0.0
       }
     ],
     "source": "auto",
@@ -90,7 +96,9 @@
             "y_start_pct": 8.0,
             "y_end_pct": 22.0,
             "x_start_pct": 0.0,
-            "x_end_pct": 100.0
+            "x_end_pct": 100.0,
+            "x_offset_pct": 0.0,
+            "y_offset_pct": 0.0
           }
         ],
         "source": "auto",
@@ -136,10 +144,36 @@
         "y_start_pct": 10.0,
         "y_end_pct": 40.0,
         "x_start_pct": 0.0,
-        "x_end_pct": 100.0
+        "x_end_pct": 100.0,
+        "x_offset_pct": 0.0,
+        "y_offset_pct": 0.0
       }
     ],
-    "source": "manual"
+    "source": "manual",
+    "align": null
+  },
+
+  "CropPreviewRequest": {
+    "job_id": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    "q_num": "3",
+    "is_solution": false,
+    "segments": [
+      {
+        "page": 2,
+        "y_start_pct": 30.0,
+        "y_end_pct": 55.5,
+        "x_start_pct": 0.0,
+        "x_end_pct": 100.0,
+        "x_offset_pct": 0.0,
+        "y_offset_pct": 0.0
+      }
+    ],
+    "source": "manual",
+    "align": true,
+    "dpi": 200,
+    "padding": 20,
+    "image_format": "png",
+    "jpg_quality": 90
   },
 
   "FinalizeRequest": {
@@ -154,10 +188,13 @@
             "y_start_pct": 8.0,
             "y_end_pct": 22.0,
             "x_start_pct": 0.0,
-            "x_end_pct": 100.0
+            "x_end_pct": 100.0,
+            "x_offset_pct": 0.0,
+            "y_offset_pct": 0.0
           }
         ],
-        "source": "auto"
+        "source": "auto",
+        "align": null
       }
     ],
     "dpi": 200,
@@ -237,7 +274,8 @@
     "level": "balanced",
     "target_met": null,
     "note": "",
-    "download_url": "/api/tools/compress/download/c0mpr3ss"
+    "download_url": "/api/tools/compress/download/c0mpr3ss",
+    "pages": []
   },
 
   "EditableSpanModel": {
@@ -282,7 +320,8 @@
         "bold": false,
         "italic": false
       }
-    ]
+    ],
+    "vector_objects": []
   },
 
   "PreflightResponse": {
@@ -336,6 +375,8 @@
         "format": "A4",
         "orientation": "Portrait"
       }
-    ]
+    ],
+    "job_id": null,
+    "pages": []
   }
 }

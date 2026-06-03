@@ -52,7 +52,18 @@ InstallDirRegKey HKLM "Software\${APP_NAME}" "InstallDir"
 RequestExecutionLevel admin
 
 ; ---- UI ------------------------------------------------------------------
+!define MUI_ICON "app_icon.ico"
+!define MUI_UNICON "app_icon.ico"
 !define MUI_ABORTWARNING
+
+; Welcome page configuration
+!define MUI_WELCOMEPAGE_TITLE "Welcome to the Qpic Setup Wizard"
+!define MUI_WELCOMEPAGE_TEXT "This wizard will guide you through the installation of Qpic, a powerful PDF utility client for auto crop, manual crop, rename batch, and other tools.\r\n\r\nClick Next to continue."
+!insertmacro MUI_PAGE_WELCOME
+
+; License page configuration
+!insertmacro MUI_PAGE_LICENSE "..\..\LICENSE"
+
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_UNPAGE_CONFIRM

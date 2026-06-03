@@ -29,6 +29,7 @@ import fitz
 
 from .base import FigureRegion
 from .furniture import branding_link_bands, detect_content_boxes, is_branding_text
+from .table_detector import detect_tables
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,23 @@ _WATERMARK_MIN_PAGES = 3
 # covers too much of its area.
 _FIGURE_MAX_TEXT_AREA_FRAC = 0.18
 _FIGURE_MAX_TEXT_LINES = 3
+
+# A vector cluster that the text-overlap guard would otherwise reject can still
+# be a genuine diagram/formula/chemical structure: a benzene ring, a reaction
+# scheme with bond lines and arrows, or a display equation with fraction bars,
+# radicals and brackets. What separates such a figure from a phantom rule-merge
+# (a few long column dividers / underlines that happen to wrap a paragraph) is
+# the *stroke population*: a real structure is built from MANY SHORT strokes,
+# while a phantom merge is a HANDFUL OF LONG rules. A cluster carrying at least
+# this many strokes, of which a clear majority are short, is treated as a
+# figure even though text falls inside it — so a chemistry/maths block grows the
+# crop instead of being sliced.
+_DENSE_FIGURE_MIN_STROKES = 8
+_DENSE_FIGURE_SHORT_FRAC = 0.6
+
+# A stroke is "short" (a bond / arrow / bracket / fraction bar, not a page rule)
+# when neither side exceeds this fraction of the page in its own axis.
+_SHORT_STROKE_MAX_FRAC = 0.33
 
 
 def _rect_or_none(value: object) -> "fitz.Rect | None":
@@ -166,6 +184,127 @@ def _encloses_body_text(
             return True
 
     return (covered / area) > _FIGURE_MAX_TEXT_AREA_FRAC
+
+
+def _stroke_segments(drawings: list) -> list["fitz.Rect"]:
+    """Return the bbox of every individual path segment across all drawings.
+
+    PyMuPDF groups many strokes that share a style into ONE drawing object whose
+    ``rect`` is the combined bounding box, so counting drawings under-counts a
+    structure's real stroke population (a whole benzene ring + bonds can be a
+    single drawing). Descending to each drawing's ``items`` recovers the true
+    per-segment population — the signal that tells a dense structure/formula from
+    a sparse rule-merge. Each line/curve/rect item contributes its own bbox; a
+    degenerate (zero-area) line still contributes via its endpoints.
+    """
+
+    segs: list[fitz.Rect] = []
+    # A perfectly axis-aligned stroke has zero extent in one dimension, and an
+    # empty rect never reports an intersection (so it can't cluster). Inflate
+    # each segment by a hairline so neighbouring strokes still merge.
+    eps = 0.5
+
+    def _seg(x0: float, y0: float, x1: float, y1: float) -> "fitz.Rect":
+        if x1 - x0 < eps:
+            mid = (x0 + x1) / 2.0
+            x0, x1 = mid - eps, mid + eps
+        if y1 - y0 < eps:
+            mid = (y0 + y1) / 2.0
+            y0, y1 = mid - eps, mid + eps
+        return fitz.Rect(x0, y0, x1, y1)
+
+    for d in drawings or []:
+        if not isinstance(d, dict):
+            continue
+        for it in d.get("items") or []:
+            if not it:
+                continue
+            op = it[0]
+            try:
+                if op == "l":  # line: (p1, p2)
+                    p1, p2 = it[1], it[2]
+                    x0, x1 = sorted((float(p1.x), float(p2.x)))
+                    y0, y1 = sorted((float(p1.y), float(p2.y)))
+                    segs.append(_seg(x0, y0, x1, y1))
+                elif op == "re":  # rectangle
+                    r = fitz.Rect(it[1])
+                    segs.append(_seg(float(r.x0), float(r.y0), float(r.x1), float(r.y1)))
+                elif op in ("c", "qu"):  # bezier / quad — use its point bbox
+                    pts = [p for p in it[1:] if hasattr(p, "x")]
+                    if pts:
+                        xs = [float(p.x) for p in pts]
+                        ys = [float(p.y) for p in pts]
+                        segs.append(_seg(min(xs), min(ys), max(xs), max(ys)))
+            except Exception:  # pragma: no cover - defensive
+                continue
+    return segs
+
+
+def _stroke_rides_text(r: "fitz.Rect", text_rects: list[tuple[float, float, float, float]]) -> bool:
+    """True if a stroke sits on/under a text line (an underline / strikethrough).
+
+    Such strokes are text decoration, not structural figure strokes, so they are
+    excluded from the dense-figure population — otherwise a block of bold,
+    underlined labels could masquerade as a chemical structure.
+    """
+
+    rx0, ry0, rx1, ry1 = float(r.x0), float(r.y0), float(r.x1), float(r.y1)
+    rmid = (ry0 + ry1) / 2.0
+    rw = max(rx1 - rx0, 0.0)
+    for tx0, ty0, tx1, ty1 in text_rects:
+        overlap_x = min(rx1, tx1) - max(rx0, tx0)
+        if overlap_x <= 0 or (rw > 0 and overlap_x < 0.3 * rw):
+            continue
+        line_h = ty1 - ty0
+        if line_h <= 0:
+            continue
+        # Within the line band or just below its baseline.
+        if (ty0 - 0.25 * line_h) <= rmid <= (ty1 + 0.5 * line_h):
+            return True
+    return False
+
+
+def _is_dense_stroke_figure(
+    cluster: "fitz.Rect",
+    stroke_segs: list["fitz.Rect"],
+    page_w: float,
+    page_h: float,
+    text_rects: list[tuple[float, float, float, float]],
+) -> bool:
+    """True if a cluster is a genuine diagram/formula/structure by stroke count.
+
+    Used to *override* the text-overlap rejection for the figures that
+    legitimately contain text: a chemical structure (benzene ring + bond lines +
+    atom labels), a reaction scheme (arrows + reagents), or a display equation
+    (fraction bars, radicals, brackets + symbols). These are built from MANY
+    SHORT strokes sitting in whitespace, unlike a phantom rule-merge — a few LONG
+    column dividers / underlines that merely happen to wrap a paragraph. We count
+    the individual path segments whose centre falls inside the cluster, *ignoring
+    strokes that ride on a text line* (underlines/strikethroughs are text
+    decoration, not structure), and require a meaningful population dominated by
+    short strokes. So a block of underlined labels is never mistaken for a
+    structure, while a real diagram/formula is rescued.
+    """
+
+    short_max_w = _SHORT_STROKE_MAX_FRAC * page_w
+    short_max_h = _SHORT_STROKE_MAX_FRAC * page_h
+
+    inside = 0
+    short = 0
+    for r in stroke_segs:
+        cx = (r.x0 + r.x1) / 2.0
+        cy = (r.y0 + r.y1) / 2.0
+        if not (cluster.x0 <= cx <= cluster.x1 and cluster.y0 <= cy <= cluster.y1):
+            continue
+        if _stroke_rides_text(r, text_rects):
+            continue
+        inside += 1
+        if r.width <= short_max_w and r.height <= short_max_h:
+            short += 1
+
+    if inside < _DENSE_FIGURE_MIN_STROKES:
+        return False
+    return (short / inside) >= _DENSE_FIGURE_SHORT_FRAC
 
 
 def _cluster_rects(rects: list["fitz.Rect"], page_h: float) -> list["fitz.Rect"]:
@@ -300,6 +439,19 @@ def extract_figures_for_page(page: "fitz.Page", page_num: int) -> list[FigureReg
             continue
         draw_rects.append(r)
 
+    # Per-segment stroke bboxes (descending into each drawing's path items), used
+    # to recognise a dense structure/formula/reaction that legitimately contains
+    # text and would otherwise be rejected by the text-overlap guard.
+    stroke_segs = _stroke_segments(drawings)
+
+    # Cluster over both the drawing bounding boxes AND the individual stroke
+    # segments. Line-art figures (chemical structures, reaction schemes, display
+    # equations) are built from perfectly axis-aligned strokes whose bounding box
+    # is zero in one dimension, so ``_rect_or_none`` drops them from
+    # ``draw_rects`` and the cluster never forms. The stroke segments preserve
+    # each line's single-axis extent, so adding them lets those figures cluster.
+    cluster_input = draw_rects + stroke_segs
+
     min_w = _MIN_FIGURE_WIDTH_FRAC * page_w
     min_h = _MIN_FIGURE_HEIGHT_FRAC * page_h
     max_w = _MAX_FIGURE_WIDTH_FRAC * page_w
@@ -309,7 +461,7 @@ def extract_figures_for_page(page: "fitz.Page", page_num: int) -> list[FigureReg
     # (decorative rules / note-box borders) instead of being a real diagram.
     text_rects = _text_line_rects(page)
 
-    for cluster in _cluster_rects(draw_rects, page_h):
+    for cluster in _cluster_rects(cluster_input, page_h):
         # A diagram has real 2-D extent; a rule/underline is thin in one axis.
         if cluster.width < min_w or cluster.height < min_h:
             continue
@@ -320,8 +472,14 @@ def extract_figures_for_page(page: "fitz.Page", page_num: int) -> list[FigureReg
             continue
         # A cluster that encloses body text is decorative ruling around a
         # paragraph (or several merged rules), not a diagram. Folding it into a
-        # crop would balloon the crop across columns and slice the text, so skip.
-        if _encloses_body_text(cluster, text_rects):
+        # crop would balloon the crop across columns and slice the text, so skip
+        # — UNLESS the cluster is a dense population of short strokes, which is
+        # the signature of a real chemical structure / reaction scheme / display
+        # equation. Those legitimately contain text (atom labels, reagents,
+        # symbols) yet must grow the crop, so they override the text guard.
+        if _encloses_body_text(cluster, text_rects) and not _is_dense_stroke_figure(
+            cluster, stroke_segs, page_w, page_h, text_rects
+        ):
             continue
         figures.append(
             FigureRegion(
@@ -358,6 +516,36 @@ def extract_figures_for_page(page: "fitz.Page", page_num: int) -> list[FigureReg
             )
     except Exception as exc:  # pragma: no cover - defensive
         logger.debug("content_box_extract_failed page=%s error=%s", page_num, str(exc))
+
+    # --- Data tables ------------------------------------------------------
+    # A question's table (truth table, "Column-I / Column-II" matching grid,
+    # reagent list, value matrix, chemical-reaction grid) is a *grid of text*,
+    # so the generic vector path above rejects it via ``_encloses_body_text``.
+    # PyMuPDF's table finder recovers it from the grid's own ruling, and we emit
+    # the whole grid as a region so the owning question grows its crop to contain
+    # the entire table instead of slicing it at the surrounding prose.
+    try:
+        for tbl in detect_tables(page):
+            if _in_margin(tbl, page_h):
+                continue
+            if (
+                tbl.width >= _MAX_FIGURE_WIDTH_FRAC * page_w
+                and tbl.height >= _MAX_FIGURE_HEIGHT_FRAC * page_h
+            ):
+                continue
+            if _in_branding_band(float(tbl.y0), float(tbl.y1)):
+                continue
+            figures.append(
+                FigureRegion(
+                    page_num=page_num,
+                    y_top=float(tbl.y0),
+                    y_bottom=float(tbl.y1),
+                    x_left=float(tbl.x0),
+                    x_right=float(tbl.x1),
+                )
+            )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("table_extract_failed page=%s error=%s", page_num, str(exc))
 
     return figures
 

@@ -1,41 +1,66 @@
 import 'package:flutter/material.dart';
 
+import '../../core/sidecar_bootstrap.dart';
 import '../../core/theme_controller.dart';
+import '../../widgets/settings_dialog.dart';
+import 'app_credit.dart';
 import 'help_screen.dart';
-import 'theme_switcher.dart';
 import 'tool_placeholder.dart';
 
-/// The four tools the app exposes, in tab order (Requirement 4.2).
+/// The four tools the app exposes, in navigation order (Requirement 4.2).
 ///
 /// Order is significant: index 0 is Auto Crop, which is the default selected
-/// tab on launch (Requirement 4.4).
+/// item on launch (Requirement 4.4).
 enum QpicTool {
-  autoCrop('Auto Crop'),
-  manualCrop('Manual Crop'),
-  renameBatch('Rename Batch'),
-  tools('Tools');
+  autoCrop('Auto Crop', Icons.crop_rounded),
+  manualCrop('Manual Crop', Icons.crop_free_rounded),
+  renameBatch('Rename Batch', Icons.drive_file_rename_outline_rounded),
+  pdfEnhancer('PDF Enhancer', Icons.auto_awesome_rounded),
+  tools('PDF Tools', Icons.build_rounded);
 
-  const QpicTool(this.label);
+  const QpicTool(this.label, this.icon);
 
-  /// Tab label shown in the top app bar.
+  /// Label shown in the navigation rail and elsewhere.
   final String label;
+
+  /// Icon shown in the navigation rail.
+  final IconData icon;
+
+  /// Short label used under the rail icon (kept compact for the 72px rail).
+  String get shortLabel {
+    switch (this) {
+      case QpicTool.autoCrop:
+        return 'Auto';
+      case QpicTool.manualCrop:
+        return 'Manual';
+      case QpicTool.renameBatch:
+        return 'Rename';
+      case QpicTool.pdfEnhancer:
+        return 'Enhance';
+      case QpicTool.tools:
+        return 'Tools';
+    }
+  }
 }
 
-/// Acrobat-style application shell: a top app bar (Qpic brand, the four tool
-/// tabs, a Help control, and a segmented Light/Dark/System theme switcher) over
-/// an [IndexedStack] that hosts the four tool views (Requirement 4.1–4.4).
+/// Modern application shell: a left navigation rail (Qpic brand mark, the four
+/// tool destinations, a Help control, and a vertical Light/Dark/System theme
+/// switcher) beside an [IndexedStack] that hosts the four tool views
+/// (Requirement 4.1–4.4).
 ///
-/// The [IndexedStack] keeps every tool view mounted, so switching tabs hides
+/// The [IndexedStack] keeps every tool view mounted, so switching tools hides
 /// the others without tearing down their state (Requirement 4.3). The default
-/// selected tab is Auto Crop (index 0) (Requirement 4.4).
+/// selected tool is Auto Crop (index 0) (Requirement 4.4).
 ///
-/// The actual tool views are slotted in by later tasks; until then each tab
-/// shows a distinct [ToolPlaceholder]. To make the views swappable, the shell
-/// accepts an optional [toolViewBuilder]; when omitted it builds placeholders.
+/// The actual tool views are slotted in by the host via [toolViewBuilder];
+/// when omitted the shell renders a distinct [ToolPlaceholder] per tool. The
+/// behaviour contract (tab keys, stack key, state retention, default selection)
+/// is preserved exactly so existing widget tests keep passing.
 class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
     required this.themeController,
+    this.sidecarBootstrap,
     this.toolViewBuilder,
     this.enabled = true,
   });
@@ -43,22 +68,30 @@ class AppShell extends StatefulWidget {
   /// Controller backing the theme switcher (Requirement 4.5, 4.6).
   final ThemeController themeController;
 
-  /// Optional builder for a tool's view. Later tasks supply the real Auto Crop
+  /// Optional sidecar bootstrap manager.
+  final SidecarBootstrap? sidecarBootstrap;
+
+  /// Optional builder for a tool's view. The host supplies the real Auto Crop
   /// form, Manual Crop, Rename Batch, and Tools widgets here; when null the
   /// shell renders a [ToolPlaceholder] for each tool.
   final Widget Function(QpicTool tool)? toolViewBuilder;
 
-  /// When false, the tab bar and Help control are disabled. Task 6.2 uses this
-  /// to keep the tool UI inert until the engine reports Ready.
+  /// When false, the navigation rail and Help control are disabled. The
+  /// startup gate uses this to keep the tool UI inert until the engine reports
+  /// Ready.
   final bool enabled;
 
   @override
-  State<AppShell> createState() => _AppShellState();
+  State<AppShell> createState() => AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
-  // Default selected tab is Auto Crop (index 0) per Requirement 4.4.
+class AppShellState extends State<AppShell> {
+  // Default selected tool is Auto Crop (index 0) per Requirement 4.4.
   QpicTool _selected = QpicTool.autoCrop;
+
+  /// Programmatically switches the active tab. Exposed so the host can drive
+  /// tab navigation from outside (e.g. the PDF Enhancer's "Send to Crop").
+  void selectTool(QpicTool tool) => _selectTool(tool);
 
   void _selectTool(QpicTool tool) {
     if (tool == _selected) return;
@@ -71,42 +104,28 @@ class _AppShellState extends State<AppShell> {
     final palette = theme.extension<QpicPalette>();
 
     return Scaffold(
-      appBar: AppBar(
-        // Brand + tabs live in the title area; Help + theme switcher in actions.
-        titleSpacing: 16,
-        title: Row(
-          children: <Widget>[
-            _QpicBrand(palette: palette),
-            const SizedBox(width: 24),
-            Flexible(
-              child: _ToolTabBar(
-                selected: _selected,
-                enabled: widget.enabled,
-                onSelected: _selectTool,
-              ),
-            ),
-          ],
-        ),
-        actions: <Widget>[
-          IconButton(
-            key: const ValueKey<String>('shell-help-button'),
-            tooltip: 'Help',
-            icon: const Icon(Icons.help_outline),
-            onPressed: widget.enabled ? () => HelpScreen.open(context) : null,
-          ),
-          const SizedBox(width: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: ThemeSwitcher(controller: widget.themeController),
-          ),
-          const SizedBox(width: 12),
-        ],
-      ),
-      body: IndexedStack(
-        key: const ValueKey<String>('shell-tool-stack'),
-        index: _selected.index,
+      body: Row(
         children: <Widget>[
-          for (final tool in QpicTool.values) _buildToolView(tool),
+          // Left navigation rail (brand, tools, help, theme switcher).
+          _QpicNavRail(
+            palette: palette,
+            theme: theme,
+            selected: _selected,
+            enabled: widget.enabled,
+            onSelected: _selectTool,
+            themeController: widget.themeController,
+            sidecarBootstrap: widget.sidecarBootstrap,
+          ),
+          // Tool views fill the remaining space.
+          Expanded(
+            child: IndexedStack(
+              key: const ValueKey<String>('shell-tool-stack'),
+              index: _selected.index,
+              children: <Widget>[
+                for (final tool in QpicTool.values) _buildToolView(tool),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -124,9 +143,104 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
-/// The Qpic wordmark shown at the left of the app bar (Requirement 4.1).
-class _QpicBrand extends StatelessWidget {
-  const _QpicBrand({required this.palette});
+/// Left navigation rail with the Qpic brand mark at the top, the four tool
+/// destinations, and a Help control + vertical theme switcher pinned to the
+/// bottom.
+class _QpicNavRail extends StatelessWidget {
+  const _QpicNavRail({
+    required this.palette,
+    required this.theme,
+    required this.selected,
+    required this.enabled,
+    required this.onSelected,
+    required this.themeController,
+    this.sidecarBootstrap,
+  });
+
+  final QpicPalette? palette;
+  final ThemeData theme;
+  final QpicTool selected;
+  final bool enabled;
+  final ValueChanged<QpicTool> onSelected;
+  final ThemeController themeController;
+  final SidecarBootstrap? sidecarBootstrap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color railColor = palette?.appBar ?? theme.colorScheme.surface;
+    final Color borderColor = palette?.border ?? theme.dividerColor;
+
+    return Container(
+      width: 76,
+      decoration: BoxDecoration(
+        color: railColor,
+        border: Border(
+          right: BorderSide(color: borderColor, width: 1),
+        ),
+      ),
+      child: CustomScrollView(
+        physics: const ClampingScrollPhysics(),
+        slivers: <Widget>[
+          SliverToBoxAdapter(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                const SizedBox(height: 10),
+                _QpicBrandMark(palette: palette),
+                const SizedBox(height: 12),
+                // Tool destinations.
+                for (final tool in QpicTool.values)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: _NavRailItem(
+                      tool: tool,
+                      active: tool == selected,
+                      enabled: enabled,
+                      onTap: () => onSelected(tool),
+                      palette: palette,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: <Widget>[
+                  AppCredit(palette: palette),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: 40,
+                    height: 1,
+                    color: borderColor,
+                  ),
+                  const SizedBox(height: 4),
+                  // Help control.
+                  _NavHelpButton(palette: palette, enabled: enabled),
+                  const SizedBox(height: 4),
+                  // Settings control.
+                  _NavSettingsButton(
+                    themeController: themeController,
+                    sidecarBootstrap: sidecarBootstrap,
+                    enabled: enabled,
+                    palette: palette,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The Qpic brand mark shown at the top of the rail (Requirement 4.1).
+class _QpicBrandMark extends StatelessWidget {
+  const _QpicBrandMark({required this.palette});
 
   final QpicPalette? palette;
 
@@ -134,109 +248,172 @@ class _QpicBrand extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final brand = palette?.brand ?? theme.colorScheme.primary;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Icon(Icons.crop, color: brand, size: 22),
-        const SizedBox(width: 8),
-        Text(
-          'Qpic',
-          key: const ValueKey<String>('shell-brand'),
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: palette?.appBarText ?? theme.colorScheme.onSurface,
+
+    return Container(
+      key: const ValueKey<String>('shell-brand'),
+      width: 42,
+      height: 42,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: <BoxShadow>[
+          BoxShadow(
+            color: brand.withValues(alpha: 0.45),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Horizontal row of the four tool tabs (Requirement 4.2, 4.3).
-class _ToolTabBar extends StatelessWidget {
-  const _ToolTabBar({
-    required this.selected,
-    required this.enabled,
-    required this.onSelected,
-  });
-
-  final QpicTool selected;
-  final bool enabled;
-  final ValueChanged<QpicTool> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          for (final tool in QpicTool.values)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: _ToolTab(
-                tool: tool,
-                active: tool == selected,
-                enabled: enabled,
-                onTap: () => onSelected(tool),
-              ),
-            ),
         ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset(
+          'assets/logo.png',
+          fit: BoxFit.cover,
+        ),
       ),
     );
   }
 }
 
-/// A single selectable tool tab. Marks itself active when selected
-/// (Requirement 4.3) and exposes a stable key for widget tests.
-class _ToolTab extends StatelessWidget {
-  const _ToolTab({
+/// A single navigation-rail destination. Marks itself active when selected
+/// (Requirement 4.3) and exposes the stable `tool-tab-{name}` key the widget
+/// tests drive.
+class _NavRailItem extends StatefulWidget {
+  const _NavRailItem({
     required this.tool,
     required this.active,
     required this.enabled,
     required this.onTap,
+    required this.palette,
   });
 
   final QpicTool tool;
   final bool active;
   final bool enabled;
   final VoidCallback onTap;
+  final QpicPalette? palette;
+
+  @override
+  State<_NavRailItem> createState() => _NavRailItemState();
+}
+
+class _NavRailItemState extends State<_NavRailItem> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final palette = theme.extension<QpicPalette>();
+    final palette = widget.palette;
     final activeColor = palette?.brand ?? theme.colorScheme.primary;
-    final inactiveColor =
-        palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+    final textColor = palette?.appBarText ?? theme.colorScheme.onSurface;
+    final inactiveColor = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+    final fieldColor = palette?.field ?? theme.colorScheme.surfaceContainerHighest;
 
-    return TextButton(
-      key: ValueKey<String>('tool-tab-${tool.name}'),
-      onPressed: enabled ? onTap : null,
-      style: TextButton.styleFrom(
-        foregroundColor: active ? activeColor : inactiveColor,
-        textStyle: theme.textTheme.titleSmall?.copyWith(
-          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-        ),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(8)),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Text(tool.label),
-          const SizedBox(height: 4),
-          // Active-tab underline indicator.
-          Container(
-            height: 2,
-            width: 24,
+    final Color fgColor = widget.active
+        ? activeColor
+        : (_hovered ? textColor : inactiveColor);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      child: GestureDetector(
+        key: ValueKey<String>('tool-tab-${widget.tool.name}'),
+        onTap: widget.enabled ? widget.onTap : null,
+        child: Opacity(
+          opacity: widget.enabled ? 1.0 : 0.4,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            width: 60,
+            padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
-              color: active ? activeColor : Colors.transparent,
-              borderRadius: BorderRadius.circular(2),
+              color: widget.active
+                  ? activeColor.withValues(alpha: 0.12)
+                  : (_hovered ? fieldColor : Colors.transparent),
+              borderRadius: BorderRadius.circular(12),
+              border: widget.active
+                  ? Border.all(color: activeColor.withValues(alpha: 0.5))
+                  : Border.all(color: Colors.transparent),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(widget.tool.icon, size: 21, color: fgColor),
+                const SizedBox(height: 5),
+                Text(
+                  widget.tool.shortLabel,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: widget.active ? FontWeight.w700 : FontWeight.w500,
+                    color: fgColor,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The Help control pinned near the bottom of the rail.
+class _NavHelpButton extends StatelessWidget {
+  const _NavHelpButton({required this.palette, required this.enabled});
+
+  final QpicPalette? palette;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+
+    return IconButton(
+      key: const ValueKey<String>('shell-help-button'),
+      tooltip: 'Help',
+      icon: Icon(Icons.help_outline_rounded, size: 21, color: muted),
+      onPressed: enabled ? () => HelpScreen.open(context) : null,
+      style: IconButton.styleFrom(
+        padding: const EdgeInsets.all(8),
+        minimumSize: const Size(40, 40),
+      ),
+    );
+  }
+}
+
+/// The Settings gear control pinned near the bottom of the rail.
+class _NavSettingsButton extends StatelessWidget {
+  const _NavSettingsButton({
+    required this.themeController,
+    required this.sidecarBootstrap,
+    required this.enabled,
+    required this.palette,
+  });
+
+  final ThemeController themeController;
+  final SidecarBootstrap? sidecarBootstrap;
+  final bool enabled;
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+
+    return IconButton(
+      key: const ValueKey<String>('shell-settings-button'),
+      tooltip: 'Settings',
+      icon: Icon(Icons.settings_outlined, size: 21, color: muted),
+      onPressed: () => SettingsDialog.show(
+        context,
+        themeController,
+        sidecarBootstrap: sidecarBootstrap,
+      ),
+      style: IconButton.styleFrom(
+        padding: const EdgeInsets.all(8),
+        minimumSize: const Size(40, 40),
       ),
     );
   }

@@ -164,7 +164,7 @@ Implementation languages (from the design): **Dart/Flutter** for the desktop cli
   - [x] 12.5 Wire Smart analyze entry into the Review Canvas
     - From Auto Crop with Smart on, call `POST /api/analyze` with `dpi, marker_style, has_questions, question_pages, has_answers, answer_pages, use_ai, answer_sheet`; open the canvas regardless of `needs_review`; load each page from its `preview_url`; message whether finalized output includes an answer sheet based on `answer_key_count`; on engine error show `detail` and do not open the canvas
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.7_
-  - [x] 12.6 Implement finalize and download from review
+  - [-] 12.6 Implement finalize and download from review
     - Build a `FinalizeRequest` from kept auto items plus drawn/re-selected items (each with type and page-percentage region) and the active tool's output config; call `POST /api/finalize`; then offer Combined/Questions/Solutions downloads via the response URLs
     - _Requirements: 6.6, 11.1, 11.2, 11.3, 11.4, 11.5_
   - [x] 12.7 Write widget tests for canvas gesture flows

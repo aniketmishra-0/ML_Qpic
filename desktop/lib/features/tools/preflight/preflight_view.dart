@@ -18,8 +18,10 @@ import 'package:file_selector/file_selector.dart' show XFile;
 import 'package:flutter/material.dart';
 
 import '../../../core/theme_controller.dart';
+import '../../../models/crop.dart';
 import '../../../models/tools.dart';
 import '../../../widgets/drop_target.dart';
+import '../../../widgets/pdf_preview_dialog.dart';
 import 'preflight_controller.dart';
 
 /// Stateless surface for the Preflight tool. Listens to [controller] so every
@@ -30,6 +32,7 @@ class PreflightView extends StatelessWidget {
     super.key,
     required this.controller,
     this.onPickFile,
+    this.initiallyExpanded = false,
   });
 
   /// Backing panel state. The view never mutates anything other than this.
@@ -38,6 +41,9 @@ class PreflightView extends StatelessWidget {
   /// Invoked when the user taps "Choose PDF". When null the affordance is
   /// disabled (the drop target still works).
   final VoidCallback? onPickFile;
+
+  /// Whether collapsible lists should be expanded by default (useful in tests).
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -50,41 +56,118 @@ class PreflightView extends StatelessWidget {
   Widget _buildPanel(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
+    
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool wide = constraints.maxWidth >= 900;
+        final result = controller.result;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
+        if (wide) {
+          return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              _Header(palette: palette),
-              const SizedBox(height: 16),
-              _DropZone(
-                controller: controller,
-                onPickFile: onPickFile,
-                palette: palette,
+            children: [
+              SizedBox(
+                width: 380,
+                child: Material(
+                  color: palette?.panel ?? theme.colorScheme.surface,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        _Header(palette: palette),
+                        const SizedBox(height: 24),
+                        _DropZone(
+                          controller: controller,
+                          onPickFile: onPickFile,
+                          palette: palette,
+                        ),
+                        if (controller.errorText != null) ...<Widget>[
+                          const SizedBox(height: 16),
+                          _ErrorBanner(message: controller.errorText!, palette: palette),
+                        ],
+                        const SizedBox(height: 32),
+                        _PreflightButton(controller: controller),
+                        if (result != null && result.mixedPageSizes) ...<Widget>[
+                          const SizedBox(height: 24),
+                          _FixPageSizesSection(controller: controller, palette: palette),
+                        ],
+                        if (controller.fixResult != null) ...<Widget>[
+                          const SizedBox(height: 24),
+                          _FixResultCard(controller: controller, palette: palette),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              if (controller.errorText != null) ...<Widget>[
-                const SizedBox(height: 16),
-                _ErrorBanner(
-                    message: controller.errorText!, palette: palette),
-              ],
-              const SizedBox(height: 24),
-              _PreflightButton(controller: controller),
-              if (controller.result != null) ...<Widget>[
-                const SizedBox(height: 24),
-                _ResultCard(controller: controller, palette: palette),
-              ],
-              if (controller.fixResult != null) ...<Widget>[
-                const SizedBox(height: 24),
-                _FixResultCard(controller: controller, palette: palette),
-              ],
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: Container(
+                  color: palette?.background ?? theme.colorScheme.surface,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(32),
+                      child: result != null
+                          ? ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 600),
+                              child: _ResultCard(
+                                controller: controller,
+                                palette: palette,
+                                initiallyExpanded: initiallyExpanded,
+                              ),
+                            )
+                          : ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 500),
+                              child: _ResultPlaceholder(palette: palette),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
             ],
+          );
+        }
+
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _Header(palette: palette),
+                  const SizedBox(height: 16),
+                  _DropZone(
+                    controller: controller,
+                    onPickFile: onPickFile,
+                    palette: palette,
+                  ),
+                  if (controller.errorText != null) ...<Widget>[
+                    const SizedBox(height: 16),
+                    _ErrorBanner(message: controller.errorText!, palette: palette),
+                  ],
+                  const SizedBox(height: 24),
+                  _PreflightButton(controller: controller),
+                  if (result != null) ...<Widget>[
+                    const SizedBox(height: 24),
+                    _ResultCard(
+                      controller: controller,
+                      palette: palette,
+                      initiallyExpanded: initiallyExpanded,
+                    ),
+                  ],
+                  if (controller.fixResult != null) ...<Widget>[
+                    const SizedBox(height: 24),
+                    _FixResultCard(controller: controller, palette: palette),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -187,6 +270,15 @@ class _DropZone extends StatelessWidget {
                   ),
                 ),
               ),
+              if (controller.hasFile) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  key: const ValueKey<String>('preflight-clear'),
+                  icon: const Icon(Icons.clear),
+                  tooltip: 'Clear selection',
+                  onPressed: () => controller.clear(),
+                ),
+              ],
             ],
           ),
         ),
@@ -253,14 +345,16 @@ class _PreflightButton extends StatelessWidget {
   }
 }
 
-/// The result card: verdict headline, page count, page sizes, checks, fonts,
-/// images, page details, and the fix-page-sizes action when mixed_page_sizes
-/// is true (Requirements 14.2, 14.3, 14.4).
 class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.controller, required this.palette});
+  const _ResultCard({
+    required this.controller,
+    required this.palette,
+    required this.initiallyExpanded,
+  });
 
   final PreflightController controller;
   final QpicPalette? palette;
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -278,23 +372,38 @@ class _ResultCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            _VerdictRow(verdict: result.verdict, palette: palette),
+            _VerdictRow(
+              verdict: result.verdict,
+              palette: palette,
+              onViewPdf: () => _viewOriginalPdf(context),
+            ),
             const SizedBox(height: 16),
             _SummaryStats(result: result, palette: palette),
             const SizedBox(height: 16),
             _ChecksList(checks: result.checks, palette: palette),
             if (result.fonts.isNotEmpty) ...<Widget>[
               const SizedBox(height: 16),
-              _FontsList(fonts: result.fonts, palette: palette),
+              _FontsList(
+                fonts: result.fonts,
+                palette: palette,
+                initiallyExpanded: initiallyExpanded,
+              ),
             ],
             if (result.images.isNotEmpty) ...<Widget>[
               const SizedBox(height: 16),
-              _ImagesList(images: result.images, palette: palette),
+              _ImagesList(
+                images: result.images,
+                palette: palette,
+                initiallyExpanded: initiallyExpanded,
+              ),
             ],
             if (result.pageDetails.isNotEmpty) ...<Widget>[
               const SizedBox(height: 16),
               _PageDetailsList(
-                  pageDetails: result.pageDetails, palette: palette),
+                pageDetails: result.pageDetails,
+                palette: palette,
+                initiallyExpanded: initiallyExpanded,
+              ),
             ],
             if (result.mixedPageSizes) ...<Widget>[
               const SizedBox(height: 24),
@@ -306,13 +415,39 @@ class _ResultCard extends StatelessWidget {
       ),
     );
   }
+
+  void _viewOriginalPdf(BuildContext context) {
+    final res = controller.result;
+    if (res == null || res.jobId == null) return;
+
+    final pages = res.pages
+        .map((p) => PageInfo(
+              page: p.page,
+              widthPt: p.width,
+              heightPt: p.height,
+              previewUrl: p.previewUrl,
+            ))
+        .toList();
+
+    PdfPreviewDialog.open(
+      context,
+      title: controller.fileName ?? 'preflight.pdf',
+      pages: pages,
+      resolveUrl: (url) => controller.apiClient.resolveUri(url).toString(),
+    );
+  }
 }
 
 class _VerdictRow extends StatelessWidget {
-  const _VerdictRow({required this.verdict, required this.palette});
+  const _VerdictRow({
+    required this.verdict,
+    required this.palette,
+    this.onViewPdf,
+  });
 
   final String verdict;
   final QpicPalette? palette;
+  final VoidCallback? onViewPdf;
 
   @override
   Widget build(BuildContext context) {
@@ -344,6 +479,15 @@ class _VerdictRow extends StatelessWidget {
             color: color,
           ),
         ),
+        if (onViewPdf != null) ...[
+          const Spacer(),
+          OutlinedButton.icon(
+            key: const ValueKey<String>('preflight-view-original'),
+            onPressed: onViewPdf,
+            icon: const Icon(Icons.visibility),
+            label: const Text('View PDF'),
+          ),
+        ],
       ],
     );
   }
@@ -369,7 +513,9 @@ class _SummaryStats extends StatelessWidget {
         ),
         _Stat(
           label: 'Page sizes',
-          value: result.pageSizes.join(', '),
+          value: result.distinctPageSizes.isNotEmpty
+              ? result.distinctPageSizes.join(', ')
+              : result.pageSizes.join(', '),
           valueKey: const ValueKey<String>('preflight-page-sizes'),
           palette: palette,
         ),
@@ -498,97 +644,101 @@ class _ChecksList extends StatelessWidget {
 }
 
 class _FontsList extends StatelessWidget {
-  const _FontsList({required this.fonts, required this.palette});
+  const _FontsList({
+    required this.fonts,
+    required this.palette,
+    required this.initiallyExpanded,
+  });
 
   final List<PreflightFontModel> fonts;
   final QpicPalette? palette;
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      key: const ValueKey<String>('preflight-fonts'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text(
-          'Fonts',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 8),
-        for (final font in fonts)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    font.name,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: palette?.text ??
-                          theme.colorScheme.onSurface,
+    return _CollapsibleSection(
+      title: 'Fonts (${fonts.length})',
+      palette: palette,
+      initiallyExpanded: initiallyExpanded,
+      child: Column(
+        key: const ValueKey<String>('preflight-fonts'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          for (final font in fonts)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: <Widget>[
+                  Expanded(
+                    child: Text(
+                      font.name,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: palette?.text ??
+                            theme.colorScheme.onSurface,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  font.type,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: palette?.muted ??
-                        theme.colorScheme.onSurfaceVariant,
+                  const SizedBox(width: 8),
+                  Text(
+                    font.type,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: palette?.muted ??
+                          theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                if (font.embedded)
-                  Icon(Icons.check, size: 16,
-                      color: palette?.success ?? Colors.green)
-                else
-                  Icon(Icons.close, size: 16,
-                      color: palette?.warn ?? Colors.orange),
-              ],
+                  const SizedBox(width: 8),
+                  if (font.embedded)
+                    Icon(Icons.check, size: 16,
+                        color: palette?.success ?? Colors.green)
+                  else
+                    Icon(Icons.close, size: 16,
+                        color: palette?.warn ?? Colors.orange),
+                ],
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
 
 class _ImagesList extends StatelessWidget {
-  const _ImagesList({required this.images, required this.palette});
+  const _ImagesList({
+    required this.images,
+    required this.palette,
+    required this.initiallyExpanded,
+  });
 
   final List<PreflightImageModel> images;
   final QpicPalette? palette;
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      key: const ValueKey<String>('preflight-images'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text(
-          'Images',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 8),
-        for (final img in images)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              'Page ${img.page}: ${img.width}×${img.height} '
-              '${img.colorspace} ${img.dpi.toStringAsFixed(0)} DPI '
-              '(${img.bpc} bpc)',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: palette?.text ?? theme.colorScheme.onSurface,
+    return _CollapsibleSection(
+      title: 'Images (${images.length})',
+      palette: palette,
+      initiallyExpanded: initiallyExpanded,
+      child: Column(
+        key: const ValueKey<String>('preflight-images'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          for (final img in images)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                'Page ${img.page}: ${img.width}×${img.height} '
+                '${img.colorspace} ${img.dpi.toStringAsFixed(0)} DPI '
+                '(${img.bpc} bpc)',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: palette?.text ?? theme.colorScheme.onSurface,
+                ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -597,39 +747,38 @@ class _PageDetailsList extends StatelessWidget {
   const _PageDetailsList({
     required this.pageDetails,
     required this.palette,
+    required this.initiallyExpanded,
   });
 
   final List<PreflightPageDetail> pageDetails;
   final QpicPalette? palette;
+  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
-      key: const ValueKey<String>('preflight-page-details'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        Text(
-          'Page details',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 8),
-        for (final pd in pageDetails)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Text(
-              'Page ${pd.page}: ${pd.format} ${pd.orientation} '
-              '(${pd.wMm.toStringAsFixed(1)}×'
-              '${pd.hMm.toStringAsFixed(1)} mm)',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: palette?.text ?? theme.colorScheme.onSurface,
+    return _CollapsibleSection(
+      title: 'Page Details (${pageDetails.length})',
+      palette: palette,
+      initiallyExpanded: initiallyExpanded,
+      child: Column(
+        key: const ValueKey<String>('preflight-page-details'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          for (final pd in pageDetails)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                'Page ${pd.page}: ${pd.format} ${pd.orientation} '
+                '(${pd.wMm.toStringAsFixed(1)}×'
+                '${pd.hMm.toStringAsFixed(1)} mm)',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: palette?.text ?? theme.colorScheme.onSurface,
+                ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -871,13 +1020,163 @@ class _FixResultCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 16),
-            FilledButton.icon(
-              key: const ValueKey<String>('preflight-fix-download'),
-              onPressed: controller.canDownload
-                  ? () => controller.download()
-                  : null,
-              icon: const Icon(Icons.download),
-              label: const Text('Download normalized PDF'),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: FilledButton.icon(
+                    key: const ValueKey<String>('preflight-fix-download'),
+                    onPressed: controller.canDownload
+                        ? () => controller.download()
+                        : null,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Download PDF'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey<String>('preflight-fix-view'),
+                    onPressed: controller.fixResult != null
+                        ? () => _viewFixedPdf(context)
+                        : null,
+                    icon: const Icon(Icons.visibility),
+                    label: const Text('View'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _viewFixedPdf(BuildContext context) {
+    final fixResult = controller.fixResult;
+    if (fixResult == null) return;
+
+    final pages = fixResult.pages
+        .map((p) => PageInfo(
+              page: p.page,
+              widthPt: p.width,
+              heightPt: p.height,
+              previewUrl: p.previewUrl,
+            ))
+        .toList();
+
+    PdfPreviewDialog.open(
+      context,
+      title: 'normalized_${controller.fileName ?? "fixed.pdf"}',
+      pages: pages,
+      resolveUrl: (url) => controller.apiClient.resolveUri(url).toString(),
+    );
+  }
+}
+
+class _CollapsibleSection extends StatefulWidget {
+  const _CollapsibleSection({
+    required this.title,
+    required this.child,
+    required this.palette,
+    this.initiallyExpanded = false,
+  });
+
+  final String title;
+  final Widget child;
+  final QpicPalette? palette;
+  final bool initiallyExpanded;
+
+  @override
+  State<_CollapsibleSection> createState() => _CollapsibleSectionState();
+}
+
+class _CollapsibleSectionState extends State<_CollapsibleSection> {
+  late bool _expanded = widget.initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: widget.palette?.text ?? theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+                Icon(
+                  _expanded ? Icons.expand_less : Icons.expand_more,
+                  color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_expanded) ...[
+          const SizedBox(height: 8),
+          widget.child,
+        ],
+      ],
+    );
+  }
+}
+
+class _ResultPlaceholder extends StatelessWidget {
+  const _ResultPlaceholder({required this.palette});
+
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+    final border = palette?.border ?? theme.dividerColor;
+
+    return Card(
+      color: palette?.panel ?? theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: border),
+      ),
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.checklist_rtl_rounded,
+              size: 48,
+              color: muted.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Inspection Report',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: palette?.text ?? theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Once preflight check completes, the print-readiness verdict, warning checks, font/image tables, and geometry details will be available here.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: muted,
+                height: 1.4,
+              ),
             ),
           ],
         ),

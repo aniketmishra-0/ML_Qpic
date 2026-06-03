@@ -25,6 +25,7 @@ class CompressResponse {
     required this.downloadUrl,
     this.targetMet,
     this.note = '',
+    this.pages = const <EditPageModel>[],
   });
 
   final String jobId;
@@ -37,6 +38,7 @@ class CompressResponse {
   final bool? targetMet;
   final String note;
   final String downloadUrl;
+  final List<EditPageModel> pages;
 
   factory CompressResponse.fromJson(Map<String, dynamic> json) {
     return CompressResponse(
@@ -48,6 +50,9 @@ class CompressResponse {
       targetMet: json['target_met'] as bool?,
       note: json['note'] as String? ?? '',
       downloadUrl: json['download_url'] as String,
+      pages: ((json['pages'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((e) => EditPageModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -61,6 +66,7 @@ class CompressResponse {
       'target_met': targetMet,
       'note': note,
       'download_url': downloadUrl,
+      'pages': pages.map((e) => e.toJson()).toList(),
     };
   }
 }
@@ -159,6 +165,41 @@ class EditPageModel {
   }
 }
 
+/// One selectable vector graphic or image object on a page.
+class VectorObjectModel {
+  const VectorObjectModel({
+    required this.id,
+    required this.page,
+    required this.type,
+    required this.bbox,
+  });
+
+  final String id;
+  final int page;
+  final String type; // "image" or "vector"
+  final List<double> bbox;
+
+  factory VectorObjectModel.fromJson(Map<String, dynamic> json) {
+    return VectorObjectModel(
+      id: json['id'] as String,
+      page: (json['page'] as num).toInt(),
+      type: json['type'] as String,
+      bbox: (json['bbox'] as List<dynamic>)
+          .map((e) => (e as num).toDouble())
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'id': id,
+      'page': page,
+      'type': type,
+      'bbox': bbox,
+    };
+  }
+}
+
 /// All editable text spans for a PDF opened in the editor.
 class EditExtractResponse {
   const EditExtractResponse({
@@ -166,12 +207,14 @@ class EditExtractResponse {
     required this.hasText,
     required this.pages,
     required this.spans,
+    this.vectorObjects = const <VectorObjectModel>[],
   });
 
   final String jobId;
   final bool hasText;
   final List<EditPageModel> pages;
   final List<EditableSpanModel> spans;
+  final List<VectorObjectModel> vectorObjects;
 
   factory EditExtractResponse.fromJson(Map<String, dynamic> json) {
     return EditExtractResponse(
@@ -183,6 +226,9 @@ class EditExtractResponse {
       spans: (json['spans'] as List<dynamic>)
           .map((e) => EditableSpanModel.fromJson(e as Map<String, dynamic>))
           .toList(),
+      vectorObjects: ((json['vector_objects'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((e) => VectorObjectModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -192,6 +238,7 @@ class EditExtractResponse {
       'has_text': hasText,
       'pages': pages.map((e) => e.toJson()).toList(),
       'spans': spans.map((e) => e.toJson()).toList(),
+      'vector_objects': vectorObjects.map((e) => e.toJson()).toList(),
     };
   }
 }
@@ -600,6 +647,8 @@ class PreflightResponse {
     this.distinctPageSizes = const <String>[],
     this.mixedPageSizes = false,
     this.pageDetails = const <PreflightPageDetail>[],
+    this.jobId,
+    this.pages = const <EditPageModel>[],
   });
 
   /// pass | warn | fail.
@@ -616,6 +665,8 @@ class PreflightResponse {
   final List<String> distinctPageSizes;
   final bool mixedPageSizes;
   final List<PreflightPageDetail> pageDetails;
+  final String? jobId;
+  final List<EditPageModel> pages;
 
   factory PreflightResponse.fromJson(Map<String, dynamic> json) {
     return PreflightResponse(
@@ -649,6 +700,10 @@ class PreflightResponse {
               .map((e) =>
                   PreflightPageDetail.fromJson(e as Map<String, dynamic>))
               .toList(),
+      jobId: json['job_id'] as String?,
+      pages: ((json['pages'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((e) => EditPageModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -667,6 +722,8 @@ class PreflightResponse {
       'distinct_page_sizes': distinctPageSizes,
       'mixed_page_sizes': mixedPageSizes,
       'page_details': pageDetails.map((e) => e.toJson()).toList(),
+      'job_id': jobId,
+      'pages': pages.map((e) => e.toJson()).toList(),
     };
   }
 }
@@ -682,6 +739,7 @@ class PreflightFixResponse {
     required this.pagesChanged,
     required this.note,
     required this.downloadUrl,
+    this.pages = const <EditPageModel>[],
   });
 
   final String jobId;
@@ -692,6 +750,7 @@ class PreflightFixResponse {
   final int pagesChanged;
   final String note;
   final String downloadUrl;
+  final List<EditPageModel> pages;
 
   factory PreflightFixResponse.fromJson(Map<String, dynamic> json) {
     return PreflightFixResponse(
@@ -703,6 +762,9 @@ class PreflightFixResponse {
       pagesChanged: (json['pages_changed'] as num).toInt(),
       note: json['note'] as String,
       downloadUrl: json['download_url'] as String,
+      pages: ((json['pages'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((e) => EditPageModel.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -716,6 +778,45 @@ class PreflightFixResponse {
       'pages_changed': pagesChanged,
       'note': note,
       'download_url': downloadUrl,
+      'pages': pages.map((e) => e.toJson()).toList(),
     };
   }
 }
+
+// ============================================================================
+//  Enhance
+// ============================================================================
+
+/// Result of a PDF enhancement job.
+class EnhanceResponse {
+  const EnhanceResponse({
+    required this.jobId,
+    required this.pagesTotal,
+    required this.downloadUrl,
+    this.note = '',
+  });
+
+  final String jobId;
+  final int pagesTotal;
+  final String downloadUrl;
+  final String note;
+
+  factory EnhanceResponse.fromJson(Map<String, dynamic> json) {
+    return EnhanceResponse(
+      jobId: json['job_id'] as String,
+      pagesTotal: (json['pages_total'] as num).toInt(),
+      downloadUrl: json['download_url'] as String,
+      note: json['note'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'job_id': jobId,
+      'pages_total': pagesTotal,
+      'download_url': downloadUrl,
+      'note': note,
+    };
+  }
+}
+

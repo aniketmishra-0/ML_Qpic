@@ -115,6 +115,12 @@ void main() {
           (j) => FinalizeItem.fromJson(j).toJson());
     });
 
+    test('CropPreviewRequest', () {
+      _runProperty('CropPreviewRequest', _kCropPreviewRequest,
+          (r) => _genCropPreviewRequest(r),
+          (j) => CropPreviewRequest.fromJson(j).toJson());
+    });
+
     test('FinalizeRequest', () {
       _runProperty('FinalizeRequest', _kFinalizeRequest,
           (r) => _genFinalizeRequest(r),
@@ -396,6 +402,8 @@ _JsonMap _genSegment(math.Random r) => <String, dynamic>{
       'y_end_pct': _d(r),
       'x_start_pct': _d(r),
       'x_end_pct': _d(r),
+      'x_offset_pct': _d(r, maxv: 50),
+      'y_offset_pct': _d(r, maxv: 50),
     };
 
 List<_JsonMap> _segList(math.Random r) =>
@@ -479,6 +487,20 @@ _JsonMap _genFinalizeItem(math.Random r) => <String, dynamic>{
       'is_solution': _b(r),
       'segments': _segList(r),
       'source': _pick(r, _sources),
+      'align': _nbool(r),
+    };
+
+_JsonMap _genCropPreviewRequest(math.Random r) => <String, dynamic>{
+      'job_id': _str(r),
+      'q_num': _str(r, min: 1, max: 5),
+      'is_solution': _b(r),
+      'segments': _segList(r),
+      'source': _pick(r, _sources),
+      'align': _nbool(r),
+      'dpi': _int(r, min: 72, max: 600),
+      'padding': _int(r, max: 200),
+      'image_format': _pick(r, _imageFormats),
+      'jpg_quality': _int(r, min: 1, max: 100),
     };
 
 _JsonMap _genFinalizeRequest(math.Random r) => <String, dynamic>{
@@ -557,6 +579,7 @@ _JsonMap _genCompressResponse(math.Random r) => <String, dynamic>{
       'target_met': _nbool(r),
       'note': _str(r, min: 0, max: 30),
       'download_url': _str(r),
+      'pages': List.generate(r.nextInt(3), (_) => _genEditPageModel(r)),
     };
 
 _JsonMap _genEditableSpanModel(math.Random r) => <String, dynamic>{
@@ -578,11 +601,19 @@ _JsonMap _genEditPageModel(math.Random r) => <String, dynamic>{
       'preview_url': _str(r),
     };
 
+_JsonMap _genVectorObjectModel(math.Random r) => <String, dynamic>{
+      'id': _str(r),
+      'page': _int(r, min: 1, max: 50),
+      'type': _pick(r, ['image', 'vector']),
+      'bbox': _bbox(r),
+    };
+
 _JsonMap _genEditExtractResponse(math.Random r) => <String, dynamic>{
       'job_id': _str(r),
       'has_text': _b(r),
       'pages': List.generate(r.nextInt(4), (_) => _genEditPageModel(r)),
       'spans': List.generate(r.nextInt(4), (_) => _genEditableSpanModel(r)),
+      'vector_objects': List.generate(r.nextInt(4), (_) => _genVectorObjectModel(r)),
     };
 
 _JsonMap _genEditOpModel(math.Random r) => <String, dynamic>{
@@ -680,6 +711,8 @@ _JsonMap _genPreflightResponse(math.Random r) => <String, dynamic>{
       'mixed_page_sizes': _b(r),
       'page_details':
           List.generate(r.nextInt(4), (_) => _genPreflightPageDetail(r)),
+      'job_id': r.nextBool() ? _str(r) : null,
+      'pages': List.generate(r.nextInt(3), (_) => _genEditPageModel(r)),
     };
 
 _JsonMap _genPreflightFixResponse(math.Random r) => <String, dynamic>{
@@ -691,6 +724,7 @@ _JsonMap _genPreflightFixResponse(math.Random r) => <String, dynamic>{
       'pages_changed': _int(r, max: 1000),
       'note': _str(r, min: 0, max: 30),
       'download_url': _str(r),
+      'pages': List.generate(r.nextInt(3), (_) => _genEditPageModel(r)),
     };
 
 // ===========================================================================
@@ -703,6 +737,8 @@ const Set<String> _kQuestionSegment = {
   'y_end_pct',
   'x_start_pct',
   'x_end_pct',
+  'x_offset_pct',
+  'y_offset_pct',
 };
 
 const Set<String> _kDetectedQuestion = {
@@ -783,6 +819,20 @@ const Set<String> _kFinalizeItem = {
   'is_solution',
   'segments',
   'source',
+  'align',
+};
+
+const Set<String> _kCropPreviewRequest = {
+  'job_id',
+  'q_num',
+  'is_solution',
+  'segments',
+  'source',
+  'align',
+  'dpi',
+  'padding',
+  'image_format',
+  'jpg_quality',
 };
 
 const Set<String> _kFinalizeRequest = {
@@ -855,6 +905,7 @@ const Set<String> _kCompressResponse = {
   'target_met',
   'note',
   'download_url',
+  'pages',
 };
 
 const Set<String> _kEditableSpanModel = {
@@ -881,6 +932,7 @@ const Set<String> _kEditExtractResponse = {
   'has_text',
   'pages',
   'spans',
+  'vector_objects',
 };
 
 const Set<String> _kEditOpModel = {
@@ -977,6 +1029,8 @@ const Set<String> _kPreflightResponse = {
   'distinct_page_sizes',
   'mixed_page_sizes',
   'page_details',
+  'job_id',
+  'pages',
 };
 
 const Set<String> _kPreflightFixResponse = {
@@ -988,4 +1042,5 @@ const Set<String> _kPreflightFixResponse = {
   'pages_changed',
   'note',
   'download_url',
+  'pages',
 };

@@ -48,11 +48,18 @@ const String kDetectionCompleteAdvisory =
 /// resolved (re-selecting an item clears its matching note) or a new session is
 /// loaded. Holds no state of its own.
 class ReviewNotesPanel extends StatelessWidget {
-  const ReviewNotesPanel({super.key, required this.controller});
+  const ReviewNotesPanel({
+    super.key,
+    required this.controller,
+    this.searchQuery = '',
+  });
 
   /// The session controller exposing [ReviewController.notes] and the Fix
   /// action's re-select entry point [ReviewController.startReselectForNote].
   final ReviewController controller;
+
+  /// The search filter query entered by the user.
+  final String searchQuery;
 
   @override
   Widget build(BuildContext context) {
@@ -62,10 +69,27 @@ class ReviewNotesPanel extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (BuildContext context, Widget? _) {
-        final List<ReviewNote> notes = controller.notes;
+        final List<ReviewNote> allNotes = controller.notes;
+        final List<ReviewNote> notes = searchQuery.isEmpty
+            ? allNotes
+            : allNotes.where((note) {
+                final query = searchQuery.toLowerCase();
+                final msg = note.message.toLowerCase();
+                final kind = note.kind.toLowerCase();
+                final qNumStr = (note.qNum ?? '').toLowerCase();
+                final prefix = note.isSolution ? 'solution' : 'question';
+                final label = (note.isSolution ? 's' : 'q') + qNumStr;
+                final fullLabel = (note.isSolution ? 'solution' : 'question') + ' ' + qNumStr;
+                return msg.contains(query) ||
+                    kind.contains(query) ||
+                    qNumStr.contains(query) ||
+                    prefix.contains(query) ||
+                    label.contains(query) ||
+                    fullLabel.contains(query);
+              }).toList();
 
         // Empty → the "detection looks complete" advisory (10.2).
-        if (notes.isEmpty) {
+        if (allNotes.isEmpty) {
           return Column(
             key: const ValueKey<String>('review-notes-panel'),
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -79,6 +103,10 @@ class ReviewNotesPanel extends StatelessWidget {
               ),
             ],
           );
+        }
+
+        if (notes.isEmpty) {
+          return const SizedBox.shrink();
         }
 
         // Non-empty → an "Items to Fix" header with a count badge, then one row

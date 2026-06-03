@@ -40,6 +40,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/api_client.dart';
 import '../../core/download_service.dart';
 import '../../core/file_picker_service.dart';
+import '../../core/theme_controller.dart';
 import '../auto_crop/auto_crop_controller.dart'
     show AutoCropBounds, CropImageFormat;
 import '../review/review_controller.dart';
@@ -292,6 +293,13 @@ class ManualCropController extends ChangeNotifier {
       // Load the page previews with an empty item list — every crop is drawn by
       // hand in the canvas (Req 7.2).
       review.loadFromManual(response);
+      // Keep the per-item crop preview in step with this tool's output config so
+      // a preview renders exactly as the finalized download will (Req 7.4).
+      review.setPreviewOutput(
+        dpi: _dpi,
+        imageFormat: _imageFormat.value,
+        jpgQuality: _jpgQuality,
+      );
       _canvasOpen = true;
       return true;
     } on ApiException catch (e) {
@@ -324,6 +332,47 @@ class ManualCropController extends ChangeNotifier {
     if (!_canvasOpen) return;
     _canvasOpen = false;
     review.reset();
+    notifyListeners();
+  }
+
+  /// Resets the whole tool back to its initial state: closes the canvas, drops
+  /// the selected PDF and any error, and restores the independent output config
+  /// (prefixes, start number, image format, JPG quality) and render DPI to
+  /// their defaults. The engine binding is preserved so the tool stays usable.
+  /// A no-op while a prepare-manual request is in flight.
+  void reset([ThemeController? defaults]) {
+    if (_busy) return;
+
+    // Canvas + selected PDF + error.
+    if (_canvasOpen) {
+      _canvasOpen = false;
+      review.reset();
+    }
+    _fileBytes = null;
+    _fileName = null;
+    _errorText = null;
+
+    // Independent output configuration.
+    _questionPrefix = defaults?.defaultQuestionPrefix ?? 'Q';
+    _solutionPrefix = defaults?.defaultSolutionPrefix ?? 'S';
+    _startNumber = AutoCropBounds.startNumberDefault;
+    _imageFormat = defaults?.defaultImageFormat == 'jpg'
+        ? CropImageFormat.jpg
+        : CropImageFormat.png;
+    _jpgQuality = AutoCropBounds.jpgQualityDefault;
+    _dpi = defaults?.defaultDpi ?? AutoCropBounds.dpiDefault;
+
+    notifyListeners();
+  }
+
+  /// Applies default settings loaded from [ThemeController].
+  void applyDefaults(ThemeController controller) {
+    _questionPrefix = controller.defaultQuestionPrefix;
+    _solutionPrefix = controller.defaultSolutionPrefix;
+    _imageFormat = controller.defaultImageFormat == 'jpg'
+        ? CropImageFormat.jpg
+        : CropImageFormat.png;
+    _dpi = controller.defaultDpi;
     notifyListeners();
   }
 

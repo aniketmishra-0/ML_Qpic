@@ -11,6 +11,12 @@ Run it once on each build machine *before* PyInstaller:
 
     python scripts/vendor_tesseract.py            # auto-detect installed tesseract
     python scripts/vendor_tesseract.py --src /opt/homebrew/bin/tesseract
+    python scripts/vendor_tesseract.py --no-prefer-best   # use the host's local tessdata
+
+By default the requested languages are pulled from the high-accuracy
+``tessdata_best`` models (a few MB larger each, noticeably better on math /
+mixed-script scans) rather than the smaller models the build host's Tesseract
+ships. Pass ``--no-prefer-best`` to bundle the host's local copy instead.
 
 Platforms:
 * macOS  — copies the binary + every non-system dylib it depends on (found via
@@ -42,9 +48,13 @@ PROJECT_ROOT = HERE.parent
 DEST = PROJECT_ROOT / "vendor" / "tesseract"
 
 # Official Tesseract language data. ``tessdata_best`` gives the most accurate
-# (LSTM) models; we fall back to the lighter ``tessdata`` repo if a language
-# isn't in _best. Used to fetch languages an installed Tesseract didn't ship
-# (e.g. the Windows/choco build has no Hindi).
+# (LSTM) models; we fall back to the standard ``tessdata`` repo if a language
+# isn't in _best. By default the build prefers these over whatever the build
+# host's Tesseract shipped, because Homebrew (macOS) and the choco/UB-Mannheim
+# build (Windows) install the smaller, less accurate integer LSTM models — so
+# copying the local copy would bake worse OCR into the bundle. Downloading the
+# _best models instead costs only a few MB extra per language and noticeably
+# improves recognition on math / mixed-script exam scans.
 _TESSDATA_URLS = (
     "https://github.com/tesseract-ocr/tessdata_best/raw/main/{lang}.traineddata",
     "https://github.com/tesseract-ocr/tessdata/raw/main/{lang}.traineddata",
@@ -289,6 +299,23 @@ def main() -> int:
         default="eng,hin,osd",
         help="Comma-separated traineddata languages to include (default: eng,hin,osd).",
     )
+    parser.add_argument(
+        "--prefer-best",
+        dest="prefer_best",
+        action="store_true",
+        default=True,
+        help=(
+            "Download the high-accuracy tessdata_best models instead of copying "
+            "the build host's (usually smaller/less accurate) local copy. On by "
+            "default; falls back to the local copy if a download fails."
+        ),
+    )
+    parser.add_argument(
+        "--no-prefer-best",
+        dest="prefer_best",
+        action="store_false",
+        help="Use the build host's locally installed tessdata instead of downloading tessdata_best.",
+    )
     args = parser.parse_args()
 
     binary = _detect_binary(args.src)
@@ -305,32 +332,60 @@ def main() -> int:
     else:
         _vendor_linux(binary, DEST)
 
-    # Copy language data into vendor/tesseract/tessdata, downloading any the
-    # installed Tesseract didn't ship (so e.g. Hindi is present on Windows too).
+    # Assemble language data into vendor/tesseract/tessdata.
+    #
+    # With --prefer-best (default) we DOWNLOAD the high-accuracy tessdata_best
+    # model for each requested language, because the build host's local copy is
+    # usually the smaller, less accurate model (Homebrew on macOS, choco /
+    # UB-Mannheim on Windows). We only fall back to the local copy for a
+    # language whose download failed (e.g. offline build machine), so the bundle
+    # never ends up with no data for a requested language.
+    #
+    # With --no-prefer-best we keep the original behaviour: copy whatever the
+    # local Tesseract shipped, downloading only the languages it was missing.
     wanted = {l.strip() for l in args.langs.split(",") if l.strip()}
     dst_tessdata = DEST / "tessdata"
     dst_tessdata.mkdir(parents=True, exist_ok=True)
 
     tessdata = _find_tessdata(binary)
-    copied: set[str] = set()
+    local_models: dict[str, Path] = {}
     if tessdata:
         for td in tessdata.glob("*.traineddata"):
             if not wanted or td.stem in wanted:
-                shutil.copy2(td, dst_tessdata / td.name)
-                copied.add(td.stem)
+                local_models[td.stem] = td
     else:
         print("    note: no local tessdata found — will fetch all languages")
 
-    # Fetch any requested language missing from the local install.
-    missing = sorted(wanted - copied)
+    copied: set[str] = set()
     downloaded: list[str] = []
     failed: list[str] = []
-    for lang in missing:
-        print(f"==> Fetching missing language: {lang}")
-        if _download_traineddata(lang, dst_tessdata):
-            downloaded.append(lang)
+
+    for lang in sorted(wanted):
+        if args.prefer_best:
+            # Try the accurate models first; fall back to the local copy.
+            print(f"==> Fetching best model: {lang}")
+            if _download_traineddata(lang, dst_tessdata):
+                downloaded.append(lang)
+                continue
+            local = local_models.get(lang)
+            if local is not None:
+                shutil.copy2(local, dst_tessdata / local.name)
+                copied.add(lang)
+                print(f"    download failed — used local copy for {lang}")
+            else:
+                failed.append(lang)
         else:
-            failed.append(lang)
+            # Prefer the local copy; download only what's missing locally.
+            local = local_models.get(lang)
+            if local is not None:
+                shutil.copy2(local, dst_tessdata / local.name)
+                copied.add(lang)
+                continue
+            print(f"==> Fetching missing language: {lang}")
+            if _download_traineddata(lang, dst_tessdata):
+                downloaded.append(lang)
+            else:
+                failed.append(lang)
 
     have = sorted(copied | set(downloaded))
     if not have:

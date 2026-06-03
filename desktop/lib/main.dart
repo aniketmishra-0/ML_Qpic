@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
 import 'core/sidecar_bootstrap.dart';
@@ -19,6 +20,10 @@ import 'core/theme_controller.dart';
 /// being ready (Requirement 3.10). [QpicApp] starts the bootstrap itself.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Set the window title to Qpic.
+  await windowManager.ensureInitialized();
+  await windowManager.setTitle('Qpic');
 
   final themeController = ThemeController();
   await themeController.load();

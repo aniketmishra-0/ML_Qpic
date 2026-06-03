@@ -185,4 +185,21 @@ void main() {
     await tester.pump();
     expect(closed, isTrue);
   });
+
+  testWidgets('renders the Auto Detect button and dropdown menu options', (tester) async {
+    final controller = await _pumpSmart(tester, _analyze());
+
+    // Initially should show the Auto Detect button
+    expect(find.byKey(const ValueKey('review-auto-detect-button')), findsOneWidget);
+    expect(find.byKey(const ValueKey('review-auto-detect-busy')), findsNothing);
+
+    // Tap it to open the menu
+    await tester.tap(find.byKey(const ValueKey('review-auto-detect-menu')));
+    await tester.pumpAndSettle();
+
+    // Verify popup menu items are shown
+    expect(find.byKey(const ValueKey('review-auto-detect-use-ai')), findsOneWidget);
+    expect(find.byKey(const ValueKey('review-auto-detect-page')), findsOneWidget);
+    expect(find.byKey(const ValueKey('review-auto-detect-all')), findsOneWidget);
+  });
 }

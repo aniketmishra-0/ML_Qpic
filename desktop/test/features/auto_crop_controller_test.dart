@@ -18,9 +18,9 @@ void main() {
       expect(c.hasAnswers, isTrue);
       expect(c.questionPages, isEmpty);
       expect(c.answerPages, isEmpty);
-      expect(c.smartMode, isFalse);
+      expect(c.smartMode, isTrue);
       expect(c.onlineMode, isFalse);
-      expect(c.answerSheet, isTrue);
+      expect(c.answerSheet, isFalse);
       expect(c.numbering, NumberingMode.autoDetect);
       expect(c.questionPrefix, 'Q');
       expect(c.solutionPrefix, 'S');
@@ -165,7 +165,7 @@ void main() {
       c.addListener(() => notifications++);
       c.dpi = 300;
       c.padding = 40;
-      c.smartMode = true;
+      c.smartMode = false;
       expect(notifications, 3);
     });
 

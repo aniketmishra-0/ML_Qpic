@@ -22,6 +22,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/api_client.dart';
 import '../../core/download_service.dart';
+import '../../core/theme_controller.dart';
 import '../../models/analyze.dart';
 import '../../models/crop.dart';
 
@@ -106,6 +107,19 @@ enum CropImageFormat {
   final String label;
 }
 
+/// Page layout columns configurations.
+enum LayoutColumnsMode {
+  auto('auto', 'Auto (Automatic)'),
+  one('1', '1 Column'),
+  two('2', '2 Columns'),
+  three('3', '3 Columns');
+
+  const LayoutColumnsMode(this.value, this.label);
+
+  final String value;
+  final String label;
+}
+
 /// Which crop archive a download action targets (Requirement 11.1–11.3).
 ///
 /// The engine always produces the [combined] archive; the per-type
@@ -155,6 +169,9 @@ class AutoCropController extends ChangeNotifier {
   /// The bound API client, or null before the engine is ready.
   ApiClient? get apiClient => _apiClient;
 
+  /// The bound DownloadService, or null before the engine is ready.
+  DownloadService? get downloadService => _downloadService;
+
   /// Whether the engine-backed services are bound (the sidecar is ready).
   bool get engineReady => _apiClient != null && _downloadService != null;
 
@@ -186,6 +203,7 @@ class AutoCropController extends ChangeNotifier {
   String _questionPages = '';
   bool _hasAnswers = true;
   String _answerPages = '';
+  String _skipPages = '';
 
   /// Whether the PDF contains a question section (`has_questions`). When off,
   /// the engine ignores [questionPages].
@@ -226,11 +244,19 @@ class AutoCropController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The pages to skip exactly as entered (`skip_pages`).
+  String get skipPages => _skipPages;
+  set skipPages(String value) {
+    if (_skipPages == value) return;
+    _skipPages = value;
+    notifyListeners();
+  }
+
   // --- Mode toggles + numbering selector (Requirement 5.2) -----------------
 
-  bool _smartMode = false;
+  bool _smartMode = true;
   bool _onlineMode = false;
-  bool _answerSheet = true;
+  bool _answerSheet = false;
   NumberingMode _numbering = NumberingMode.autoDetect;
 
   /// Smart mode: when on, submit calls `POST /api/analyze` and opens the
@@ -388,6 +414,8 @@ class AutoCropController extends ChangeNotifier {
   String? _errorText;
   CropResponse? _result;
   AnalyzeResponse? _analyzeResult;
+  List<PageInfo>? _previewPages;
+  bool _previewLoading = false;
 
   /// Name of the currently selected PDF, or null when none is loaded.
   String? get fileName => _fileName;
@@ -397,6 +425,15 @@ class AutoCropController extends ChangeNotifier {
 
   /// Whether a crop request is in flight.
   bool get busy => _busy;
+
+  /// Cached page previews for the currently selected PDF (the engine-rendered
+  /// page images), or null until [loadPreview] has run for this file. Drives
+  /// the in-app "View" popup.
+  List<PageInfo>? get previewPages => _previewPages;
+
+  /// Whether a preview-render request is in flight (drives the View button's
+  /// busy state).
+  bool get previewLoading => _previewLoading;
 
   /// The prompt / engine error to surface above the form, or null when there
   /// is none. Guard prompts (Requirements 5.5–5.7) and the engine `detail`
@@ -421,6 +458,110 @@ class AutoCropController extends ChangeNotifier {
     _result = null;
     _analyzeResult = null;
     _errorText = null;
+    _previewPages = null;
+    notifyListeners();
+  }
+
+  /// Renders the selected PDF's pages to preview images via the engine's
+  /// `POST /api/prepare-manual` rasteriser and caches them on [previewPages]
+  /// for the in-app "View" popup. The result is cached so re-opening the popup
+  /// for the same file is instant; a new selection clears the cache.
+  ///
+  /// Returns true once previews are available (freshly rendered or cached). On
+  /// an engine error the `{"detail": ...}` message is surfaced via [errorText]
+  /// and false is returned. A no-op (returns false) when no PDF is loaded, no
+  /// engine is bound, or a render is already in flight.
+  Future<bool> loadPreview() async {
+    if (_previewPages != null) return true;
+    final client = _apiClient;
+    final bytes = _fileBytes;
+    final name = _fileName;
+    if (client == null || bytes == null || name == null || _previewLoading) {
+      return false;
+    }
+
+    _previewLoading = true;
+    _errorText = null;
+    notifyListeners();
+
+    try {
+      final response = await client.prepareManual(
+        fileBytes: bytes,
+        filename: name,
+        dpi: _dpi,
+      );
+      _previewPages = response.pages;
+      return true;
+    } on ApiException catch (e) {
+      _errorText = e.detail;
+      return false;
+    } finally {
+      _previewLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Clears the form back to its initial state: drops the selected PDF, any
+  /// crop / analyze result and error, and resets every option (toggles, page
+  /// ranges, numbering, and output / render config) to its default. The engine
+  /// binding is preserved so the form stays usable. A no-op while a request is
+  /// in flight so a half-finished run isn't torn out from under the engine.
+  /// Clears the form back to its initial state: drops the selected PDF, any
+  /// crop / analyze result and error, and resets every option (toggles, page
+  /// ranges, numbering, and output / render config) to its default. The engine
+  /// binding is preserved so the form stays usable. A no-op while a request is
+  /// in flight so a half-finished run isn't torn out from under the engine.
+  ///
+  /// Optionally accepts a [ThemeController] to load user-configured defaults
+  /// instead of the hardcoded factory values.
+  void reset([ThemeController? defaults]) {
+    if (_busy) return;
+
+    // Selected PDF + run state.
+    _fileBytes = null;
+    _fileName = null;
+    _result = null;
+    _analyzeResult = null;
+    _errorText = null;
+    _previewPages = null;
+
+    // Questions / Solutions selection.
+    _hasQuestions = true;
+    _questionPages = '';
+    _hasAnswers = true;
+    _answerPages = '';
+    _skipPages = '';
+
+    // Mode toggles + numbering.
+    _smartMode = defaults?.defaultSmartMode ?? true;
+    _onlineMode = false;
+    _answerSheet = false;
+    _numbering = NumberingMode.autoDetect;
+
+    // Output configuration.
+    _questionPrefix = defaults?.defaultQuestionPrefix ?? 'Q';
+    _solutionPrefix = defaults?.defaultSolutionPrefix ?? 'S';
+    _startNumber = AutoCropBounds.startNumberDefault;
+    _imageFormat = defaults?.defaultImageFormat == 'jpg'
+        ? CropImageFormat.jpg
+        : CropImageFormat.png;
+    _jpgQuality = AutoCropBounds.jpgQualityDefault;
+    _dpi = defaults?.defaultDpi ?? AutoCropBounds.dpiDefault;
+    _padding = defaults?.defaultPadding ?? AutoCropBounds.paddingDefault;
+
+    notifyListeners();
+  }
+
+  /// Applies default settings loaded from [ThemeController].
+  void applyDefaults(ThemeController controller) {
+    _questionPrefix = controller.defaultQuestionPrefix;
+    _solutionPrefix = controller.defaultSolutionPrefix;
+    _imageFormat = controller.defaultImageFormat == 'jpg'
+        ? CropImageFormat.jpg
+        : CropImageFormat.png;
+    _dpi = controller.defaultDpi;
+    _padding = controller.defaultPadding;
+    _smartMode = controller.defaultSmartMode;
     notifyListeners();
   }
 
@@ -531,6 +672,7 @@ class AutoCropController extends ChangeNotifier {
         questionPages: _hasQuestions ? _questionPages : null,
         hasAnswers: _hasAnswers,
         answerPages: _hasAnswers ? _answerPages : null,
+        skipPages: _skipPages.isNotEmpty ? _skipPages : null,
         questionPrefix: _questionPrefix,
         solutionPrefix: _solutionPrefix,
         startNumber: _startNumber,
@@ -595,6 +737,7 @@ class AutoCropController extends ChangeNotifier {
         questionPages: _hasQuestions ? _questionPages : null,
         hasAnswers: _hasAnswers,
         answerPages: _hasAnswers ? _answerPages : null,
+        skipPages: _skipPages.isNotEmpty ? _skipPages : null,
         useAi: useAi,
         answerSheet: _answerSheet,
       );

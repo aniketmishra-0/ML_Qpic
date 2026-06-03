@@ -226,12 +226,36 @@ SidecarCommand resolveSidecarCommand() {
   }
 
   // Development fallback: run the unchanged engine from source.
-  final python = env['QPIC_PYTHON'] ??
-      (Platform.isWindows ? 'python' : 'python3');
+  // Prefer the project's .venv Python so all deps are available.
+  final repoRoot = devRepoRoot();
+  final venvPython = Platform.isWindows
+      ? p.join(repoRoot, '.venv', 'Scripts', 'python.exe')
+      : p.join(repoRoot, '.venv', 'bin', 'python');
+  // Use the script path directly instead of `-m packaging.sidecar` because
+  // the PyPI `packaging` package shadows the local `packaging/` directory
+  // (which has no __init__.py).
+  final sidecarScript = p.join(repoRoot, 'packaging', 'sidecar.py');
+
+  // Resolve the Python interpreter: env override > venv > system python3.
+  String python;
+  if (env['QPIC_PYTHON'] != null && env['QPIC_PYTHON']!.isNotEmpty) {
+    python = env['QPIC_PYTHON']!;
+  } else {
+    final venvFile = File(venvPython);
+    if (venvFile.existsSync()) {
+      // Use the venv path as-is (not resolved) so the venv is properly
+      // activated. resolveSymbolicLinksSync() would follow through to the
+      // system Python which loses the venv's site-packages.
+      python = venvPython;
+    } else {
+      python = Platform.isWindows ? 'python' : 'python3';
+    }
+  }
+
   return SidecarCommand(
     executable: python,
-    args: const <String>['-m', 'packaging.sidecar'],
-    workingDirectory: devRepoRoot(),
+    args: <String>[sidecarScript],
+    workingDirectory: repoRoot,
     isDevFallback: true,
   );
 }
@@ -239,26 +263,38 @@ SidecarCommand resolveSidecarCommand() {
 /// Best-effort resolution of the repository root for the dev fallback so
 /// `python -m packaging.sidecar` can import `packaging`, `app`, and `static`.
 ///
-/// Honors a `QPIC_REPO_ROOT` override, otherwise walks up from the current
-/// working directory looking for `packaging/sidecar.py`, and finally assumes
-/// the parent of the Flutter `desktop/` directory.
+/// Honors a `QPIC_REPO_ROOT` override, otherwise walks up from both the
+/// resolved executable path (which lives inside `desktop/build/…`) and the
+/// current working directory looking for `packaging/sidecar.py`. On macOS the
+/// CWD of a `.app` bundle is typically `/`, so the executable-based search is
+/// the reliable path in development.
 String devRepoRoot() {
   final override = Platform.environment['QPIC_REPO_ROOT'];
   if (override != null && override.isNotEmpty) {
     return override;
   }
 
-  var dir = Directory.current.absolute;
-  for (var i = 0; i < 8; i++) {
-    final marker = File(p.join(dir.path, 'packaging', 'sidecar.py'));
-    if (marker.existsSync()) {
-      return dir.path;
+  // Walk up from the running executable — in debug builds this lives inside
+  // desktop/build/macos/Build/Products/Debug/…, so walking up will hit the
+  // repo root reliably.
+  final candidates = <Directory>[
+    Directory(p.dirname(Platform.resolvedExecutable)).absolute,
+    Directory.current.absolute,
+  ];
+
+  for (final start in candidates) {
+    var dir = start;
+    for (var i = 0; i < 12; i++) {
+      final marker = File(p.join(dir.path, 'packaging', 'sidecar.py'));
+      if (marker.existsSync()) {
+        return dir.path;
+      }
+      final parent = dir.parent;
+      if (p.equals(parent.path, dir.path)) {
+        break; // reached the filesystem root
+      }
+      dir = parent;
     }
-    final parent = dir.parent;
-    if (p.equals(parent.path, dir.path)) {
-      break; // reached the filesystem root
-    }
-    dir = parent;
   }
 
   // The Flutter app typically runs from `desktop/`; the repo root is its parent.

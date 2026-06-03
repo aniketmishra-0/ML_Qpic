@@ -171,6 +171,29 @@ void main() {
       h.controller.targetMbText = '1.5';
       expect(h.controller.canRun, isTrue);
     });
+
+    test('clear() resets all inputs, results, and configs to default', () {
+      final h = _Harness(statusCode: 200, body: _compressBody());
+      addTearDown(h.controller.dispose);
+
+      h.controller.setFile(bytes: const <int>[1, 2, 3], filename: 'in.pdf');
+      h.controller.useTarget = true;
+      h.controller.targetMbText = '5.5';
+      h.controller.level = CompressLevel.extreme;
+
+      expect(h.controller.hasFile, isTrue);
+      expect(h.controller.fileName, 'in.pdf');
+
+      h.controller.clear();
+
+      expect(h.controller.hasFile, isFalse);
+      expect(h.controller.fileName, isNull);
+      expect(h.controller.level, CompressLevel.balanced);
+      expect(h.controller.useTarget, isFalse);
+      expect(h.controller.targetMbText, '2');
+      expect(h.controller.result, isNull);
+      expect(h.controller.errorText, isNull);
+    });
   });
 
   group('compress() drives the engine (Req 13.2, 13.3)', () {

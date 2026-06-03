@@ -2,10 +2,10 @@
 //
 // These verify the contract the shell promises in Requirement 4:
 //
-//  * 4.2 — exactly four tool tabs labeled Auto Crop / Manual Crop /
-//          Rename Batch / Tools.
+//  * 4.2 — exactly five tool tabs labeled Auto Crop / Manual Crop /
+//          Rename Batch / PDF Enhancer / Tools.
 //  * 4.3 — selecting a tab shows only that tool's view and hides the other
-//          three, and the shell's `IndexedStack` keeps every view mounted so
+//          four, and the shell's `IndexedStack` keeps every view mounted so
 //          each one retains its state across tab switches (text entered in one
 //          tab survives switching away and back).
 //  * 4.4 — the default selected tab on launch is Auto Crop.
@@ -75,7 +75,7 @@ Widget _host(
   );
 }
 
-/// Widens the test surface so the app bar (brand + four tabs + Help + the
+/// Widens the test surface so the app bar (brand + five tabs + Help + the
 /// segmented theme switcher) lays out without the actions overlapping the
 /// tabs. At the default 800×600 surface the switcher sits on top of the tab
 /// hit-targets, which would make tab taps land on the wrong widget.
@@ -89,7 +89,7 @@ void _useWideSurface(WidgetTester tester) {
 void main() {
   group('AppShell tab behaviour', () {
     testWidgets(
-        'exposes exactly the four tool tabs in order (Requirement 4.2)',
+        'exposes exactly the five tool tabs in order (Requirement 4.2)',
         (tester) async {
       final theme = ThemeController();
       addTearDown(theme.dispose);
@@ -97,14 +97,15 @@ void main() {
 
       await tester.pumpWidget(_host(theme));
 
-      // All four tabs are present...
+      // All five tabs are present...
       expect(find.byKey(const ValueKey('tool-tab-autoCrop')), findsOneWidget);
       expect(find.byKey(const ValueKey('tool-tab-manualCrop')), findsOneWidget);
       expect(find.byKey(const ValueKey('tool-tab-renameBatch')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tool-tab-pdfEnhancer')), findsOneWidget);
       expect(find.byKey(const ValueKey('tool-tab-tools')), findsOneWidget);
 
-      // ...and there are exactly four of them, matching the QpicTool enum.
-      expect(QpicTool.values, hasLength(4));
+      // ...and there are exactly five of them, matching the QpicTool enum.
+      expect(QpicTool.values, hasLength(5));
     });
 
     testWidgets('defaults to the Auto Crop tab on launch (Requirement 4.4)',
@@ -122,7 +123,7 @@ void main() {
       expect(stack.index, QpicTool.autoCrop.index);
       expect(stack.index, 0);
 
-      // Only the Auto Crop view is on stage; the other three are hidden.
+      // Only the Auto Crop view is on stage; the other four are hidden.
       expect(
         find.byKey(const ValueKey('tool-title-Auto Crop')),
         findsOneWidget,
@@ -135,7 +136,8 @@ void main() {
         find.byKey(const ValueKey('tool-title-Rename Batch')),
         findsNothing,
       );
-      expect(find.byKey(const ValueKey('tool-title-Tools')), findsNothing);
+      expect(find.byKey(const ValueKey('tool-title-PDF Enhancer')), findsNothing);
+      expect(find.byKey(const ValueKey('tool-title-PDF Tools')), findsNothing);
     });
 
     testWidgets(
@@ -177,18 +179,32 @@ void main() {
         const <String>[
           'tool-title-Auto Crop',
           'tool-title-Rename Batch',
-          'tool-title-Tools',
+          'tool-title-PDF Enhancer',
+          'tool-title-PDF Tools',
+        ],
+      );
+
+      await selectAndExpect(
+        'tool-tab-pdfEnhancer',
+        QpicTool.pdfEnhancer.index,
+        'tool-title-PDF Enhancer',
+        const <String>[
+          'tool-title-Auto Crop',
+          'tool-title-Manual Crop',
+          'tool-title-Rename Batch',
+          'tool-title-PDF Tools',
         ],
       );
 
       await selectAndExpect(
         'tool-tab-tools',
         QpicTool.tools.index,
-        'tool-title-Tools',
+        'tool-title-PDF Tools',
         const <String>[
           'tool-title-Auto Crop',
           'tool-title-Manual Crop',
           'tool-title-Rename Batch',
+          'tool-title-PDF Enhancer',
         ],
       );
 
@@ -199,7 +215,8 @@ void main() {
         const <String>[
           'tool-title-Manual Crop',
           'tool-title-Rename Batch',
-          'tool-title-Tools',
+          'tool-title-PDF Enhancer',
+          'tool-title-PDF Tools',
         ],
       );
     });
@@ -224,6 +241,7 @@ void main() {
 
       const autoText = 'auto crop notes';
       const manualText = 'manual crop notes';
+      const pdfEnhancerText = 'pdf enhancer notes';
       const toolsText = 'tools notes';
 
       // Enter text in the default (Auto Crop) view.
@@ -242,7 +260,16 @@ void main() {
       );
       await tester.pump();
 
-      // Switch to Tools and enter a third value.
+      // Switch to PDF Enhancer and enter a third value.
+      await tester.tap(find.byKey(const ValueKey('tool-tab-pdfEnhancer')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const ValueKey('field-pdfEnhancer')),
+        pdfEnhancerText,
+      );
+      await tester.pump();
+
+      // Switch to Tools and enter a fourth value.
       await tester.tap(find.byKey(const ValueKey('tool-tab-tools')));
       await tester.pumpAndSettle();
       await tester.enterText(
@@ -266,6 +293,14 @@ void main() {
         find.byKey(const ValueKey('field-manualCrop')),
       );
       expect(manualField.controller!.text, manualText);
+
+      // PDF Enhancer's text survived too.
+      await tester.tap(find.byKey(const ValueKey('tool-tab-pdfEnhancer')));
+      await tester.pumpAndSettle();
+      final TextField pdfEnhancerField = tester.widget(
+        find.byKey(const ValueKey('field-pdfEnhancer')),
+      );
+      expect(pdfEnhancerField.controller!.text, pdfEnhancerText);
 
       // And so did Tools'.
       await tester.tap(find.byKey(const ValueKey('tool-tab-tools')));

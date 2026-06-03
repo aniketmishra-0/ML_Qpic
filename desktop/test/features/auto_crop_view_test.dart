@@ -120,10 +120,10 @@ void main() {
     addTearDown(controller.dispose);
     await tester.pumpWidget(_host(controller, onSubmit: () {}));
 
-    expect(find.widgetWithText(FilledButton, 'Crop'), findsOneWidget);
-
-    controller.smartMode = true;
-    await tester.pump();
     expect(find.widgetWithText(FilledButton, 'Analyze & Review'), findsOneWidget);
+
+    controller.smartMode = false;
+    await tester.pump();
+    expect(find.widgetWithText(FilledButton, 'Crop'), findsOneWidget);
   });
 }

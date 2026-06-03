@@ -40,6 +40,7 @@ class ManualCropView extends StatelessWidget {
     super.key,
     required this.controller,
     this.onPickFile,
+    this.onClear,
     this.previewUrlResolver,
   });
 
@@ -50,6 +51,11 @@ class ManualCropView extends StatelessWidget {
   /// [ManualCropController.pickPdf] (which opens the native picker, loads the
   /// file, and opens the canvas). When null the affordance is disabled.
   final VoidCallback? onPickFile;
+
+  /// Invoked when the user taps "Clear" to reset the tool back to its defaults.
+  /// Typically wired to [ManualCropController.reset]. When null the affordance
+  /// is hidden.
+  final VoidCallback? onClear;
 
   /// Joins an engine `preview_url` onto the live Base_URL for the canvas. When
   /// null the `preview_url` is used verbatim.
@@ -79,7 +85,11 @@ class ManualCropView extends StatelessWidget {
                 controller.engineReady ? () => controller.finalize() : null,
           );
         }
-        return _OpenForm(controller: controller, onPickFile: onPickFile);
+        return _OpenForm(
+          controller: controller,
+          onPickFile: onPickFile,
+          onClear: onClear,
+        );
       },
     );
   }
@@ -87,10 +97,15 @@ class ManualCropView extends StatelessWidget {
 
 /// The open form: file picker + the tool's independent output configuration.
 class _OpenForm extends StatelessWidget {
-  const _OpenForm({required this.controller, required this.onPickFile});
+  const _OpenForm({
+    required this.controller,
+    required this.onPickFile,
+    required this.onClear,
+  });
 
   final ManualCropController controller;
   final VoidCallback? onPickFile;
+  final VoidCallback? onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -98,15 +113,23 @@ class _OpenForm extends StatelessWidget {
     final palette = theme.extension<QpicPalette>();
     final String? error = controller.errorText;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+    // Full-bleed layout: spans the whole tool area (no narrow centered column
+    // with empty side margins) and lays the Output + Render cards side by side
+    // on a wide window so the form fits without a page-level scroll. A narrow
+    // window stacks them in a single scrolling column.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool wide = constraints.maxWidth >= 880;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              _Header(palette: palette),
+              _HeaderBar(
+                palette: palette,
+                onClear: onClear,
+                busy: controller.busy,
+              ),
               const SizedBox(height: 16),
               _FilePickerRow(
                 fileName: controller.fileName,
@@ -114,71 +137,148 @@ class _OpenForm extends StatelessWidget {
                 onPickFile: onPickFile,
               ),
               if (error != null) ...<Widget>[
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
                 _ErrorBanner(message: error, palette: palette),
               ],
-              const SizedBox(height: 24),
-              _SectionCard(
-                title: 'Output',
-                palette: palette,
-                children: <Widget>[
-                  _OutputConfig(controller: controller),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _SectionCard(
-                title: 'Render',
-                palette: palette,
-                children: <Widget>[
-                  _BoundedSlider(
-                    sliderKey: const ValueKey<String>('manual-crop-dpi'),
-                    label: 'DPI',
-                    value: controller.dpi,
-                    min: AutoCropBounds.dpiMin,
-                    max: AutoCropBounds.dpiMax,
-                    onChanged: (v) => controller.dpi = v,
-                  ),
-                ],
+              const SizedBox(height: 18),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: wide
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Expanded(
+                              child: _SectionCard(
+                                title: 'Output',
+                                palette: palette,
+                                children: <Widget>[
+                                  _OutputConfig(controller: controller),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 20),
+                            Expanded(
+                              child: _SectionCard(
+                                title: 'Render',
+                                palette: palette,
+                                children: <Widget>[
+                                  _BoundedSlider(
+                                    sliderKey: const ValueKey<String>(
+                                        'manual-crop-dpi'),
+                                    label: 'DPI',
+                                    value: controller.dpi,
+                                    min: AutoCropBounds.dpiMin,
+                                    max: AutoCropBounds.dpiMax,
+                                    onChanged: (v) => controller.dpi = v,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            _SectionCard(
+                              title: 'Output',
+                              palette: palette,
+                              children: <Widget>[
+                                _OutputConfig(controller: controller),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            _SectionCard(
+                              title: 'Render',
+                              palette: palette,
+                              children: <Widget>[
+                                _BoundedSlider(
+                                  sliderKey: const ValueKey<String>(
+                                      'manual-crop-dpi'),
+                                  label: 'DPI',
+                                  value: controller.dpi,
+                                  min: AutoCropBounds.dpiMin,
+                                  max: AutoCropBounds.dpiMax,
+                                  onChanged: (v) => controller.dpi = v,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                ),
               ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
 
-class _Header extends StatelessWidget {
-  const _Header({required this.palette});
+class _HeaderBar extends StatelessWidget {
+  const _HeaderBar({
+    required this.palette,
+    required this.onClear,
+    required this.busy,
+  });
 
   final QpicPalette? palette;
+  final VoidCallback? onClear;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          'Manual Crop',
-          key: const ValueKey<String>('manual-crop-title'),
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: palette?.text ?? theme.colorScheme.onSurface,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Manual Crop',
+                key: const ValueKey<String>('manual-crop-title'),
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: palette?.text ?? theme.colorScheme.onSurface,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Open a PDF to draw every crop by hand — no auto-detection.',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          'Open a PDF to draw every crop by hand — no auto-detection.',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+        if (onClear != null) ...<Widget>[
+          const SizedBox(width: 16),
+          TextButton.icon(
+            key: const ValueKey<String>('manual-crop-clear'),
+            onPressed: busy ? null : onClear,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Clear'),
+            style: TextButton.styleFrom(
+              foregroundColor:
+                  palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
 }
 
+/// File picker styled as a prominent drop zone, mirroring the Auto Crop view
+/// so both crop tools present an identical file affordance. Tapping anywhere in
+/// the zone triggers [onPickFile]; a busy spinner replaces the icon while the
+/// prepare-manual call is in flight.
 class _FilePickerRow extends StatelessWidget {
   const _FilePickerRow({
     required this.fileName,
@@ -194,35 +294,125 @@ class _FilePickerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
-    return Row(
-      children: <Widget>[
-        OutlinedButton.icon(
-          key: const ValueKey<String>('manual-crop-pick-file'),
-          onPressed: busy ? null : onPickFile,
-          icon: busy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.upload_file),
-          label: const Text('Choose PDF'),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            fileName ?? 'No PDF selected',
-            key: const ValueKey<String>('manual-crop-file-name'),
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: fileName == null
-                  ? (palette?.muted ?? theme.colorScheme.onSurfaceVariant)
-                  : (palette?.text ?? theme.colorScheme.onSurface),
-              fontStyle: fileName == null ? FontStyle.italic : FontStyle.normal,
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+    final bool hasFile = fileName != null;
+    final bool enabled = onPickFile != null && !busy;
+
+    return _HoverDropZone(
+      key: const ValueKey<String>('manual-crop-pick-file'),
+      enabled: enabled,
+      onTap: onPickFile,
+      builder: (context, hovered) {
+        final bool active = hovered && enabled;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: active
+                ? brand.withValues(alpha: 0.06)
+                : (palette?.field ?? theme.colorScheme.surfaceContainerHighest),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: active ? brand : (palette?.border ?? theme.dividerColor),
+              width: 1.5,
             ),
           ),
-        ),
-      ],
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: brand.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: busy
+                    ? Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: brand,
+                        ),
+                      )
+                    : Icon(
+                        hasFile
+                            ? Icons.picture_as_pdf_rounded
+                            : Icons.cloud_upload_outlined,
+                        color: brand,
+                        size: 21,
+                      ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      hasFile ? fileName! : 'Drop your PDF here',
+                      key: const ValueKey<String>('manual-crop-file-name'),
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: palette?.text ?? theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      hasFile
+                          ? 'Tap to choose a different PDF'
+                          : 'or click to browse',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: palette?.mutedAlt ??
+                            theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// A hoverable, clickable zone that reports its hover state to [builder].
+/// Mirrors the Auto Crop view's drop zone so the two crop tools share an
+/// identical file affordance.
+class _HoverDropZone extends StatefulWidget {
+  const _HoverDropZone({
+    super.key,
+    required this.builder,
+    required this.onTap,
+    required this.enabled,
+  });
+
+  final Widget Function(BuildContext context, bool hovered) builder;
+  final VoidCallback? onTap;
+  final bool enabled;
+
+  @override
+  State<_HoverDropZone> createState() => _HoverDropZoneState();
+}
+
+class _HoverDropZoneState extends State<_HoverDropZone> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor:
+          widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.enabled ? widget.onTap : null,
+        child: widget.builder(context, _hovered),
+      ),
     );
   }
 }
@@ -284,19 +474,20 @@ class _SectionCard extends StatelessWidget {
         side: BorderSide(color: palette?.border ?? theme.dividerColor),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Text(
               title,
-              style: theme.textTheme.titleSmall?.copyWith(
+              style: TextStyle(
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
                 color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                letterSpacing: 0.4,
+                letterSpacing: 0.8,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             ...children,
           ],
         ),

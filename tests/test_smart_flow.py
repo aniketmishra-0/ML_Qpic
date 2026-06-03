@@ -436,3 +436,143 @@ def test_orphan_content_page_is_noted() -> None:
         for n in notes
     )
 
+
+
+@pytest.mark.asyncio
+async def test_crop_preview_renders_single_item_image() -> None:
+    """POST /api/crop/preview returns a PNG for one reviewed item."""
+
+    pdf = _make_pdf_bytes()
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            files = {"file": ("t.pdf", pdf, "application/pdf")}
+            r = await client.post("/api/analyze?dpi=120", files=files)
+            data = r.json()
+            job_id = data["job_id"]
+            item = data["items"][0]
+
+            body = {
+                "job_id": job_id,
+                "q_num": item["q_num"],
+                "is_solution": item["is_solution"],
+                "segments": item["segments"],
+                "source": item["source"],
+                "dpi": 120,
+                "image_format": "png",
+            }
+            pr = await client.post("/api/crop/preview", json=body)
+            assert pr.status_code == 200, pr.text
+            assert pr.headers["content-type"] == "image/png"
+            # A PNG starts with the 8-byte signature; the body must be non-trivial.
+            assert pr.content[:8] == b"\x89PNG\r\n\x1a\n"
+            assert len(pr.content) > 100
+
+
+@pytest.mark.asyncio
+async def test_crop_preview_jpg_format() -> None:
+    """The preview honours the requested image format (jpg)."""
+
+    pdf = _make_pdf_bytes()
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            files = {"file": ("t.pdf", pdf, "application/pdf")}
+            r = await client.post("/api/analyze?dpi=120", files=files)
+            data = r.json()
+            item = data["items"][0]
+
+            body = {
+                "job_id": data["job_id"],
+                "q_num": item["q_num"],
+                "segments": item["segments"],
+                "image_format": "jpg",
+                "dpi": 120,
+            }
+            pr = await client.post("/api/crop/preview", json=body)
+            assert pr.status_code == 200, pr.text
+            assert pr.headers["content-type"] == "image/jpeg"
+            assert pr.content[:2] == b"\xff\xd8"  # JPEG SOI marker
+
+
+@pytest.mark.asyncio
+async def test_crop_preview_unknown_job_is_404() -> None:
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            body = {
+                "job_id": "nope",
+                "q_num": "1",
+                "segments": [
+                    {"page": 1, "x_start_pct": 5, "x_end_pct": 95, "y_start_pct": 10, "y_end_pct": 30}
+                ],
+            }
+            pr = await client.post("/api/crop/preview", json=body)
+            assert pr.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_crop_preview_empty_segments_is_400() -> None:
+    pdf = _make_pdf_bytes()
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            files = {"file": ("t.pdf", pdf, "application/pdf")}
+            r = await client.post("/api/analyze?dpi=120", files=files)
+            job_id = r.json()["job_id"]
+
+            body = {"job_id": job_id, "q_num": "1", "segments": []}
+            pr = await client.post("/api/crop/preview", json=body)
+            assert pr.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_finalize_align_override_matches_preview() -> None:
+    """An item's `align` override is accepted by both preview and finalize.
+
+    The aligned multi-part crop the preview shows is the same the finalized
+    download produces, because both call the same pipeline with the same flag.
+    """
+
+    pdf = _make_pdf_bytes()
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            files = {"file": ("t.pdf", pdf, "application/pdf")}
+            r = await client.post("/api/analyze?dpi=120", files=files)
+            job_id = r.json()["job_id"]
+
+            # A two-part (stitched) item, with alignment forced on.
+            segments = [
+                {"page": 1, "x_start_pct": 5, "x_end_pct": 48, "y_start_pct": 5, "y_end_pct": 25},
+                {"page": 1, "x_start_pct": 5, "x_end_pct": 48, "y_start_pct": 30, "y_end_pct": 50},
+            ]
+            preview_body = {
+                "job_id": job_id,
+                "q_num": "1",
+                "segments": segments,
+                "source": "manual",
+                "align": True,
+                "dpi": 120,
+            }
+            pr = await client.post("/api/crop/preview", json=preview_body)
+            assert pr.status_code == 200, pr.text
+            assert pr.content[:8] == b"\x89PNG\r\n\x1a\n"
+
+            finalize_body = {
+                "job_id": job_id,
+                "items": [
+                    {
+                        "q_num": "1",
+                        "is_solution": False,
+                        "segments": segments,
+                        "source": "manual",
+                        "align": True,
+                    }
+                ],
+                "dpi": 120,
+                "image_format": "png",
+            }
+            fr = await client.post("/api/finalize", json=finalize_body)
+            assert fr.status_code == 200, fr.text
+            assert fr.json()["total_questions"] == 1

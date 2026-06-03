@@ -21,7 +21,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/theme_controller.dart';
+import '../../../models/crop.dart';
 import '../../../widgets/drop_target.dart';
+import '../../../widgets/pdf_preview_dialog.dart';
 import 'compress_controller.dart';
 
 /// Stateless surface for the Compress tool. Listens to [controller] so every
@@ -53,43 +55,166 @@ class CompressView extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool wide = constraints.maxWidth >= 900;
+        
+        if (wide) {
+          return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              _Header(palette: palette),
-              const SizedBox(height: 16),
-              _DropZone(
-                controller: controller,
-                onPickFile: onPickFile,
-                palette: palette,
+            children: [
+              SizedBox(
+                width: 380,
+                child: Material(
+                  color: palette?.panel ?? theme.colorScheme.surface,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        _Header(palette: palette),
+                        const SizedBox(height: 24),
+                        _DropZone(
+                          controller: controller,
+                          onPickFile: onPickFile,
+                          palette: palette,
+                        ),
+                        if (controller.errorText != null) ...<Widget>[
+                          const SizedBox(height: 16),
+                          _ErrorBanner(message: controller.errorText!, palette: palette),
+                        ],
+                        const SizedBox(height: 32),
+                        _SectionCard(
+                          title: 'Compression level',
+                          palette: palette,
+                          children: <Widget>[
+                            _LevelSelector(controller: controller),
+                            const SizedBox(height: 16),
+                            _TargetSizeSection(controller: controller),
+                          ],
+                        ),
+                        const SizedBox(height: 32),
+                        _CompressButton(controller: controller),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              if (controller.errorText != null) ...<Widget>[
-                const SizedBox(height: 16),
-                _ErrorBanner(message: controller.errorText!, palette: palette),
-              ],
-              const SizedBox(height: 24),
-              _SectionCard(
-                title: 'Compression level',
-                palette: palette,
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: Container(
+                  color: palette?.background ?? theme.colorScheme.surface,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(32),
+                      child: controller.result != null
+                          ? ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 600),
+                              child: _ResultCard(controller: controller, palette: palette),
+                            )
+                          : ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 500),
+                              child: _ResultPlaceholder(palette: palette),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
-                  _LevelSelector(controller: controller),
+                  _Header(palette: palette),
                   const SizedBox(height: 16),
-                  _TargetSizeSection(controller: controller),
+                  _DropZone(
+                    controller: controller,
+                    onPickFile: onPickFile,
+                    palette: palette,
+                  ),
+                  if (controller.errorText != null) ...<Widget>[
+                    const SizedBox(height: 16),
+                    _ErrorBanner(message: controller.errorText!, palette: palette),
+                  ],
+                  const SizedBox(height: 24),
+                  _SectionCard(
+                    title: 'Compression level',
+                    palette: palette,
+                    children: <Widget>[
+                      _LevelSelector(controller: controller),
+                      const SizedBox(height: 16),
+                      _TargetSizeSection(controller: controller),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  _CompressButton(controller: controller),
+                  if (controller.result != null) ...<Widget>[
+                    const SizedBox(height: 24),
+                    _ResultCard(controller: controller, palette: palette),
+                  ],
                 ],
               ),
-              const SizedBox(height: 24),
-              _CompressButton(controller: controller),
-              if (controller.result != null) ...<Widget>[
-                const SizedBox(height: 24),
-                _ResultCard(controller: controller, palette: palette),
-              ],
-            ],
+            ),
           ),
+        );
+      },
+    );
+  }
+}
+
+class _ResultPlaceholder extends StatelessWidget {
+  const _ResultPlaceholder({required this.palette});
+
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+    final border = palette?.border ?? theme.dividerColor;
+
+    return Card(
+      color: palette?.panel ?? theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: border),
+      ),
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.compress_rounded,
+              size: 64,
+              color: muted.withValues(alpha: 0.3),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Waiting for PDF',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: palette?.text ?? theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Select a PDF and choose a compression level on the left.\nThe optimization results and download options will appear here.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: muted,
+                height: 1.5,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -191,6 +316,15 @@ class _DropZone extends StatelessWidget {
                   ),
                 ),
               ),
+              if (controller.hasFile) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  key: const ValueKey<String>('compress-clear'),
+                  icon: const Icon(Icons.clear),
+                  tooltip: 'Clear selection',
+                  onPressed: () => controller.clear(),
+                ),
+              ],
             ],
           ),
         ),
@@ -588,16 +722,54 @@ class _ResultCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 16),
-            FilledButton.icon(
-              key: const ValueKey<String>('compress-download'),
-              onPressed:
-                  controller.canDownload ? () => controller.download() : null,
-              icon: const Icon(Icons.download),
-              label: const Text('Download compressed PDF'),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: FilledButton.icon(
+                    key: const ValueKey<String>('compress-download'),
+                    onPressed:
+                        controller.canDownload ? () => controller.download() : null,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Download PDF'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey<String>('compress-view'),
+                    onPressed: controller.result != null
+                        ? () => _viewCompressedPdf(context)
+                        : null,
+                    icon: const Icon(Icons.visibility),
+                    label: const Text('View'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
       ),
+    );
+  }
+
+  void _viewCompressedPdf(BuildContext context) {
+    final response = controller.result;
+    if (response == null) return;
+
+    final pages = response.pages
+        .map((p) => PageInfo(
+              page: p.page,
+              widthPt: p.width,
+              heightPt: p.height,
+              previewUrl: p.previewUrl,
+            ))
+        .toList();
+
+    PdfPreviewDialog.open(
+      context,
+      title: controller.fileName ?? 'compressed.pdf',
+      pages: pages,
+      resolveUrl: (url) => controller.apiClient.resolveUri(url).toString(),
     );
   }
 }

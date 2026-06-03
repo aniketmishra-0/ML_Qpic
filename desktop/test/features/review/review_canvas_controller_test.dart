@@ -338,4 +338,52 @@ void main() {
       expect(c.items.single.segments.single.xEndPct, 49);
     });
   });
+
+  group('replaceItemsForPage', () {
+    test('clears page items and merges multi-page items', () {
+      final c = ReviewCanvasController(
+        pages: <PageInfo>[_page(1), _page(2)],
+        items: <AnalyzedItem>[
+          // Q1 has a part on page 1 and a part on page 2
+          _item(qNum: '1', segments: <QuestionSegment>[
+            _seg(page: 1, y0: 10, y1: 30),
+            _seg(page: 2, y0: 10, y1: 30),
+          ]),
+          // Q2 is only on page 1
+          _item(qNum: '2', segments: <QuestionSegment>[
+            _seg(page: 1, y0: 40, y1: 60),
+          ]),
+        ],
+        notes: <ReviewNote>[
+          const ReviewNote(kind: 'incomplete', message: 'Q1 note', qNum: '1'),
+        ],
+      );
+
+      // Now run replaceItemsForPage for page 1 with new items (detected Q1 and Q3)
+      c.replaceItemsForPage(1, <AnalyzedItem>[
+        _item(qNum: '1', segments: <QuestionSegment>[
+          _seg(page: 1, y0: 15, y1: 35),
+        ]),
+        _item(qNum: '3', segments: <QuestionSegment>[
+          _seg(page: 1, y0: 50, y1: 70),
+        ]),
+      ]);
+
+      // Check results:
+      // Q1 should have the new segment on page 1 and preserve the segment on page 2
+      final q1 = c.items.firstWhere((it) => it.qNum == '1');
+      expect(q1.segments.length, 2);
+      expect(q1.segments.any((s) => s.page == 1 && s.yStartPct == 15), isTrue);
+      expect(q1.segments.any((s) => s.page == 2 && s.yStartPct == 10), isTrue);
+
+      // Q2 should be removed (cleared from page 1)
+      expect(c.items.any((it) => it.qNum == '2'), isFalse);
+
+      // Q3 should be added
+      expect(c.items.any((it) => it.qNum == '3'), isTrue);
+
+      // Review notes for Q1 should be cleared
+      expect(c.notes.any((n) => n.qNum == '1'), isFalse);
+    });
+  });
 }

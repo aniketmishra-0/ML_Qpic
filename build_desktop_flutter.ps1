@@ -67,7 +67,7 @@ param(
     [ValidateSet('msix', 'nsis')]
     [string]$Installer = 'msix',
 
-    [string]$Langs = 'eng,hin,osd',
+    [string[]]$Langs = @('eng', 'hin', 'osd'),
 
     [string]$Python = 'python',
 
@@ -126,8 +126,9 @@ try {
         Write-Step "Skipping Tesseract vendoring (-SkipVendor)"
     }
     else {
-        Write-Step "Vendoring Tesseract (langs: $Langs)"
-        & $Python scripts/vendor_tesseract.py --langs $Langs
+        $LangsStr = $Langs -join ','
+        Write-Step "Vendoring Tesseract (langs: $LangsStr)"
+        & $Python scripts/vendor_tesseract.py --langs $LangsStr
         if ($LASTEXITCODE -ne 0) {
             Write-Warn "Could not vendor Tesseract. The app will still build, but OCR for"
             Write-Warn "scanned PDFs will need a system Tesseract install."

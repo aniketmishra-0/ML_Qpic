@@ -14,6 +14,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:file_selector/file_selector.dart' show XFile, XTypeGroup;
 import 'package:flutter/foundation.dart';
@@ -119,6 +120,22 @@ class RenameItem {
   /// Raw file bytes for upload (from file picker / drag-drop).
   final List<int>? fileBytes;
 
+  /// Cached list of decoded bytes.
+  List<int>? _decodedBytesCache;
+
+  /// Cached Uint8List for Flutter Image.memory rendering.
+  Uint8List? _uint8ListCache;
+
+  /// Returns the cached Uint8List representation of the image bytes.
+  Uint8List getUint8List() {
+    final cached = _uint8ListCache;
+    if (cached != null) return cached;
+    final bytes = bytesForUpload();
+    final list = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+    _uint8ListCache = list;
+    return list;
+  }
+
   /// The bytes to stream to the rename session, preferring the raw
   /// [fileBytes] (picked image) and falling back to decoding the base64
   /// payload of a PDF page's [dataUrl]. Returns an empty list when neither is
@@ -126,12 +143,18 @@ class RenameItem {
   List<int> bytesForUpload() {
     final raw = fileBytes;
     if (raw != null) return raw;
+
+    final cached = _decodedBytesCache;
+    if (cached != null) return cached;
+
     final url = dataUrl;
     if (url != null) {
       final comma = url.indexOf(',');
       if (url.startsWith('data:') && comma != -1) {
         try {
-          return base64Decode(url.substring(comma + 1));
+          final decoded = base64Decode(url.substring(comma + 1));
+          _decodedBytesCache = decoded;
+          return decoded;
         } catch (_) {
           return const <int>[];
         }
@@ -231,6 +254,15 @@ class RenameController extends ChangeNotifier {
   int _padding = RenameBounds.paddingDefault;
   RenameOutputFormat _outputFormat = RenameOutputFormat.original;
   int _jpgQuality = RenameBounds.jpgQualityDefault;
+  String _pdfDpi = 'Original';
+
+  /// PDF render DPI for PDF-to-images conversion ('Original', '72', '150', '200', '300', '400', '600').
+  String get pdfDpi => _pdfDpi;
+  set pdfDpi(String value) {
+    if (_pdfDpi == value) return;
+    _pdfDpi = value;
+    notifyListeners();
+  }
 
   /// Naming pattern. `#` is replaced by the running number; variable tokens
   /// like `(name)`, `(width)`, etc. are expanded client-side.
@@ -309,11 +341,52 @@ class RenameController extends ChangeNotifier {
     _schedulePreview();
   }
 
+  /// Move an item from [oldIndex] to [newIndex] to reorder the rename sequence.
+  void reorderItem(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _items.length) return;
+    if (newIndex < 0 || newIndex >= _items.length) return;
+    final item = _items.removeAt(oldIndex);
+    _items.insert(newIndex, item);
+    notifyListeners();
+    _schedulePreview();
+  }
+
   /// Clear all items.
   void clearItems() {
     _items.clear();
     _previewItems = null;
     _previewError = null;
+    notifyListeners();
+  }
+
+  /// Resets the whole tool back to its initial state: drops every loaded item
+  /// and the preview, and restores the naming controls (pattern, start,
+  /// padding, output format, JPG quality) plus any surfaced error / status to
+  /// their defaults. The engine binding is preserved so the tool stays usable.
+  /// A no-op while a session is in flight so a half-finished run isn't torn out
+  /// from under the engine.
+  void reset() {
+    if (_busy) return;
+
+    // Items + preview.
+    _items.clear();
+    _previewItems = null;
+    _previewError = null;
+    _previewLoading = false;
+    _debounceTimer?.cancel();
+
+    // Naming controls.
+    _pattern = '#';
+    _start = RenameBounds.startDefault;
+    _padding = RenameBounds.paddingDefault;
+    _outputFormat = RenameOutputFormat.original;
+    _jpgQuality = RenameBounds.jpgQualityDefault;
+    _pdfDpi = 'Original';
+
+    // Messages.
+    _errorText = null;
+    _statusText = null;
+
     notifyListeners();
   }
 
@@ -433,6 +506,32 @@ class RenameController extends ChangeNotifier {
     await addXFiles(picked);
   }
 
+  /// Opens a native folder picker and loads all image/PDF files from the
+  /// selected directory. This is a workaround for macOS where CMD+A (select-all)
+  /// does not work properly in the native file-open dialog. Users pick the
+  /// folder and all matching files are loaded automatically.
+  Future<void> pickAndAddFolder() async {
+    final String? dirPath = await _filePickerService.pickFolder();
+    if (dirPath == null) return;
+
+    final dir = Directory(dirPath);
+    if (!dir.existsSync()) return;
+
+    final List<XFile> files = <XFile>[];
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is! File) continue;
+      final name = p.basename(entity.path);
+      if (_isImageName(name) || _isPdfName(name)) {
+        files.add(XFile(entity.path));
+      }
+    }
+
+    if (files.isEmpty) return;
+    // Sort by name for predictable ordering.
+    files.sort((a, b) => a.name.compareTo(b.name));
+    await addXFiles(files);
+  }
+
   /// Adds already-selected files (from the native picker or a drop target) to
   /// the batch: images are loaded as items verbatim and PDFs are routed through
   /// [addPdfBytes]. Unsupported files are ignored. Reports an error if a PDF
@@ -489,6 +588,7 @@ class RenameController extends ChangeNotifier {
       final response = await client.renamePdfToImages(
         fileBytes: bytes,
         filename: filename,
+        dpi: int.tryParse(_pdfDpi),
       );
       final pages = response.images
           .map((image) => RenameItem.fromPdfImage(image))

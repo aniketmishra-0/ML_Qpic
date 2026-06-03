@@ -1025,14 +1025,55 @@ def _find_banner_headers(
     page whose first marker is far down the page is skipped entirely.
     """
 
-    # Topmost STRONG marker y per page (bare-number sub-statements ignored).
-    first_marker_y: dict[int, float] = {}
+    # Question/solution markers grouped by page.
+    starts_by_page: dict[int, list[QuestionStart]] = {}
     for s in starts:
-        if not s.is_strong:
-            continue
-        cur = first_marker_y.get(s.page_num)
-        if cur is None or s.y_top < cur:
-            first_marker_y[s.page_num] = s.y_top
+        starts_by_page.setdefault(s.page_num, []).append(s)
+
+    # First-marker y per page, split by marker strength.
+    #
+    #   * STRONG markers ("Q1") anchor the original behaviour: the few sparse
+    #     lines above the first Q on a near-top page are page furniture and are
+    #     stripped wholesale.
+    #   * On a page with NO strong marker (a bare-numbered paper) the weak bare
+    #     numbers ARE the real questions; see the column-aware handling below.
+    strong_first_y: dict[int, float] = {}
+    weak_only_pages: set[int] = set()
+    for page_num, page_starts in starts_by_page.items():
+        strong = [s for s in page_starts if s.is_strong]
+        if strong:
+            strong_first_y[page_num] = min(s.y_top for s in strong)
+        else:
+            weak_only_pages.add(page_num)
+
+    def _cols_for(page_num: int) -> list[tuple[float, float]]:
+        cols = page_columns.get(page_num) or []
+        return cols if cols else [(0.0, float("inf"))]
+
+    def _col_idx(page_num: int, x_left: float, x_right: float) -> int:
+        cols = _cols_for(page_num)
+        center = (x_left + x_right) / 2.0
+        for idx, (c0, c1) in enumerate(cols):
+            if c0 <= center <= c1:
+                return idx
+        # Center in a gutter — snap to nearest column.
+        best_idx, best_dist = 0, float("inf")
+        for idx, (c0, c1) in enumerate(cols):
+            dist = min(abs(center - c0), abs(center - c1))
+            if dist < best_dist:
+                best_idx, best_dist = idx, dist
+        return best_idx
+
+    def _crosses_gutter(page_num: int, x_left: float, x_right: float) -> bool:
+        """True if a line spans across a column boundary on a multi-column page."""
+
+        cols = page_columns.get(page_num) or []
+        if len(cols) < 2 or x_right <= x_left:
+            return False
+        for c0, c1 in cols[:-1]:
+            if x_left < c1 < x_right:
+                return True
+        return False
 
     lines_by_page: dict[int, list[ContentLine]] = {}
     for ln in lines:
@@ -1040,26 +1081,78 @@ def _find_banner_headers(
 
     headers: set[tuple[int, float, float]] = set()
 
-    for page_num, marker_y in first_marker_y.items():
-        page_h = float(page_heights.get(page_num) or 0.0)
-        if page_h <= 0.0:
-            continue
+    def _pre_marker_lines(page_num: int, marker_y: float, page_h: float) -> list[ContentLine]:
         if (marker_y / page_h) * 100.0 > _HEADER_MARKER_MAX_PCT:
             # First question is far down the page → continuation page, skip.
-            continue
-
-        # Lines above the first marker that fall in the top band.
-        pre_marker = [
+            return []
+        pre = [
             ln
             for ln in lines_by_page.get(page_num, [])
             if ln.y_top < marker_y and (ln.y_top / page_h) * 100.0 <= _HEADER_BAND_PCT
         ]
-        if not pre_marker or len(pre_marker) > _HEADER_MAX_LINES:
-            # Empty → nothing to strip. Too many → dense continuation content.
+        # Empty → nothing to strip. Too many → dense continuation content.
+        if not pre or len(pre) > _HEADER_MAX_LINES:
+            return []
+        return pre
+
+    # Strong-marker pages: strip the sparse banner band wholesale (original).
+    for page_num, marker_y in strong_first_y.items():
+        page_h = float(page_heights.get(page_num) or 0.0)
+        if page_h <= 0.0:
+            continue
+        for ln in _pre_marker_lines(page_num, marker_y, page_h):
+            headers.add((ln.page_num, ln.y_top, ln.y_bottom))
+
+    # Weak-only (bare-numbered) pages: the page title/header is universal and
+    # must never bleed into a crop, but a single-column cross-page continuation
+    # tail above the first marker is real content and must be kept. The two are
+    # told apart by *column* and by *page position*:
+    #
+    #   * A header above the first marker of a NON-leftmost column (or a line
+    #     that spans the gutter) is page furniture. It gets swept into the
+    #     previous column's last question — whose region runs in reading order up
+    #     to that next column's first marker — so nearly every crop ends up
+    #     overlapping its neighbour. Strip it.
+    #   * The LEFTMOST column's pre-marker band is the title on the first page
+    #     (safe to strip — there is no earlier page for content to flow from) but
+    #     a genuine continuation tail on a later page (must be kept). So we strip
+    #     the leftmost band only on the first page that carries any marker.
+    #
+    # Per (page, column) first-marker y, so each column's own header band is
+    # measured against that column's first question — not the page's.
+    first_marker_page = min(starts_by_page) if starts_by_page else None
+    for page_num in weak_only_pages:
+        page_h = float(page_heights.get(page_num) or 0.0)
+        if page_h <= 0.0:
             continue
 
-        for ln in pre_marker:
-            headers.add((ln.page_num, ln.y_top, ln.y_bottom))
+        col_first_y: dict[int, float] = {}
+        for s in starts_by_page.get(page_num, []):
+            ci = _col_idx(page_num, s.x_left, s.x_right)
+            cur = col_first_y.get(ci)
+            if cur is None or s.y_top < cur:
+                col_first_y[ci] = s.y_top
+        if not col_first_y:
+            continue
+        leftmost_col = min(col_first_y)
+        # The first page with a marker cannot receive a continuation tail, so its
+        # leftmost-column header band is furniture too.
+        strip_leftmost = page_num == first_marker_page
+
+        for col, marker_y in col_first_y.items():
+            for ln in _pre_marker_lines(page_num, marker_y, page_h):
+                ln_col = _col_idx(page_num, ln.x_left, ln.x_right)
+                if ln_col != col:
+                    continue
+                # Strip a header above a secondary column's first marker, a
+                # full-width title spanning the gutter, or — on the first marker
+                # page — the leftmost column's title band.
+                if (
+                    col != leftmost_col
+                    or _crosses_gutter(page_num, ln.x_left, ln.x_right)
+                    or strip_leftmost
+                ):
+                    headers.add((ln.page_num, ln.y_top, ln.y_bottom))
 
     return headers
 
@@ -1270,26 +1363,55 @@ def drop_numbered_options(starts: list["QuestionStart"]) -> list["QuestionStart"
 
     # Anchor margins per (page, is_solution), from high-numbered weak markers.
     anchors: dict[tuple[int, bool], list[float]] = {}
+    global_anchors: dict[bool, list[float]] = {}
     for s in starts:
         if s.is_strong:
             continue
         num = _weak_marker_number(s)
         if num is not None and num >= _ANCHOR_MIN_NUMBER:
             anchors.setdefault((s.page_num, bool(s.is_solution)), []).append(s.x_left)
+            global_anchors.setdefault(bool(s.is_solution), []).append(s.x_left)
 
     margins: dict[tuple[int, bool], list[float]] = {
         key: _cluster_margins(vals, _MARGIN_CLUSTER_TOL_PX)
         for key, vals in anchors.items()
     }
 
+    global_margins: dict[bool, list[float]] = {
+        key: _cluster_margins(vals, _MARGIN_CLUSTER_TOL_PX)
+        for key, vals in global_anchors.items()
+    }
+
+    # For pages that have no anchors, compute page-specific margins by projecting global margins
+    # and adjusting for page-level shift/jitter using the page's own weak markers.
+    projected_margins: dict[tuple[int, bool], list[float]] = {}
+    for (p_num, is_sol) in set((s.page_num, bool(s.is_solution)) for s in starts):
+        page_cols = margins.get((p_num, is_sol))
+        if page_cols:
+            projected_margins[(p_num, is_sol)] = page_cols
+            continue
+
+        g_cols = global_margins.get(is_sol)
+        if not g_cols:
+            continue
+
+        page_weak = [s for s in starts if s.page_num == p_num and not s.is_strong and bool(s.is_solution) == is_sol]
+        adjusted_cols = []
+        for g_m in g_cols:
+            matching_markers = [s for s in page_weak if abs(s.x_left - g_m) < 50.0]
+            if matching_markers:
+                adjusted_cols.append(min(s.x_left for s in matching_markers))
+            else:
+                adjusted_cols.append(g_m)
+        projected_margins[(p_num, is_sol)] = sorted(adjusted_cols)
+
     kept: list["QuestionStart"] = []
     for s in starts:
         if s.is_strong:
             kept.append(s)
             continue
-        cols = margins.get((s.page_num, bool(s.is_solution)))
+        cols = projected_margins.get((s.page_num, bool(s.is_solution)))
         if not cols:
-            # No confident margin on this page/side — leave the markers alone.
             kept.append(s)
             continue
         # The marker's own column is the rightmost margin at or left of it (a
@@ -1449,6 +1571,7 @@ def starts_to_questions(
     content_lines: Optional[list[ContentLine]] = None,
     page_widths: Optional[dict[int, float]] = None,
     figures: Optional[list[FigureRegion]] = None,
+    layout_columns: Optional[int] = None,
 ) -> list[DetectedQuestion]:
     """Convert question-start markers + content lines into DetectedQuestion objects.
 
@@ -1536,24 +1659,33 @@ def starts_to_questions(
     # Per-page column layouts derived from content-line x-extents.
     page_columns: dict[int, list[tuple[float, float]]] = {}
     for page_num, page_width in widths.items():
-        intervals = [
-            (ln.x_left, ln.x_right)
-            for ln in lines
-            if ln.page_num == page_num and ln.x_right > ln.x_left
-        ]
-        cols = detect_columns(intervals, float(page_width))
-        cols = _validate_columns_with_markers(
-            cols, starts, page_num, float(page_width), lines
-        )
-        # A tight two-column page whose numbered options fill the gutter defeats
-        # the whitespace-based detector, collapsing it to one column and slicing
-        # every question into a sliver. When the markers themselves describe a
-        # clear multi-column layout, trust them instead.
-        if len(cols) <= 1:
-            page_starts = [s for s in starts if s.page_num == page_num]
-            marker_cols = columns_from_markers(page_starts, float(page_width))
-            if marker_cols is not None:
-                cols = marker_cols
+        pw = float(page_width)
+        if layout_columns is not None and layout_columns >= 1:
+            if layout_columns == 1:
+                cols = [(0.0, pw)]
+            elif layout_columns == 2:
+                cols = [(0.0, pw * 0.5), (pw * 0.5, pw)]
+            else: # layout_columns >= 3
+                cols = [(0.0, pw / 3.0), (pw / 3.0, 2.0 * pw / 3.0), (2.0 * pw / 3.0, pw)]
+        else:
+            intervals = [
+                (ln.x_left, ln.x_right)
+                for ln in lines
+                if ln.page_num == page_num and ln.x_right > ln.x_left
+            ]
+            cols = detect_columns(intervals, pw)
+            cols = _validate_columns_with_markers(
+                cols, starts, page_num, pw, lines
+            )
+            # A tight two-column page whose numbered options fill the gutter defeats
+            # the whitespace-based detector, collapsing it to one column and slicing
+            # every question into a sliver. When the markers themselves describe a
+            # clear multi-column layout, trust them instead.
+            if len(cols) <= 1:
+                page_starts = [s for s in starts if s.page_num == page_num]
+                marker_cols = columns_from_markers(page_starts, pw)
+                if marker_cols is not None:
+                    cols = marker_cols
         page_columns[page_num] = cols
 
     # Strip isolated banner/title lines above the first question on a page

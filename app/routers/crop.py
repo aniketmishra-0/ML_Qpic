@@ -12,12 +12,14 @@ from typing import Any, Optional
 import anthropic
 import fitz
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from ..config import Settings
 from ..dependencies import build_ai_detector, get_anthropic_client_optional, get_settings
 from ..models.schemas import (
     AnalyzeResponse,
+    AnalyzedItem,
+    CropPreviewRequest,
     CropResponse,
     FinalizeRequest,
     HealthResponse,
@@ -27,6 +29,7 @@ from ..models.schemas import (
 )
 from ..models.schemas import DetectedQuestion
 from ..services.crop_service import crop_and_stitch_hires, save_question_image
+from ..utils.image_utils import ensure_rgb
 from ..services.answer_sheet import count_answered, write_answer_sheet
 from ..services.detector.ai_answer_key import read_answer_key_with_ai
 from ..services.detector.answer_key import (
@@ -45,6 +48,19 @@ from ..services.zip_service import COMBINED_ZIP, QUESTIONS_ZIP, SOLUTIONS_ZIP, c
 from ..utils.file_utils import create_job_dir, generate_job_id, get_job_dir, safe_cleanup_job
 
 router = APIRouter(tags=["crop"])
+
+
+def _parse_layout_columns(layout: Optional[str]) -> Optional[int]:
+    """Parse layout_columns query parameter into Optional[int] (1, 2, 3, or None)."""
+    clean = (layout or "auto").strip().lower()
+    if clean == "1":
+        return 1
+    elif clean == "2":
+        return 2
+    elif clean == "3":
+        return 3
+    return None
+
 logger = logging.getLogger(__name__)
 
 ERR_INVALID_FILE_TYPE = "Invalid file type. PDF required."
@@ -145,6 +161,22 @@ def _dedupe_by_overlap(detected: list[Any]) -> list[Any]:
     return kept
 ERR_NO_QUESTIONS = "No questions detected in this PDF"
 ERR_JOB_NOT_FOUND = "Job ID not found"
+
+
+def _should_align_parts(question: Any) -> bool:
+    """Decide whether a question's stitched parts get left-aligned.
+
+    Honours an explicit ``align`` override when the item carries one (the review
+    "Align parts" toggle); otherwise falls back to the legacy default of aligning
+    only hand-drawn ("manual") items so the fully-automatic ``/crop`` path is
+    unchanged. Single-segment items are unaffected — alignment only matters when
+    stitching multiple parts.
+    """
+
+    override = getattr(question, "align", None)
+    if override is not None:
+        return bool(override)
+    return getattr(question, "source", "auto") == "manual"
 ERR_QUESTION_PAGES_REQUIRED = (
     "Question pages are required when the PDF has questions, e.g. '1-5' or '1 to 5, 8'. "
     "Turn off the questions toggle if this PDF has none."
@@ -390,6 +422,10 @@ async def crop_pdf(
         None,
         description="Pages that contain answers/solutions, e.g. '7-10'. Required when has_answers is true.",
     ),
+    skip_pages: Optional[str] = Query(
+        None,
+        description="Pages to skip during crop, e.g. '3, 5'.",
+    ),
     question_prefix: str = Query(
         "Q",
         max_length=10,
@@ -425,6 +461,10 @@ async def crop_pdf(
         True,
         description="Bundle an answer sheet (answers.csv + answers.json mapping each "
         "question image to its correct option) when the paper has an answer key.",
+    ),
+    layout_columns: str = Query(
+        "auto",
+        description="Force page layout columns: 'auto', '1', '2', or '3'.",
     ),
     settings: Settings = Depends(get_settings),
     client: Optional[anthropic.AsyncAnthropic] = Depends(get_anthropic_client_optional),
@@ -500,6 +540,12 @@ async def crop_pdf(
             answer_page_set = (
                 parse_page_ranges(answer_pages, max_page=total_pages) if has_answers else set()
             )
+            skip_page_set = (
+                parse_page_ranges(skip_pages, max_page=total_pages) if skip_pages else set()
+            )
+            if skip_page_set:
+                question_page_set -= skip_page_set
+                answer_page_set -= skip_page_set
         except PageRangeError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -517,6 +563,7 @@ async def crop_pdf(
         pipeline = DetectionPipeline(
             ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client)
         )
+        layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
             pdf_bytes=file_bytes,
             page_images=page_images,
@@ -524,6 +571,7 @@ async def crop_pdf(
             render_dpi=dpi,
             prefer_ai=use_ai,
             marker_style=style,
+            layout_columns=layout_val,
         )
 
         # Resolve the paper's answer key for the answer-sheet export while the
@@ -705,6 +753,7 @@ def _analyzed_to_detected(items: list[Any]) -> list[DetectedQuestion]:
                 is_solution=bool(it.is_solution),
                 segments=list(it.segments),
                 source=getattr(it, "source", "auto") or "auto",
+                align=getattr(it, "align", None),
             )
         )
     return out
@@ -720,6 +769,7 @@ async def analyze_pdf(
     question_pages: Optional[str] = Query(None),
     has_answers: bool = Query(True),
     answer_pages: Optional[str] = Query(None),
+    skip_pages: Optional[str] = Query(None),
     use_ai: bool = Query(
         False,
         description="Online mode: allow the AI vision tier when a key is configured. "
@@ -729,6 +779,10 @@ async def analyze_pdf(
         True,
         description="Read the paper's answer key during analysis and cache it so "
         "the finalized download can bundle an answer sheet.",
+    ),
+    layout_columns: str = Query(
+        "auto",
+        description="Force page layout columns: 'auto', '1', '2', or '3'.",
     ),
     settings: Settings = Depends(get_settings),
     client: Optional[anthropic.AsyncAnthropic] = Depends(get_anthropic_client_optional),
@@ -778,12 +832,19 @@ async def analyze_pdf(
             answer_page_set = (
                 parse_page_ranges(answer_pages, max_page=total_pages) if has_answers else set()
             )
+            skip_page_set = (
+                parse_page_ranges(skip_pages, max_page=total_pages) if skip_pages else set()
+            )
+            if skip_page_set:
+                question_page_set -= skip_page_set
+                answer_page_set -= skip_page_set
         except PageRangeError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         pipeline = DetectionPipeline(
             ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client)
         )
+        layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
             pdf_bytes=file_bytes,
             page_images=page_images,
@@ -794,6 +855,7 @@ async def analyze_pdf(
             marker_style=(marker_style or "auto").strip().lower()
             if (marker_style or "auto").strip().lower() in ("auto", "q", "numbered")
             else "auto",
+            layout_columns=layout_val,
         )
 
         # Resolve the paper's answer key for the answer-sheet export while the
@@ -1077,6 +1139,152 @@ async def prepare_manual(
         raise
 
 
+@router.post("/crop/{job_id}/auto-detect", response_model=list[AnalyzedItem])
+async def auto_detect_job_page(
+    request: Request,
+    job_id: str,
+    page: Optional[int] = Query(None, description="1-indexed page. If null, run on all pages."),
+    use_ai: bool = Query(False),
+    marker_style: str = Query("auto"),
+    layout_columns: str = Query("auto", description="Force page layout columns: 'auto', '1', '2', or '3'."),
+    settings: Settings = Depends(get_settings),
+    client: Optional[anthropic.AsyncAnthropic] = Depends(get_anthropic_client_optional),
+) -> list[AnalyzedItem]:
+    """Run detection pipeline on the cached PDF page(s) of an active job."""
+
+    temp_root = _get_temp_root(request, settings)
+    job_dir = get_job_dir(job_id, temp_root)
+    source_pdf = job_dir / "source.pdf"
+
+    def _exists(p: Path) -> bool:
+        return p.exists()
+
+    if not await asyncio.to_thread(_exists, source_pdf):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERR_JOB_NOT_FOUND)
+
+    file_bytes = await asyncio.to_thread(source_pdf.read_bytes)
+    dpi = settings.PDF_RENDER_DPI
+    page_images = await asyncio.to_thread(LazyPageImages, file_bytes, dpi)
+    total_pages = len(page_images)
+
+    try:
+        if page is not None:
+            if page < 1 or page > total_pages:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Page number {page} is out of bounds.")
+            question_page_set = {page}
+            answer_page_set = {page}
+        else:
+            question_page_set = set(range(1, total_pages + 1))
+            answer_page_set = set(range(1, total_pages + 1))
+
+        from PIL import Image
+
+        class SinglePageLazyImagesWrapper:
+            def __init__(self, lazy: LazyPageImages, target_page: int) -> None:
+                self.lazy = lazy
+                self.target_idx = target_page - 1
+                self.count = len(lazy)
+            def __len__(self) -> int:
+                return self.count
+            def __getitem__(self, idx: Any) -> Any:
+                if isinstance(idx, slice):
+                    indices = range(*idx.indices(self.count))
+                    return [self[i] for i in indices]
+                i = int(idx)
+                if i == self.target_idx:
+                    return self.lazy[i]
+                else:
+                    return Image.new("RGB", (10, 10), (255, 255, 255))
+            def __iter__(self):
+                for i in range(self.count):
+                    yield self[i]
+            def close(self) -> None:
+                self.lazy.close()
+
+        if page is not None:
+            wrapped_images: Any = SinglePageLazyImagesWrapper(page_images, page)
+        else:
+            wrapped_images = page_images
+
+        pipeline = DetectionPipeline(
+            ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client)
+        )
+        style = (marker_style or "auto").strip().lower()
+        if style not in ("auto", "q", "numbered"):
+            style = "auto"
+
+        layout_val = _parse_layout_columns(layout_columns)
+        detected, method_used = await pipeline.detect(
+            pdf_bytes=file_bytes,
+            page_images=wrapped_images,
+            settings=settings,
+            render_dpi=dpi,
+            smart=True,
+            prefer_ai=use_ai,
+            marker_style=style,
+            layout_columns=layout_val,
+        )
+
+        detected = apply_page_ranges(
+            questions=detected,
+            question_pages=question_page_set,
+            answer_pages=answer_page_set,
+            strict=True,
+        )
+        detected = drop_phantom_numbers(detected)
+
+        def _page_text_lines() -> dict[int, list[tuple[float, float, float, float]]]:
+            out: dict[int, list[tuple[float, float, float, float]]] = {}
+            try:
+                with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+                    for p_num in question_page_set | answer_page_set:
+                        page_idx = p_num - 1
+                        page = doc.load_page(page_idx)
+                        rect = page.rect
+                        pw, ph = float(rect.width), float(rect.height)
+                        if pw <= 0 or ph <= 0:
+                            continue
+                        lines: list[tuple[float, float, float, float]] = []
+                        data = page.get_text("dict") or {}
+                        for block in data.get("blocks", []):
+                            for ln in block.get("lines", []):
+                                spans = ln.get("spans", [])
+                                if not spans:
+                                    continue
+                                if not any((s.get("text") or "").strip() for s in spans):
+                                    continue
+                                x0, y0, x1, y1 = ln.get("bbox", (0, 0, 0, 0))
+                                lines.append(
+                                    (
+                                        (y0 / ph) * 100.0,
+                                        (y1 / ph) * 100.0,
+                                        (x0 / pw) * 100.0,
+                                        (x1 / pw) * 100.0,
+                                    )
+                                )
+                        if lines:
+                            out[p_num] = lines
+            except Exception:
+                return {}
+            return out
+
+        page_lines = await asyncio.to_thread(_page_text_lines)
+        ocr_lines = getattr(
+            getattr(pipeline, "ocr_detector", None), "page_lines_pct", None
+        )
+        if ocr_lines:
+            for p_num, lines in ocr_lines.items():
+                if p_num not in (question_page_set | answer_page_set):
+                    continue
+                if not page_lines.get(p_num) and lines:
+                    page_lines[p_num] = list(lines)
+
+        items = build_analyzed_items(detected, page_lines or None)
+        return items
+    finally:
+        await asyncio.to_thread(page_images.close)
+
+
 @router.get("/analyze/{job_id}/page/{page_no}")
 async def analyze_page_preview(
     request: Request,
@@ -1139,6 +1347,95 @@ async def snap_box(
         y_end_pct=payload.y_end_pct,
     )
     return SnapResponse(**snapped)
+
+
+@router.post("/crop/preview")
+async def crop_preview(
+    request: Request,
+    payload: CropPreviewRequest,
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Render ONE reviewed item as a standalone preview image (no ZIP).
+
+    Reuses the exact crop/stitch pipeline the finalized download runs
+    (:func:`crop_and_stitch_hires` with the same furniture removal, padding and
+    optional part-alignment), so the returned PNG/JPG is a faithful "what you
+    see is what you get" preview of how that single question/solution will look
+    after cropping. Nothing is written to disk and the answer sheet / ZIP are
+    untouched — this is a read-only render off the PDF the matching ``/analyze``
+    or ``/prepare-manual`` call cached under the job dir.
+    """
+
+    temp_root = _get_temp_root(request, settings)
+    job_dir = get_job_dir(payload.job_id, temp_root)
+    source_pdf = job_dir / "source.pdf"
+
+    def _exists(p: Path) -> bool:
+        return p.exists()
+
+    if not await asyncio.to_thread(_exists, source_pdf):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERR_JOB_NOT_FOUND)
+
+    if not payload.segments:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No region to preview. Draw or select a box first.",
+        )
+
+    fmt = (payload.image_format or "png").strip().lower()
+    out_format = "jpg" if fmt in ("jpg", "jpeg") else "png"
+    dpi = max(72, min(600, int(payload.dpi or 200)))
+    padding = max(0, min(200, int(payload.padding or 0)))
+    jpg_quality = max(1, min(100, int(payload.jpg_quality or 90)))
+
+    question = DetectedQuestion(
+        q_num=(payload.q_num or "0").strip() or "0",
+        is_solution=bool(payload.is_solution),
+        segments=list(payload.segments),
+        source=payload.source or "auto",
+        align=payload.align,
+    )
+
+    file_bytes = await asyncio.to_thread(source_pdf.read_bytes)
+
+    def _render() -> bytes:
+        import io
+
+        crop_dpi = max(dpi, settings.CROP_RENDER_DPI)
+        with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+            furniture_by_page = collect_document_furniture(doc)
+            img = crop_and_stitch_hires(
+                doc,
+                question,
+                padding_px=padding,
+                detection_dpi=dpi,
+                crop_dpi=crop_dpi,
+                furniture_by_page=furniture_by_page,
+                align_parts=_should_align_parts(question),
+            )
+        buf = io.BytesIO()
+        if out_format == "jpg":
+            ensure_rgb(img).save(buf, format="JPEG", quality=jpg_quality, optimize=True)
+        else:
+            ensure_rgb(img).save(buf, format="PNG")
+        return buf.getvalue()
+
+    try:
+        image_bytes = await asyncio.to_thread(_render)
+    except Exception as exc:
+        logger.exception("job_id=%s stage=preview_error error=%s", payload.job_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not render this preview.",
+        ) from exc
+
+    media_type = "image/jpeg" if out_format == "jpg" else "image/png"
+    # Previews change as the user re-selects / toggles align, so never cache.
+    return Response(
+        content=image_bytes,
+        media_type=media_type,
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.post("/finalize", response_model=CropResponse)
@@ -1210,9 +1507,11 @@ async def finalize_crop(
                     detection_dpi=dpi,
                     crop_dpi=crop_dpi,
                     furniture_by_page=furniture_by_page,
-                    # Left-align column-split parts only for hand-drawn items so
-                    # the auto path's output is untouched.
-                    align_parts=(getattr(question, "source", "auto") == "manual"),
+                    # Left-align column-split parts when the item asks for it.
+                    # Defaults to manual-only so the auto path's output is
+                    # untouched; an explicit `align` override (the review "Align
+                    # parts" toggle) wins so the file matches the preview.
+                    align_parts=_should_align_parts(question),
                 )
                 saved = save_question_image(
                     image=img,

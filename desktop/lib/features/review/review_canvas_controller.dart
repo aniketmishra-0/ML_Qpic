@@ -24,7 +24,7 @@
 // computed in Dart.
 
 import 'dart:math' as math;
-import 'dart:ui' show Offset;
+import 'dart:ui' show Offset, Size;
 
 import 'package:flutter/foundation.dart';
 
@@ -170,6 +170,8 @@ class ReviewCanvasController extends ChangeNotifier {
     if (clamped == _currentPageIndex) return;
     _currentPageIndex = clamped;
     _hoveredItemIndex = -1;
+    // Reset pan to top of new page.
+    _panOffset = _clampPan(Offset.zero);
     _bump();
   }
 
@@ -195,6 +197,8 @@ class ReviewCanvasController extends ChangeNotifier {
     final double next = clampZoom(value);
     if (next == _zoom) return;
     _zoom = next;
+    // Re-clamp pan offset since page size changed with zoom.
+    _panOffset = _clampPan(_panOffset);
     _bump();
   }
 
@@ -206,19 +210,77 @@ class ReviewCanvasController extends ChangeNotifier {
 
   // ---- Pan (Req 8.8) ------------------------------------------------------
 
+  /// The viewport size used for clamping pan bounds. Updated by the canvas
+  /// widget on each layout.
+  Size _viewportSize = Size.zero;
+
+  /// Sets the viewport size for pan clamping. Called by the canvas widget
+  /// every time layout recalculates geometry.
+  void setViewportSize(Size size) {
+    _viewportSize = size;
+  }
+
   /// Translates the displayed page by [delta] (widget px), changing ONLY the
   /// pan offset — never a box's page-percentage coordinates (Req 8.8).
+  /// The offset is clamped so the page cannot scroll beyond its edges.
   void panBy(Offset delta) {
     if (delta == Offset.zero) return;
-    _panOffset += delta;
+    _panOffset = _clampPan(_panOffset + delta);
     _bump();
   }
 
   /// Sets an absolute pan offset (widget px). See [panBy] for the invariant.
   void setPan(Offset offset) {
-    if (offset == _panOffset) return;
-    _panOffset = offset;
+    final Offset clamped = _clampPan(offset);
+    if (clamped == _panOffset) return;
+    _panOffset = clamped;
     _bump();
+  }
+
+  /// Clamps the pan offset so the page image doesn't scroll away from the
+  /// viewport. Horizontal is centered when the page fits; vertical scrolls
+  /// within the page bounds.
+  Offset _clampPan(Offset raw) {
+    if (_viewportSize == Size.zero) return raw;
+
+    // Compute the page display size at current zoom (same calc as the canvas).
+    // We need the page aspect ratio to derive page display size.
+    double aspect = 0;
+    if (_pages.isNotEmpty) {
+      final PageInfo page = _pages[_currentPageIndex];
+      if (page.widthPt > 0) aspect = page.heightPt / page.widthPt;
+    }
+    if (aspect <= 0) aspect = 1.4142; // A-series fallback (sqrt2)
+
+    final double fitWidth =
+        _viewportSize.width > 0 ? _viewportSize.width : 1.0;
+    final double pageW = fitWidth * _zoom;
+    final double pageH = fitWidth * aspect * _zoom;
+
+    final double vw = _viewportSize.width;
+    final double vh = _viewportSize.height;
+
+    double dx = raw.dx;
+    double dy = raw.dy;
+
+    // Horizontal: if page fits within viewport, center it; otherwise clamp.
+    if (pageW <= vw) {
+      dx = (vw - pageW) / 2;
+    } else {
+      // Page wider than viewport: allow scrolling left/right within bounds.
+      dx = dx.clamp(vw - pageW, 0.0);
+    }
+
+    // Vertical: if page fits within viewport, align to top (or center);
+    // otherwise clamp so user can scroll from top to bottom.
+    if (pageH <= vh) {
+      dy = 0.0; // page fits — pin to top
+    } else {
+      // Page taller than viewport: scroll between top edge and bottom edge.
+      dy = dy.clamp(vh - pageH, 0.0);
+    }
+
+    return Offset(dx, dy);
   }
 
   // ---- Draw-kind / numbering ---------------------------------------------
@@ -284,14 +346,23 @@ class ReviewCanvasController extends ChangeNotifier {
   /// editing target and jumps to the page its first segment lives on so the
   /// user can immediately draw (Req 8.6, and the Fix-action target of 10.4).
   /// Subsequent drawn boxes are APPENDED to this item (additive re-select).
+  ///
+  /// If the user is already viewing a page that contains a segment of this
+  /// item, the page stays (no jump) — this avoids the jarring UX of
+  /// double-clicking Q19b on page 4 and being taken to Q19a on page 3.
   void startEditing(int index) {
     if (index < 0 || index >= _items.length) return;
     _editingIndex = index;
     final AnalyzedItem it = _items[index];
     if (it.segments.isNotEmpty) {
-      final int startPage =
-          it.segments.map((QuestionSegment s) => s.page).reduce(math.min);
-      gotoPageNumber(startPage);
+      // Only navigate away if the current page has NO segment of this item.
+      final bool currentPageHasSegment = it.segments
+          .any((QuestionSegment s) => s.page == currentPageNumber);
+      if (!currentPageHasSegment) {
+        final int startPage =
+            it.segments.map((QuestionSegment s) => s.page).reduce(math.min);
+        gotoPageNumber(startPage);
+      }
     }
     _bump();
   }
@@ -420,6 +491,96 @@ class ReviewCanvasController extends ChangeNotifier {
       source: it.source,
       flagged: it.flagged,
       flagReason: it.flagReason,
+      align: it.align,
+    );
+    _bump();
+  }
+
+  /// Reorders a part within its item (web `moveSegment`): swaps segment
+  /// [segmentIndex] with its neighbour [direction] steps away (`-1` up, `+1`
+  /// down), clamped to the item's bounds. The stitch order IS the segment
+  /// order, so this lets a scattered cross-page question (e.g. parts a/b drawn
+  /// out of reading order) be put back into the order it should be combined in.
+  /// A no-op when the move would fall outside the item's parts.
+  void moveSegment(int itemIndex, int segmentIndex, int direction) {
+    if (itemIndex < 0 || itemIndex >= _items.length) return;
+    final AnalyzedItem it = _items[itemIndex];
+    final int target = segmentIndex + direction;
+    if (segmentIndex < 0 || segmentIndex >= it.segments.length) return;
+    if (target < 0 || target >= it.segments.length) return;
+    final List<QuestionSegment> next = List<QuestionSegment>.of(it.segments);
+    final QuestionSegment tmp = next[segmentIndex];
+    next[segmentIndex] = next[target];
+    next[target] = tmp;
+    _items[itemIndex] = AnalyzedItem(
+      qNum: it.qNum,
+      isSolution: it.isSolution,
+      segments: next,
+      source: it.source,
+      flagged: it.flagged,
+      flagReason: it.flagReason,
+      align: it.align,
+    );
+    _bump();
+  }
+
+  /// Sets the client-only [AnalyzedItem.align] override for item [itemIndex]
+  /// (the review "Align parts" toggle). `null` restores the engine's per-source
+  /// default. Carried into the finalize/preview request so the downloaded crop
+  /// matches the previewed one. A no-op when the value is unchanged.
+  void setItemAlign(int itemIndex, bool? align) {
+    if (itemIndex < 0 || itemIndex >= _items.length) return;
+    final AnalyzedItem it = _items[itemIndex];
+    if (it.align == align) return;
+    _items[itemIndex] = it.copyWithAlign(align);
+    _bump();
+  }
+
+  /// Sets the manual horizontal or vertical nudge for part [segmentIndex] of item
+  /// [itemIndex] (the review "Manual align" controls). Applied only when the
+  /// part is stitched into a multi-part crop, and carried into the preview/finalize
+  /// payload so the downloaded crop lines up exactly like the approved preview.
+  /// A no-op when the index is out of range or the value is unchanged.
+  void setSegmentOffset(int itemIndex, int segmentIndex, {double? xOffsetPct, double? yOffsetPct}) {
+    if (itemIndex < 0 || itemIndex >= _items.length) return;
+    final AnalyzedItem it = _items[itemIndex];
+    if (segmentIndex < 0 || segmentIndex >= it.segments.length) return;
+    final QuestionSegment seg = it.segments[segmentIndex];
+    final double nextX = xOffsetPct ?? seg.xOffsetPct;
+    final double nextY = yOffsetPct ?? seg.yOffsetPct;
+    if ((seg.xOffsetPct - nextX).abs() < 1e-6 && (seg.yOffsetPct - nextY).abs() < 1e-6) return;
+    final List<QuestionSegment> next = List<QuestionSegment>.of(it.segments);
+    next[segmentIndex] = seg.copyWithOffset(xOffsetPct: nextX, yOffsetPct: nextY);
+    _items[itemIndex] = AnalyzedItem(
+      qNum: it.qNum,
+      isSolution: it.isSolution,
+      segments: next,
+      source: it.source,
+      flagged: it.flagged,
+      flagReason: it.flagReason,
+      align: it.align,
+    );
+    _bump();
+  }
+
+  /// Clears every manual nudge on item [itemIndex] back to 0 (the "Reset"
+  /// action in the manual-align controls). A no-op when nothing is nudged.
+  void resetSegmentOffsets(int itemIndex) {
+    if (itemIndex < 0 || itemIndex >= _items.length) return;
+    final AnalyzedItem it = _items[itemIndex];
+    final bool any = it.segments.any((QuestionSegment s) => s.xOffsetPct != 0.0 || s.yOffsetPct != 0.0);
+    if (!any) return;
+    final List<QuestionSegment> next = <QuestionSegment>[
+      for (final QuestionSegment s in it.segments) s.copyWithOffset(xOffsetPct: 0.0, yOffsetPct: 0.0),
+    ];
+    _items[itemIndex] = AnalyzedItem(
+      qNum: it.qNum,
+      isSolution: it.isSolution,
+      segments: next,
+      source: it.source,
+      flagged: it.flagged,
+      flagReason: it.flagReason,
+      align: it.align,
     );
     _bump();
   }
@@ -461,6 +622,7 @@ class ReviewCanvasController extends ChangeNotifier {
       source: it.source,
       flagged: it.flagged,
       flagReason: it.flagReason,
+      align: it.align,
     );
     _bump();
   }
@@ -475,6 +637,61 @@ class ReviewCanvasController extends ChangeNotifier {
     _bump();
   }
 
+  /// Clears all existing items' segments on [page], then adds [newPageItems]' segments.
+  /// If an item already has segments on other pages, it keeps them and merges
+  /// the new page segments into it.
+  void replaceItemsForPage(int page, List<AnalyzedItem> newPageItems) {
+    final List<AnalyzedItem> nextItems = <AnalyzedItem>[];
+    for (final AnalyzedItem item in _items) {
+      final List<QuestionSegment> keptSegs = item.segments
+          .where((QuestionSegment s) => s.page != page)
+          .toList();
+      if (keptSegs.isNotEmpty) {
+        nextItems.add(AnalyzedItem(
+          qNum: item.qNum,
+          isSolution: item.isSolution,
+          segments: keptSegs,
+          source: item.source,
+          align: item.align,
+          flagged: item.flagged,
+          flagReason: item.flagReason,
+        ));
+      }
+    }
+
+    for (final AnalyzedItem newItem in newPageItems) {
+      final int existingIdx = nextItems.indexWhere(
+        (AnalyzedItem it) => it.qNum == newItem.qNum && it.isSolution == newItem.isSolution,
+      );
+      if (existingIdx >= 0) {
+        final AnalyzedItem existing = nextItems[existingIdx];
+        final List<QuestionSegment> mergedSegs = List<QuestionSegment>.of(existing.segments)
+          ..addAll(newItem.segments);
+        mergedSegs.sort((QuestionSegment a, QuestionSegment b) => a.page != b.page
+            ? a.page.compareTo(b.page)
+            : a.yStartPct.compareTo(b.yStartPct));
+        nextItems[existingIdx] = AnalyzedItem(
+          qNum: existing.qNum,
+          isSolution: existing.isSolution,
+          segments: mergedSegs,
+          source: newItem.source == 'manual' || existing.source == 'manual' ? 'manual' : 'auto',
+          align: existing.align,
+          flagged: existing.flagged,
+          flagReason: existing.flagReason,
+        );
+      } else {
+        nextItems.add(newItem);
+      }
+    }
+
+    _items = nextItems;
+    // Clear any notes associated with the newly detected items on this page
+    for (final AnalyzedItem newItem in newPageItems) {
+      _clearNoteFor(newItem.qNum, newItem.isSolution);
+    }
+    _bump();
+  }
+
   // ---- Internal helpers ---------------------------------------------------
 
   /// Returns a copy of [it] marked as a manual fix with [segments].
@@ -486,6 +703,7 @@ class ReviewCanvasController extends ChangeNotifier {
       source: 'manual',
       flagged: false,
       flagReason: null,
+      align: it.align,
     );
   }
 

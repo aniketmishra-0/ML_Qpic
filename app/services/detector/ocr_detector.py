@@ -18,6 +18,7 @@ from ...models.schemas import DetectedQuestion
 from .base import (
     ContentLine,
     QuestionStart,
+    detect_columns,
     match_question_start_ex,
     match_solution_header,
     starts_to_questions,
@@ -35,6 +36,7 @@ class OCRDetector:
         settings: Settings,
         render_dpi: Optional[int] = None,
         marker_style: str = "auto",
+        layout_columns: Optional[int] = None,
     ) -> list[DetectedQuestion]:
         """Detect questions using OCR word boxes grouped into lines.
 
@@ -125,6 +127,7 @@ class OCRDetector:
             total_pages=len(page_images),
             content_lines=content_lines,
             page_widths=page_widths,
+            layout_columns=layout_columns,
         )
 
     @staticmethod
@@ -291,8 +294,24 @@ class OCRDetector:
             except Exception:
                 return default
 
-        # Group words by (block, paragraph, line).
-        grouped: dict[tuple[int, int, int], list[dict[str, Any]]] = {}
+        # Group words by (block, paragraph, line). On a two-column scan,
+        # Tesseract (psm 6) often reads straight ACROSS the gutter and packs the
+        # left and right columns' words into one structural line — e.g.
+        # "1. Left stem ... 5. Right stem". That single merged row (a) hides the
+        # gutter from the downstream line-based column detector, so the page
+        # looks single-column, (b) gives every left-column marker a full-page
+        # x-extent, so its crop balloons across the page and overlaps the right
+        # column (the "Overlaps another item" warning on every item), and
+        # (c) buries the right column's markers ("5." mid-line) where the
+        # start-pattern never matches them, dropping those questions.
+        #
+        # The gutter is still visible at the WORD level, so we detect the column
+        # layout from the individual word boxes and fold a column index into the
+        # grouping key. A merged row is then split back into one line per column
+        # (each keeping its own narrow x-extent and surfacing its own marker),
+        # while a genuine single-column page yields one column and is grouped
+        # exactly as before.
+        words_info: list[dict[str, Any]] = []
 
         for i in range(n):
             text = str(texts[i] or "").strip()
@@ -316,12 +335,7 @@ class OCRDetector:
             height = _int_at(heights, i, 0)
             width = _int_at(widths, i, 0)
 
-            key = (
-                _int_at(block_nums, i, 0),
-                _int_at(par_nums, i, 0),
-                _int_at(line_nums, i, 0),
-            )
-            grouped.setdefault(key, []).append(
+            words_info.append(
                 {
                     "text": text,
                     "top": top,
@@ -329,8 +343,19 @@ class OCRDetector:
                     "height": height,
                     "width": width,
                     "word_num": _int_at(word_nums, i, left),
+                    "block": _int_at(block_nums, i, 0),
+                    "par": _int_at(par_nums, i, 0),
+                    "line": _int_at(line_nums, i, 0),
                 }
             )
+
+        columns = self._detect_word_columns(words_info)
+
+        grouped: dict[tuple[int, int, int, int], list[dict[str, Any]]] = {}
+        for w in words_info:
+            col = self._column_for(columns, w["left"], w["left"] + max(w["width"], 0))
+            key = (col, w["block"], w["par"], w["line"])
+            grouped.setdefault(key, []).append(w)
 
         starts: list[QuestionStart] = []
         content_lines: list[ContentLine] = []
@@ -397,3 +422,71 @@ class OCRDetector:
                 )
 
         return starts, content_lines, solutions_started
+
+    # Minimum words on a page before we trust a word-box column split. Below
+    # this a "gutter" is just sampling noise, so we keep the single-column path.
+    _MIN_WORDS_FOR_COLUMN_SPLIT = 12
+
+    def _detect_word_columns(
+        self, words_info: list[dict[str, Any]]
+    ) -> list[tuple[float, float]]:
+        """Column x-ranges derived from individual word boxes.
+
+        Tesseract's merged lines hide a two-column gutter, but the underlying
+        word boxes still leave it empty. Running the shared density-based
+        :func:`detect_columns` over the per-word x-extents recovers the gutter,
+        so a row read across it can be split back into one line per column.
+
+        Returns a single full-width column (the no-op case) for single-column
+        pages, sparse pages, or any failure, so non-columnar scans group exactly
+        as they did before.
+        """
+
+        if len(words_info) < self._MIN_WORDS_FOR_COLUMN_SPLIT:
+            return [(0.0, float("inf"))]
+
+        intervals: list[tuple[float, float]] = []
+        max_right = 0.0
+        for w in words_info:
+            x0 = float(w["left"])
+            x1 = x0 + float(max(w["width"], 0))
+            if x1 > x0:
+                intervals.append((x0, x1))
+                max_right = max(max_right, x1)
+
+        if not intervals or max_right <= 0:
+            return [(0.0, float("inf"))]
+
+        try:
+            cols = detect_columns(intervals, max_right)
+        except Exception:
+            return [(0.0, float("inf"))]
+
+        # Let the last column absorb anything to its right (page margin) so a
+        # word past the rightmost text still lands in a real column.
+        if cols:
+            c0, _ = cols[-1]
+            cols[-1] = (c0, float("inf"))
+        return cols or [(0.0, float("inf"))]
+
+    @staticmethod
+    def _column_for(
+        columns: list[tuple[float, float]], x_left: float, x_right: float
+    ) -> int:
+        """Index of the column a word's horizontal center falls in.
+
+        A center in a gutter snaps to the nearest column so no word is dropped.
+        """
+
+        if len(columns) <= 1:
+            return 0
+        center = (x_left + x_right) / 2.0
+        for idx, (c0, c1) in enumerate(columns):
+            if c0 <= center <= c1:
+                return idx
+        best_idx, best_dist = 0, float("inf")
+        for idx, (c0, c1) in enumerate(columns):
+            dist = min(abs(center - c0), abs(center - c1))
+            if dist < best_dist:
+                best_dist, best_idx = dist, idx
+        return best_idx

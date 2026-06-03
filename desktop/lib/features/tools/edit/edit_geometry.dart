@@ -22,7 +22,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show Rect, Size;
 
-import '../../../models/tools.dart' show EditPageModel, EditableSpanModel;
+import '../../../models/tools.dart' show EditPageModel, EditableSpanModel, VectorObjectModel;
 
 /// Minimum on-screen size (px) for a span box, matching the web
 /// `Math.max(6, ...)` clamp in `layoutSpans` so a hair-thin run is still a
@@ -99,6 +99,22 @@ Rect spanRectForPage({
 }) {
   return spanDisplayRect(
     bbox: span.bbox,
+    pageSize: pageSizePt(page),
+    displaySize: displaySize,
+    minSize: minSize,
+  );
+}
+
+/// Convenience wrapper that maps a [VectorObjectModel] onto [displaySize] for
+/// the page it belongs to.
+Rect vectorObjectRectForPage({
+  required VectorObjectModel vec,
+  required EditPageModel page,
+  required Size displaySize,
+  double minSize = kMinSpanBoxSize,
+}) {
+  return spanDisplayRect(
+    bbox: vec.bbox,
     pageSize: pageSizePt(page),
     displaySize: displaySize,
     minSize: minSize,

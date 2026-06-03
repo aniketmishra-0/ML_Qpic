@@ -3,10 +3,11 @@
 // [ReviewScreen] is the full-window surface that hosts the high-risk
 // [ReviewCanvas] together with everything around it that the Smart Auto Crop
 // (and, later, Manual Crop) review flow needs: page navigation, zoom controls,
-// the answer-sheet advisory, and the [ReviewNotesPanel]. It is opened by the
-// Auto Crop tool after a successful `POST /api/analyze` — regardless of the
-// engine's `needs_review` flag (Req 6.2) — and binds to a [ReviewController]
-// that already holds the returned pages, items, notes, and `answer_key_count`.
+// the answer-sheet advisory, a collapsible [ReviewNotesPanel], and a slim
+// status bar. It is opened by the Auto Crop tool after a successful
+// `POST /api/analyze` — regardless of the engine's `needs_review` flag
+// (Req 6.2) — and binds to a [ReviewController] that already holds the returned
+// pages, items, notes, and `answer_key_count`.
 //
 // Engine boundary (Req 1.5, 6.3): each page is a SERVER-RENDERED PNG. The
 // canvas loads it from the engine-provided `preview_url` joined onto Base_URL
@@ -14,26 +15,26 @@
 // geometry. The answer-sheet message is read straight from the engine's
 // `answer_key_count` (Req 6.4, 6.5).
 //
-// SCOPE: this screen wires the analyze→review ENTRY (task 12.5). The finalize
-// and download from review (task 12.6) are intentionally not implemented here;
-// an [onFinalize] hook is exposed for that later task to attach the
-// `POST /api/finalize` flow without reworking this screen.
+// The finalize + download-from-review affordances (task 12.6) are wired through
+// [onFinalize] and the controller's download seams.
 
 import 'package:flutter/material.dart';
 
+import '../../core/download_service.dart';
 import '../../core/theme_controller.dart';
 import '../auto_crop/auto_crop_controller.dart' show CropArchive;
-import '../../core/download_service.dart';
 import 'review_canvas.dart';
 import 'review_controller.dart';
+import 'review_items_panel.dart';
 import 'review_notes_panel.dart';
 
 /// Full-window Review Canvas host for the Smart Auto Crop / Manual Crop flows.
 ///
 /// Binds to [controller] (already loaded from the analyze / prepare-manual
 /// response) and renders the canvas, page navigation, zoom controls, the
-/// answer-sheet advisory (Req 6.4/6.5), and the notes panel (Req 10).
-class ReviewScreen extends StatelessWidget {
+/// answer-sheet advisory (Req 6.4/6.5), and the collapsible notes panel
+/// (Req 10).
+class ReviewScreen extends StatefulWidget {
   const ReviewScreen({
     super.key,
     required this.controller,
@@ -60,10 +61,22 @@ class ReviewScreen extends StatelessWidget {
   /// When null the Back control is hidden.
   final VoidCallback? onClose;
 
-  /// Invoked when the user confirms the reviewed set. Wired by task 12.6 to the
+  /// Invoked when the user confirms the reviewed set. Wired to the
   /// `POST /api/finalize` + download flow; when null the Finalize control is
-  /// disabled (this task only wires the analyze→review entry).
+  /// disabled.
   final VoidCallback? onFinalize;
+
+  @override
+  State<ReviewScreen> createState() => _ReviewScreenState();
+}
+
+class _ReviewScreenState extends State<ReviewScreen> {
+  /// Whether the right-hand notes panel is shown. Toggled from the toolbar so
+  /// the canvas can take the full width when the user wants more room.
+  bool _notesOpen = true;
+  bool _autoDetectUseAi = false;
+
+  void _toggleNotes() => setState(() => _notesOpen = !_notesOpen);
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +84,7 @@ class ReviewScreen extends StatelessWidget {
         Theme.of(context).extension<QpicPalette>() ?? QpicPalette.dark;
 
     return AnimatedBuilder(
-      animation: controller,
+      animation: widget.controller,
       builder: (BuildContext context, Widget? _) {
         return Scaffold(
           backgroundColor: palette.background,
@@ -79,14 +92,24 @@ class ReviewScreen extends StatelessWidget {
             child: Column(
               children: <Widget>[
                 _ReviewToolbar(
-                  controller: controller,
+                  controller: widget.controller,
                   palette: palette,
-                  onClose: onClose,
-                  onFinalize: onFinalize,
+                  onClose: widget.onClose,
+                  onFinalize: widget.onFinalize,
+                  notesOpen: _notesOpen,
+                  onToggleNotes: _toggleNotes,
+                  autoDetectUseAi: _autoDetectUseAi,
+                  onToggleUseAi: (bool val) => setState(() => _autoDetectUseAi = val),
                 ),
-                _AnswerSheetAdvisory(controller: controller, palette: palette),
-                _FinalizeErrorBanner(controller: controller, palette: palette),
-                _FinalizeDownloadBar(controller: controller, palette: palette),
+                _AnswerSheetAdvisory(
+                    controller: widget.controller, palette: palette),
+                _FinalizeErrorBanner(
+                    controller: widget.controller, palette: palette),
+                _FinalizeDownloadBar(
+                    controller: widget.controller,
+                    palette: palette,
+                    questionPrefix: widget.questionPrefix,
+                    solutionPrefix: widget.solutionPrefix),
                 Expanded(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -97,17 +120,25 @@ class ReviewScreen extends StatelessWidget {
                           padding: const EdgeInsets.all(12),
                           child: ReviewCanvas(
                             key: const ValueKey<String>('review-canvas'),
-                            controller: controller.canvas,
-                            previewUrlResolver: previewUrlResolver,
-                            questionPrefix: questionPrefix,
-                            solutionPrefix: solutionPrefix,
+                            controller: widget.controller.canvas,
+                            previewUrlResolver: widget.previewUrlResolver,
+                            questionPrefix: widget.questionPrefix,
+                            solutionPrefix: widget.solutionPrefix,
                           ),
                         ),
                       ),
-                      _NotesSidebar(controller: controller, palette: palette),
+                      _NotesSidebar(
+                        controller: widget.controller,
+                        palette: palette,
+                        open: _notesOpen,
+                        questionPrefix: widget.questionPrefix,
+                        solutionPrefix: widget.solutionPrefix,
+                      ),
                     ],
                   ),
                 ),
+                _ReviewStatusBar(
+                    controller: widget.controller, palette: palette),
               ],
             ),
           ),
@@ -117,20 +148,28 @@ class ReviewScreen extends StatelessWidget {
   }
 }
 
-/// Top toolbar: Back, page navigation, zoom controls, re-select Done, and the
-/// (task-12.6) Finalize affordance.
+/// Top toolbar: Back, page navigation, zoom controls, re-select Done, the
+/// Finalize affordance, and a notes-panel toggle.
 class _ReviewToolbar extends StatelessWidget {
   const _ReviewToolbar({
     required this.controller,
     required this.palette,
     required this.onClose,
     required this.onFinalize,
+    required this.notesOpen,
+    required this.onToggleNotes,
+    required this.autoDetectUseAi,
+    required this.onToggleUseAi,
   });
 
   final ReviewController controller;
   final QpicPalette palette;
   final VoidCallback? onClose;
   final VoidCallback? onFinalize;
+  final bool notesOpen;
+  final VoidCallback onToggleNotes;
+  final bool autoDetectUseAi;
+  final ValueChanged<bool> onToggleUseAi;
 
   @override
   Widget build(BuildContext context) {
@@ -148,13 +187,14 @@ class _ReviewToolbar extends StatelessWidget {
       child: Row(
         children: <Widget>[
           if (onClose != null)
-            IconButton(
-              key: const ValueKey<String>('review-back'),
+            _RoundedIconButton(
+              valueKey: 'review-back',
               tooltip: 'Back',
-              color: palette.appBarText,
-              icon: const Icon(Icons.arrow_back),
+              icon: Icons.arrow_back_rounded,
+              palette: palette,
               onPressed: onClose,
             ),
+          const SizedBox(width: 4),
           Text(
             'Review detections',
             key: const ValueKey<String>('review-title'),
@@ -165,79 +205,269 @@ class _ReviewToolbar extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          // Page navigation (Req 8.12 surfaced here; the controller clamps).
-          IconButton(
-            key: const ValueKey<String>('review-prev-page'),
-            tooltip: 'Previous page',
-            color: palette.appBarText,
-            icon: const Icon(Icons.chevron_left),
-            onPressed: controller.canvas.isFirstPage || pageCount == 0
-                ? null
-                : controller.previousPage,
+          // Page navigation grouped in a soft pill (Req 8.12; controller clamps).
+          _ToolbarGroup(
+            palette: palette,
+            children: <Widget>[
+              _RoundedIconButton(
+                valueKey: 'review-prev-page',
+                tooltip: 'Previous page',
+                icon: Icons.chevron_left_rounded,
+                palette: palette,
+                dense: true,
+                onPressed: controller.canvas.isFirstPage || pageCount == 0
+                    ? null
+                    : controller.previousPage,
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text(
+                  pageCount == 0
+                      ? '—'
+                      : 'Page $displayIndex / $pageCount  (p$pageNumber)',
+                  key: const ValueKey<String>('review-page-indicator'),
+                  style: TextStyle(color: palette.appBarText, fontSize: 13),
+                ),
+              ),
+              _RoundedIconButton(
+                valueKey: 'review-next-page',
+                tooltip: 'Next page',
+                icon: Icons.chevron_right_rounded,
+                palette: palette,
+                dense: true,
+                onPressed: controller.canvas.isLastPage || pageCount == 0
+                    ? null
+                    : controller.nextPage,
+              ),
+            ],
           ),
-          Text(
-            pageCount == 0 ? '—' : 'Page $displayIndex / $pageCount  (p$pageNumber)',
-            key: const ValueKey<String>('review-page-indicator'),
-            style: TextStyle(color: palette.appBarText, fontSize: 13),
+          const SizedBox(width: 10),
+          // Zoom controls grouped in a soft pill (Req 8.9; controller clamps).
+          _ToolbarGroup(
+            palette: palette,
+            children: <Widget>[
+              _RoundedIconButton(
+                valueKey: 'review-zoom-out',
+                tooltip: 'Zoom out',
+                icon: Icons.zoom_out_rounded,
+                palette: palette,
+                dense: true,
+                onPressed: () => controller.zoomBy(0.8),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  '${(controller.zoom * 100).round()}%',
+                  key: const ValueKey<String>('review-zoom-indicator'),
+                  style: TextStyle(color: palette.appBarText, fontSize: 13),
+                ),
+              ),
+              _RoundedIconButton(
+                valueKey: 'review-zoom-in',
+                tooltip: 'Zoom in',
+                icon: Icons.zoom_in_rounded,
+                palette: palette,
+                dense: true,
+                onPressed: () => controller.zoomBy(1.25),
+              ),
+              _RoundedIconButton(
+                valueKey: 'review-zoom-reset',
+                tooltip: 'Fit width',
+                icon: Icons.fit_screen_rounded,
+                palette: palette,
+                dense: true,
+                onPressed: controller.resetZoom,
+              ),
+            ],
           ),
-          IconButton(
-            key: const ValueKey<String>('review-next-page'),
-            tooltip: 'Next page',
-            color: palette.appBarText,
-            icon: const Icon(Icons.chevron_right),
-            onPressed: controller.canvas.isLastPage || pageCount == 0
-                ? null
-                : controller.nextPage,
-          ),
-          const SizedBox(width: 12),
-          // Zoom controls (Req 8.9; the controller clamps 0.25..6.0).
-          IconButton(
-            key: const ValueKey<String>('review-zoom-out'),
-            tooltip: 'Zoom out',
-            color: palette.appBarText,
-            icon: const Icon(Icons.zoom_out),
-            onPressed: () => controller.zoomBy(0.8),
-          ),
-          Text(
-            '${(controller.zoom * 100).round()}%',
-            key: const ValueKey<String>('review-zoom-indicator'),
-            style: TextStyle(color: palette.appBarText, fontSize: 13),
-          ),
-          IconButton(
-            key: const ValueKey<String>('review-zoom-in'),
-            tooltip: 'Zoom in',
-            color: palette.appBarText,
-            icon: const Icon(Icons.zoom_in),
-            onPressed: () => controller.zoomBy(1.25),
-          ),
-          IconButton(
-            key: const ValueKey<String>('review-zoom-reset'),
-            tooltip: 'Fit width',
-            color: palette.appBarText,
-            icon: const Icon(Icons.fit_screen),
-            onPressed: controller.resetZoom,
-          ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           if (controller.isEditing)
             TextButton(
               key: const ValueKey<String>('review-done-reselect'),
               onPressed: controller.doneReselecting,
               child: const Text('Done re-selecting'),
             ),
+          if (controller.autoDetecting)
+            FilledButton.icon(
+              key: const ValueKey<String>('review-auto-detect-busy'),
+              onPressed: null,
+              icon: const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              label: const Text('Detecting…'),
+            )
+          else
+            PopupMenuButton<String>(
+              key: const ValueKey<String>('review-auto-detect-menu'),
+              tooltip: 'Auto-detect questions',
+              offset: const Offset(0, 40),
+              onSelected: (String value) {
+                if (value == 'toggle-ai') {
+                  onToggleUseAi(!autoDetectUseAi);
+                } else if (value == 'detect-page') {
+                  controller.runAutoDetect(pageOnly: true, useAi: autoDetectUseAi);
+                } else if (value == 'detect-all') {
+                  controller.runAutoDetect(pageOnly: false, useAi: autoDetectUseAi);
+                }
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                CheckedPopupMenuItem<String>(
+                  key: const ValueKey<String>('review-auto-detect-use-ai'),
+                  value: 'toggle-ai',
+                  checked: autoDetectUseAi,
+                  child: const Text('Use AI (Online mode)'),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem<String>(
+                  key: const ValueKey<String>('review-auto-detect-page'),
+                  value: 'detect-page',
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(Icons.find_in_page_rounded, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Auto-detect Page $displayIndex',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  key: const ValueKey<String>('review-auto-detect-all'),
+                  value: 'detect-all',
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(Icons.auto_awesome_motion_rounded, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: const Text(
+                          'Auto-detect All Pages',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              child: IgnorePointer(
+                child: FilledButton.icon(
+                  key: const ValueKey<String>('review-auto-detect-button'),
+                  onPressed: () {},
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+                  label: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text('Auto Detect'),
+                      SizedBox(width: 4),
+                      Icon(Icons.arrow_drop_down_rounded, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(width: 8),
           FilledButton.icon(
             key: const ValueKey<String>('review-finalize'),
             onPressed:
-                (onFinalize == null || controller.finalizing) ? null : onFinalize,
+                (onFinalize == null || controller.finalizing || controller.autoDetecting) ? null : onFinalize,
             icon: controller.finalizing
                 ? const SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.check),
+                : const Icon(Icons.check_rounded),
             label: Text(controller.finalizing ? 'Finalizing…' : 'Finalize'),
           ),
+          const SizedBox(width: 8),
+          // Notes panel toggle (collapse/expand the right sidebar).
+          _RoundedIconButton(
+            valueKey: 'review-toggle-notes',
+            tooltip: notesOpen ? 'Hide notes' : 'Show notes',
+            icon: Icons.view_sidebar_rounded,
+            palette: palette,
+            active: notesOpen,
+            onPressed: onToggleNotes,
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// A soft rounded container that groups a set of toolbar controls (page nav,
+/// zoom) so the toolbar reads as distinct clusters rather than a flat row.
+class _ToolbarGroup extends StatelessWidget {
+  const _ToolbarGroup({required this.palette, required this.children});
+
+  final QpicPalette palette;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+      decoration: BoxDecoration(
+        color: palette.field,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: palette.borderSoft),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: children,
+      ),
+    );
+  }
+}
+
+/// A compact rounded icon button used throughout the review toolbar. Keeps the
+/// stable ValueKey the widget tests drive while giving a more polished, native
+/// feel than a bare [IconButton].
+class _RoundedIconButton extends StatelessWidget {
+  const _RoundedIconButton({
+    required this.valueKey,
+    required this.tooltip,
+    required this.icon,
+    required this.palette,
+    required this.onPressed,
+    this.dense = false,
+    this.active = false,
+  });
+
+  final String valueKey;
+  final String tooltip;
+  final IconData icon;
+  final QpicPalette palette;
+  final VoidCallback? onPressed;
+  final bool dense;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final double size = dense ? 30 : 36;
+    final Color fg = active
+        ? palette.brand
+        : (onPressed == null ? palette.mutedAlt : palette.appBarText);
+
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: active ? palette.brand.withValues(alpha: 0.12) : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          key: ValueKey<String>(valueKey),
+          borderRadius: BorderRadius.circular(8),
+          onTap: onPressed,
+          child: SizedBox(
+            width: size,
+            height: size,
+            child: Icon(icon, size: dense ? 18 : 20, color: fg),
+          ),
+        ),
       ),
     );
   }
@@ -341,10 +571,17 @@ class _FinalizeErrorBanner extends StatelessWidget {
 /// [ReviewController.download] → `GET /api/crop/download/{job_id}` with the
 /// configured prefixes (Req 11.4).
 class _FinalizeDownloadBar extends StatelessWidget {
-  const _FinalizeDownloadBar({required this.controller, required this.palette});
+  const _FinalizeDownloadBar({
+    required this.controller,
+    required this.palette,
+    required this.questionPrefix,
+    required this.solutionPrefix,
+  });
 
   final ReviewController controller;
   final QpicPalette palette;
+  final String questionPrefix;
+  final String solutionPrefix;
 
   @override
   Widget build(BuildContext context) {
@@ -410,24 +647,168 @@ class _FinalizeDownloadBar extends StatelessWidget {
   }
 }
 
-/// Right-hand sidebar hosting the review notes panel (Req 10).
-class _NotesSidebar extends StatelessWidget {
-  const _NotesSidebar({required this.controller, required this.palette});
+/// Right-hand sidebar hosting the review notes panel and the detected-items
+/// list (Req 10). Collapses to a zero-width strip with a smooth animation when
+/// [open] is false so the canvas can take the full width.
+class _NotesSidebar extends StatefulWidget {
+  const _NotesSidebar({
+    required this.controller,
+    required this.palette,
+    required this.open,
+    required this.questionPrefix,
+    required this.solutionPrefix,
+  });
+
+  final ReviewController controller;
+  final QpicPalette palette;
+  final bool open;
+  final String questionPrefix;
+  final String solutionPrefix;
+
+  @override
+  State<_NotesSidebar> createState() => _NotesSidebarState();
+}
+
+class _NotesSidebarState extends State<_NotesSidebar> {
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.trim();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      child: SizedBox(
+        width: widget.open ? 320 : 0,
+        child: widget.open
+            ? Container(
+                decoration: BoxDecoration(
+                  color: widget.palette.panel,
+                  border: Border(left: BorderSide(color: widget.palette.border)),
+                ),
+                child: Column(
+                  children: <Widget>[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                      child: TextField(
+                        controller: _searchController,
+                        style: TextStyle(color: widget.palette.text, fontSize: 13),
+                        decoration: InputDecoration(
+                          hintText: 'Search detections and errors...',
+                          prefixIcon: Icon(
+                            Icons.search_rounded,
+                            size: 18,
+                            color: widget.palette.mutedAlt,
+                          ),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
+                                  icon: Icon(
+                                    Icons.clear_rounded,
+                                    size: 16,
+                                    color: widget.palette.muted,
+                                  ),
+                                  onPressed: () => _searchController.clear(),
+                                )
+                              : null,
+                          suffixIconConstraints: const BoxConstraints(
+                            minWidth: 28,
+                            minHeight: 28,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            ReviewNotesPanel(
+                              controller: widget.controller,
+                              searchQuery: _searchQuery,
+                            ),
+                            const SizedBox(height: 16),
+                            ReviewItemsPanel(
+                              controller: widget.controller,
+                              questionPrefix: widget.questionPrefix,
+                              solutionPrefix: widget.solutionPrefix,
+                              searchQuery: _searchQuery,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            : const SizedBox.shrink(),
+      ),
+    );
+  }
+}
+
+/// A slim status bar pinned to the bottom of the review surface showing the
+/// page/item summary and a keyboard-shortcut hint. Purely informational — it
+/// reads from the controller and triggers no engine work.
+class _ReviewStatusBar extends StatelessWidget {
+  const _ReviewStatusBar({required this.controller, required this.palette});
 
   final ReviewController controller;
   final QpicPalette palette;
 
   @override
   Widget build(BuildContext context) {
+    final int pageCount = controller.pages.length;
+    final int itemCount = controller.items.length;
+
     return Container(
-      width: 320,
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: palette.panel,
-        border: Border(left: BorderSide(color: palette.border)),
+        color: palette.panelAlt,
+        border: Border(top: BorderSide(color: palette.borderSoft)),
       ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(12),
-        child: ReviewNotesPanel(controller: controller),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.description_outlined, size: 13, color: palette.muted),
+          const SizedBox(width: 6),
+          Text(
+            '$pageCount page${pageCount == 1 ? '' : 's'} · '
+            '$itemCount detection${itemCount == 1 ? '' : 's'}',
+            style: TextStyle(color: palette.muted, fontSize: 11.5),
+          ),
+          const Spacer(),
+          Text(
+            'Double-click a box to re-select · scroll to zoom',
+            style: TextStyle(color: palette.mutedAlt, fontSize: 11),
+          ),
+        ],
       ),
     );
   }

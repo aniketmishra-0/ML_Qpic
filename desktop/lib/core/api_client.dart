@@ -125,6 +125,7 @@ class ApiClient {
     String? questionPages,
     bool hasAnswers = true,
     String? answerPages,
+    String? skipPages,
     String questionPrefix = 'Q',
     String solutionPrefix = 'S',
     int startNumber = 1,
@@ -132,6 +133,7 @@ class ApiClient {
     int jpgQuality = 90,
     bool useAi = false,
     bool answerSheet = true,
+    String layoutColumns = 'auto',
   }) {
     return _guard(() async {
       final query = <String, dynamic>{
@@ -147,9 +149,11 @@ class ApiClient {
         'jpg_quality': jpgQuality,
         'use_ai': useAi,
         'answer_sheet': answerSheet,
+        'layout_columns': layoutColumns,
       };
       if (questionPages != null) query['question_pages'] = questionPages;
       if (answerPages != null) query['answer_pages'] = answerPages;
+      if (skipPages != null) query['skip_pages'] = skipPages;
 
       final form = FormData();
       form.files.add(
@@ -183,8 +187,10 @@ class ApiClient {
     String? questionPages,
     bool hasAnswers = true,
     String? answerPages,
+    String? skipPages,
     bool useAi = false,
     bool answerSheet = true,
+    String layoutColumns = 'auto',
   }) {
     return _guard(() async {
       final query = <String, dynamic>{
@@ -194,9 +200,11 @@ class ApiClient {
         'has_answers': hasAnswers,
         'use_ai': useAi,
         'answer_sheet': answerSheet,
+        'layout_columns': layoutColumns,
       };
       if (questionPages != null) query['question_pages'] = questionPages;
       if (answerPages != null) query['answer_pages'] = answerPages;
+      if (skipPages != null) query['skip_pages'] = skipPages;
 
       final form = FormData();
       form.files.add(
@@ -248,6 +256,32 @@ class ApiClient {
     });
   }
 
+  /// `POST /api/crop/{job_id}/auto-detect` — run auto-detection on a page or all pages of the cached document.
+  Future<List<AnalyzedItem>> autoDetect({
+    required String jobId,
+    int? page,
+    bool useAi = false,
+    String markerStyle = 'auto',
+    String layoutColumns = 'auto',
+  }) {
+    return _guard(() async {
+      final query = <String, dynamic>{
+        'use_ai': useAi,
+        'marker_style': markerStyle,
+        'layout_columns': layoutColumns,
+      };
+      if (page != null) query['page'] = page;
+
+      final res = await _dio.post<List<dynamic>>(
+        '$_api/crop/$jobId/auto-detect',
+        queryParameters: query,
+      );
+      return res.data!
+          .map((e) => AnalyzedItem.fromJson(e as Map<String, dynamic>))
+          .toList();
+    });
+  }
+
   /// `POST /api/snap` — tighten a roughly drawn box to its content. JSON body
   /// is the [SnapRequest]; the engine echoes the box back when it cannot snap.
   Future<SnapResponse> snap(SnapRequest request) {
@@ -269,6 +303,24 @@ class ApiClient {
         data: request.toJson(),
       );
       return CropResponse.fromJson(res.data!);
+    });
+  }
+
+  /// `POST /api/crop/preview` — render ONE reviewed item as a standalone preview
+  /// image (PNG/JPG bytes), reusing the same crop/stitch pipeline the finalized
+  /// download runs. JSON body is the [CropPreviewRequest]. Mirrors
+  /// `crop_preview`; returns the raw image bytes for `Image.memory`.
+  Future<List<int>> cropPreview(CropPreviewRequest request) {
+    return _guard(() async {
+      final res = await _dio.post<dynamic>(
+        '$_api/crop/preview',
+        data: request.toJson(),
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final data = res.data;
+      if (data is List<int>) return data;
+      if (data is List) return data.cast<int>();
+      return const <int>[];
     });
   }
 
@@ -309,6 +361,7 @@ class ApiClient {
   Future<PdfToImagesResponse> renamePdfToImages({
     required List<int> fileBytes,
     required String filename,
+    int? dpi,
   }) {
     return _guard(() async {
       final form = FormData();
@@ -322,6 +375,9 @@ class ApiClient {
           ),
         ),
       );
+      if (dpi != null) {
+        form.fields.add(MapEntry('dpi', dpi.toString()));
+      }
 
       final res = await _dio.post<Map<String, dynamic>>(
         '$_api/rename/pdf-to-images',
@@ -607,6 +663,47 @@ class ApiClient {
   }
 
   // ===========================================================================
+  //  Tools — Enhance
+  // ===========================================================================
+
+  /// `POST /api/tools/enhance` — enhance PDF page-by-page.
+  Future<EnhanceResponse> enhance({
+    required List<int> fileBytes,
+    required String filename,
+    bool binarize = false,
+    double contrast = 1.0,
+    double brightness = 1.0,
+    int watermarkThreshold = 255,
+    int dpi = 200,
+  }) {
+    return _guard(() async {
+      final form = FormData();
+      form.fields
+        ..add(MapEntry('binarize', binarize.toString()))
+        ..add(MapEntry('contrast', contrast.toString()))
+        ..add(MapEntry('brightness', brightness.toString()))
+        ..add(MapEntry('watermark_threshold', watermarkThreshold.toString()))
+        ..add(MapEntry('dpi', dpi.toString()));
+      form.files.add(
+        MapEntry(
+          'file',
+          MultipartFile.fromBytes(
+            fileBytes,
+            filename: filename,
+            contentType: _pdfMediaType,
+          ),
+        ),
+      );
+
+      final res = await _dio.post<Map<String, dynamic>>(
+        '$_api/tools/enhance',
+        data: form,
+      );
+      return EnhanceResponse.fromJson(res.data!);
+    });
+  }
+
+  // ===========================================================================
   //  Download / preview URL builders (binary endpoints)
   // ===========================================================================
   //
@@ -672,6 +769,33 @@ class ApiClient {
   /// `GET /api/tools/edit/download/{job_id}` — the edited / OCR'd PDF.
   Uri editDownloadUri(String jobId) {
     return baseUrl.replace(path: '$_api/tools/edit/download/$jobId');
+  }
+
+  /// `GET /api/tools/enhance/download/{job_id}` — the enhanced PDF.
+  Uri enhanceDownloadUri(String jobId) {
+    return baseUrl.replace(path: '$_api/tools/enhance/download/$jobId');
+  }
+
+  /// `GET /api/tools/enhance/{job_id}/page/{page_no}` — live preview of enhanced page.
+  Uri enhancePagePreviewUri(
+    String jobId,
+    int pageNo, {
+    bool binarize = false,
+    double contrast = 1.0,
+    double brightness = 1.0,
+    int watermarkThreshold = 255,
+    int dpi = 150,
+  }) {
+    return baseUrl.replace(
+      path: '$_api/tools/enhance/$jobId/page/$pageNo',
+      queryParameters: <String, String>{
+        'binarize': binarize.toString(),
+        'contrast': contrast.toString(),
+        'brightness': brightness.toString(),
+        'watermark_threshold': watermarkThreshold.toString(),
+        'dpi': dpi.toString(),
+      },
+    );
   }
 
   /// Streaming GET helper for binary endpoints. Returns the raw bytes for an

@@ -102,6 +102,10 @@ void main() {
       _expectFixtureIdentity(
           fixtures, 'FinalizeItem', (j) => FinalizeItem.fromJson(j).toJson());
     });
+    test('CropPreviewRequest', () {
+      _expectFixtureIdentity(fixtures, 'CropPreviewRequest',
+          (j) => CropPreviewRequest.fromJson(j).toJson());
+    });
     test('FinalizeRequest', () {
       _expectFixtureIdentity(fixtures, 'FinalizeRequest',
           (j) => FinalizeRequest.fromJson(j).toJson());
@@ -230,6 +234,7 @@ void main() {
       'SnapRequest': (j) => SnapRequest.fromJson(j).toJson(),
       'SnapResponse': (j) => SnapResponse.fromJson(j).toJson(),
       'FinalizeItem': (j) => FinalizeItem.fromJson(j).toJson(),
+      'CropPreviewRequest': (j) => CropPreviewRequest.fromJson(j).toJson(),
       'FinalizeRequest': (j) => FinalizeRequest.fromJson(j).toJson(),
       'CompressResponse': (j) => CompressResponse.fromJson(j).toJson(),
       'EditExtractResponse': (j) => EditExtractResponse.fromJson(j).toJson(),

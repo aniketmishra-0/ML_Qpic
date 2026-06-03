@@ -15,7 +15,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme_controller.dart';
-import '../../models/rename.dart';
 import 'rename_controller.dart';
 
 /// Stateless form surface for the Rename Batch tool.
@@ -23,12 +22,14 @@ import 'rename_controller.dart';
 /// Listens to [controller] via an [AnimatedBuilder] so every control reflects
 /// the controller's clamped state. [errorText] lets the submit path (task 15.2)
 /// surface an engine error detail above the form.
-class RenameView extends StatelessWidget {
+class RenameView extends StatefulWidget {
   const RenameView({
     super.key,
     required this.controller,
     this.onPickFiles,
+    this.onPickFolder,
     this.onRename,
+    this.onClear,
     this.errorText,
     this.statusText,
     this.busy = false,
@@ -41,9 +42,18 @@ class RenameView extends StatelessWidget {
   /// file-picker integration (task 15.2); when null the affordance is disabled.
   final VoidCallback? onPickFiles;
 
+  /// Invoked when the user taps the "Add Folder" affordance. Picks a directory
+  /// and loads all image/PDF files from it. Workaround for macOS CMD+A issue.
+  final VoidCallback? onPickFolder;
+
   /// Invoked when the user taps the "Rename & Download" button. Wired by
   /// task 15.2; when null the button is disabled.
   final VoidCallback? onRename;
+
+  /// Invoked when the user taps "Clear" to reset the tool back to its defaults
+  /// (drops all loaded files and restores the naming controls). Typically wired
+  /// to [RenameController.reset]. When null the affordance is hidden.
+  final VoidCallback? onClear;
 
   /// Optional error message shown above the form.
   final String? errorText;
@@ -56,9 +66,16 @@ class RenameView extends StatelessWidget {
   final bool busy;
 
   @override
+  State<RenameView> createState() => _RenameViewState();
+}
+
+class _RenameViewState extends State<RenameView> {
+  bool _galleryExpanded = true;
+
+  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: controller,
+      animation: widget.controller,
       builder: (context, _) => _buildForm(context),
     );
   }
@@ -67,72 +84,192 @@ class RenameView extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 900),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+    // Full-bleed layout: spans the whole tool area (no narrow centered column
+    // with empty side margins). On a wide window the naming/output controls sit
+    // on the left and the live preview fills the right, each scrolling
+    // independently only if its own content overflows — so the page itself
+    // never needs to scroll. A narrow window collapses to a single scrolling
+    // column.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool wide = constraints.maxWidth >= 880;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              _Header(palette: palette),
+              _HeaderBar(
+                palette: palette,
+                onClear: widget.onClear,
+                busy: widget.busy,
+              ),
               const SizedBox(height: 16),
               _FilePickerRow(
-                itemCount: controller.itemCount,
-                onPickFiles: onPickFiles,
+                itemCount: widget.controller.itemCount,
+                onPickFiles: widget.onPickFiles,
+                onPickFolder: widget.onPickFolder,
               ),
-              if (statusText != null) ...<Widget>[
+              if (widget.statusText != null) ...<Widget>[
                 const SizedBox(height: 12),
-                _StatusLine(message: statusText!, palette: palette),
+                _StatusLine(message: widget.statusText!, palette: palette),
               ],
-              if (errorText != null) ...<Widget>[
+              if (widget.errorText != null) ...<Widget>[
+                const SizedBox(height: 14),
+                _ErrorBanner(message: widget.errorText!, palette: palette),
+              ],
+              const SizedBox(height: 18),
+              Expanded(
+                child: wide
+                    ? _buildWideBody(context, palette)
+                    : _buildNarrowBody(context, palette),
+              ),
+              if (widget.controller.itemCount > 0) ...<Widget>[
                 const SizedBox(height: 16),
-                _ErrorBanner(message: errorText!, palette: palette),
+                _ImageGalleryRow(
+                  controller: widget.controller,
+                  palette: palette,
+                  isExpanded: _galleryExpanded,
+                  onToggle: () => setState(() => _galleryExpanded = !_galleryExpanded),
+                ),
               ],
-              const SizedBox(height: 24),
-              _SectionCard(
-                title: 'Naming',
-                palette: palette,
-                children: <Widget>[
-                  _PatternField(controller: controller),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: _StartField(controller: controller),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _PaddingField(controller: controller),
-                      ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Two-column body for wide windows: naming + output controls on the left,
+  /// the live preview on the right.
+  Widget _buildWideBody(BuildContext context, QpicPalette? palette) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        SizedBox(
+          width: 320,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                _SectionCard(
+                  title: 'Naming',
+                  palette: palette,
+                  children: <Widget>[
+                    _PatternField(controller: widget.controller),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Expanded(
+                          child: _StartField(controller: widget.controller),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _PaddingField(controller: widget.controller),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _SectionCard(
+                  title: 'Output',
+                  palette: palette,
+                  children: <Widget>[
+                    _OutputFormatSelector(controller: widget.controller),
+                    const SizedBox(height: 12),
+                    _DpiSelector(controller: widget.controller),
+                    if (widget.controller.outputFormat == RenameOutputFormat.jpg ||
+                        widget.controller.outputFormat ==
+                            RenameOutputFormat.jpeg) ...<Widget>[
+                      const SizedBox(height: 12),
+                      _JpgQualitySlider(controller: widget.controller),
                     ],
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _RenameButton(
+                  busy: widget.busy,
+                  enabled: widget.controller.itemCount > 0,
+                  onRename: widget.onRename,
+                  itemCount: widget.controller.itemCount,
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 20),
+        Expanded(
+          child: _PreviewSection(controller: widget.controller, palette: palette),
+        ),
+      ],
+    );
+  }
+
+  /// Single-column body for narrow windows. Scrolls as a fallback so the form
+  /// stays usable when there isn't room for the side-by-side preview.
+  Widget _buildNarrowBody(BuildContext context, QpicPalette? palette) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _SectionCard(
+            title: 'Naming',
+            palette: palette,
+            children: <Widget>[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Expanded(
+                    flex: 3,
+                    child: _PatternField(controller: widget.controller),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: _StartField(controller: widget.controller),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: _PaddingField(controller: widget.controller),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              _SectionCard(
-                title: 'Output',
-                palette: palette,
-                children: <Widget>[
-                  _OutputFormatSelector(controller: controller),
-                  if (controller.outputFormat == RenameOutputFormat.jpg ||
-                      controller.outputFormat == RenameOutputFormat.jpeg) ...<Widget>[
-                    const SizedBox(height: 16),
-                    _JpgQualitySlider(controller: controller),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 16),
-              _PreviewSection(controller: controller, palette: palette),
-              const SizedBox(height: 24),
-              _RenameButton(
-                busy: busy,
-                enabled: controller.itemCount > 0,
-                onRename: onRename,
-              ),
             ],
           ),
-        ),
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: 'Output',
+            palette: palette,
+            children: <Widget>[
+              _OutputFormatSelector(controller: widget.controller),
+              const SizedBox(height: 12),
+              _DpiSelector(controller: widget.controller),
+              if (widget.controller.outputFormat == RenameOutputFormat.jpg ||
+                  widget.controller.outputFormat ==
+                      RenameOutputFormat.jpeg) ...<Widget>[
+                const SizedBox(height: 12),
+                _JpgQualitySlider(controller: widget.controller),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          _RenameButton(
+            busy: widget.busy,
+            enabled: widget.controller.itemCount > 0,
+            onRename: widget.onRename,
+            itemCount: widget.controller.itemCount,
+          ),
+          if (widget.controller.itemCount > 0) ...<Widget>[
+            const SizedBox(height: 16),
+            _PreviewSection(
+              controller: widget.controller,
+              palette: palette,
+              isExpanded: false,
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -142,64 +279,224 @@ class RenameView extends StatelessWidget {
 //  Private widgets
 // =============================================================================
 
-class _Header extends StatelessWidget {
-  const _Header({required this.palette});
+class _HeaderBar extends StatelessWidget {
+  const _HeaderBar({
+    required this.palette,
+    required this.onClear,
+    required this.busy,
+  });
 
   final QpicPalette? palette;
+  final VoidCallback? onClear;
+  final bool busy;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(
-          'Rename Batch',
-          key: const ValueKey<String>('rename-title'),
-          style: theme.textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: palette?.text ?? theme.colorScheme.onSurface,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                'Rename Batch',
+                key: const ValueKey<String>('rename-title'),
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: palette?.text ?? theme.colorScheme.onSurface,
+                  letterSpacing: -0.3,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Add images or a PDF, set a naming pattern, then download.',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                  height: 1.4,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 4),
-        Text(
-          'Add images or a PDF, set a naming pattern, then download.',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+        if (onClear != null) ...<Widget>[
+          const SizedBox(width: 16),
+          TextButton.icon(
+            key: const ValueKey<String>('rename-clear'),
+            onPressed: busy ? null : onClear,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+            label: const Text('Clear'),
+            style: TextButton.styleFrom(
+              foregroundColor:
+                  palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
 }
 
+/// File picker styled as a horizontal drop zone to match the Auto Crop and
+/// Manual Crop tools. The icon + count sit on the left; the Add Images / Add
+/// Folder actions sit on the right so every tool presents the same file
+/// affordance instead of three different blocks.
 class _FilePickerRow extends StatelessWidget {
-  const _FilePickerRow({required this.itemCount, required this.onPickFiles});
+  const _FilePickerRow({
+    required this.itemCount,
+    required this.onPickFiles,
+    this.onPickFolder,
+  });
 
   final int itemCount;
   final VoidCallback? onPickFiles;
+  final VoidCallback? onPickFolder;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+    final successColor = palette?.success ?? theme.colorScheme.primary;
+    final bool hasItems = itemCount > 0;
+
+    final dropZone = _HoverDropZone(
+      key: const ValueKey<String>('rename-pick-files-zone'),
+      enabled: onPickFiles != null,
+      onTap: onPickFiles,
+      builder: (context, hovered) {
+        final bool active = hovered && onPickFiles != null;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          decoration: BoxDecoration(
+            color: active
+                ? brand.withValues(alpha: 0.08)
+                : (hasItems
+                    ? (palette?.panelAlt ?? theme.colorScheme.surface)
+                    : (palette?.field ?? theme.colorScheme.surfaceContainerHighest)),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: active
+                  ? brand
+                  : (hasItems
+                      ? successColor.withValues(alpha: 0.5)
+                      : (palette?.border ?? theme.dividerColor)),
+              width: 1.5,
+            ),
+            boxShadow: active
+                ? [
+                    BoxShadow(
+                      color: brand.withValues(alpha: 0.15),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ]
+                : [],
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: hasItems
+                      ? successColor.withValues(alpha: 0.12)
+                      : brand.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  hasItems
+                      ? Icons.collections_rounded
+                      : Icons.cloud_upload_outlined,
+                  color: hasItems ? successColor : brand,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Text(
+                      hasItems
+                          ? '$itemCount file${itemCount == 1 ? '' : 's'} loaded'
+                          : 'No files added',
+                      key: const ValueKey<String>('rename-file-count'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: palette?.text ?? theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      hasItems ? 'Tap to choose different files' : 'or click to browse',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: palette?.mutedAlt ??
+                            theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (hasItems) ...[
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: successColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: 14,
+                        color: successColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'LOADED',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: successColor,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+
     return Row(
       children: <Widget>[
+        Expanded(child: dropZone),
+        const SizedBox(width: 14),
         OutlinedButton.icon(
-          key: const ValueKey<String>('rename-pick-files'),
-          onPressed: onPickFiles,
-          icon: const Icon(Icons.add_photo_alternate_outlined),
-          label: const Text('Add Images'),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          itemCount > 0 ? '$itemCount file${itemCount == 1 ? '' : 's'} loaded' : 'No files added',
-          key: const ValueKey<String>('rename-file-count'),
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: itemCount > 0
-                ? (palette?.text ?? theme.colorScheme.onSurface)
-                : (palette?.muted ?? theme.colorScheme.onSurfaceVariant),
-            fontStyle: itemCount > 0 ? FontStyle.normal : FontStyle.italic,
+          key: const ValueKey<String>('rename-pick-folder'),
+          onPressed: onPickFolder,
+          icon: const Icon(Icons.folder_open, size: 18),
+          label: const Text('Add Folder'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: brand,
+            side: BorderSide(color: brand.withValues(alpha: 0.4), width: 1.5),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         ),
       ],
@@ -297,19 +594,20 @@ class _SectionCard extends StatelessWidget {
         side: BorderSide(color: palette?.border ?? theme.dividerColor),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Text(
               title,
-              style: theme.textTheme.titleSmall?.copyWith(
+              style: TextStyle(
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
                 color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                letterSpacing: 0.4,
+                letterSpacing: 0.8,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
             ...children,
           ],
         ),
@@ -333,6 +631,14 @@ class _PatternFieldState extends State<_PatternField> {
   late final TextEditingController _textController =
       TextEditingController(text: widget.controller.pattern);
 
+  static const Map<String, String> _predefinedPatterns = {
+    '#': 'Number (#)',
+    'Q#': 'Question (Q#)',
+    'S#': 'Solution (S#)',
+    'page-#': 'Page (page-#)',
+    '(name)': 'Original Name ((name))',
+  };
+
   @override
   void didUpdateWidget(covariant _PatternField oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -354,20 +660,56 @@ class _PatternFieldState extends State<_PatternField> {
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      key: const ValueKey<String>('rename-pattern'),
-      controller: _textController,
-      decoration: const InputDecoration(
-        labelText: 'Pattern',
-        hintText: 'e.g. Q#, (name), page-#',
-        helperText: '# = number. Variables: (name), (width), (height), (date), (ext)',
-        isDense: true,
-        border: OutlineInputBorder(),
-      ),
-      inputFormatters: <TextInputFormatter>[
-        LengthLimitingTextInputFormatter(120),
+    final currentPattern = widget.controller.pattern;
+    final String selectedValue = _predefinedPatterns.containsKey(currentPattern)
+        ? currentPattern
+        : 'custom';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DropdownButtonFormField<String>(
+          key: const ValueKey<String>('rename-pattern-preset'),
+          value: selectedValue,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            labelText: 'Pattern Preset',
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+          items: [
+            ..._predefinedPatterns.entries.map((e) => DropdownMenuItem(
+                  value: e.key,
+                  child: Text(e.value),
+                )),
+            const DropdownMenuItem(
+              value: 'custom',
+              child: Text('Custom Pattern...'),
+            ),
+          ],
+          onChanged: (val) {
+            if (val != null && val != 'custom') {
+              widget.controller.pattern = val;
+            }
+          },
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          key: const ValueKey<String>('rename-pattern'),
+          controller: _textController,
+          decoration: const InputDecoration(
+            labelText: 'Prefix / Pattern',
+            hintText: 'e.g. Q#, (name), page-#',
+            helperText: '# = number. Variables: (name), (width), (height), (date), (ext)',
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+          inputFormatters: <TextInputFormatter>[
+            LengthLimitingTextInputFormatter(120),
+          ],
+          onChanged: (value) => widget.controller.pattern = value,
+        ),
       ],
-      onChanged: (value) => widget.controller.pattern = value,
     );
   }
 }
@@ -509,6 +851,7 @@ class _OutputFormatSelector extends StatelessWidget {
         DropdownButtonFormField<RenameOutputFormat>(
           key: const ValueKey<String>('rename-output-format'),
           initialValue: controller.outputFormat,
+          isExpanded: true,
           decoration: const InputDecoration(
             isDense: true,
             border: OutlineInputBorder(),
@@ -581,17 +924,22 @@ class _JpgQualitySlider extends StatelessWidget {
 /// expanded stems, no image bytes) drives [RenameController.previewError], shown
 /// here as a non-blocking banner when the engine reports a problem.
 class _PreviewSection extends StatelessWidget {
-  const _PreviewSection({required this.controller, required this.palette});
+  const _PreviewSection({
+    required this.controller,
+    required this.palette,
+    this.isExpanded = true,
+  });
 
   final RenameController controller;
   final QpicPalette? palette;
+  final bool isExpanded;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     if (controller.itemCount == 0) {
-      return const SizedBox.shrink();
+      return _EmptyPreviewCard(palette: palette);
     }
 
     return Material(
@@ -604,6 +952,7 @@ class _PreviewSection extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Row(
               children: <Widget>[
@@ -636,9 +985,75 @@ class _PreviewSection extends StatelessWidget {
               ),
               const SizedBox(height: 12),
             ],
-            _PreviewList(
-              items: controller.previewPairs,
-              palette: palette,
+            isExpanded
+                ? Expanded(
+                    child: _PreviewList(
+                      controller: controller,
+                      palette: palette,
+                    ),
+                  )
+                : _PreviewList(
+                    controller: controller,
+                    palette: palette,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                  ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Empty-state shown in the preview column before any files are loaded, so the
+/// right side of the wide layout is never a blank void (it mirrors the titled
+/// card surface used everywhere else).
+class _EmptyPreviewCard extends StatelessWidget {
+  const _EmptyPreviewCard({required this.palette});
+
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+
+    return Material(
+      color: palette?.panel ?? theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: palette?.border ?? theme.dividerColor),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 44),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: brand.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(13),
+              ),
+              child: Icon(Icons.visibility_outlined, color: brand, size: 26),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Preview',
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: palette?.text ?? theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Add images or a PDF to see the before / after names here.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                height: 1.45,
+              ),
             ),
           ],
         ),
@@ -649,69 +1064,228 @@ class _PreviewSection extends StatelessWidget {
 
 /// Renders the before/after preview list (client-side computed pairs).
 class _PreviewList extends StatelessWidget {
-  const _PreviewList({required this.items, required this.palette});
+  const _PreviewList({
+    required this.controller,
+    required this.palette,
+    this.shrinkWrap = false,
+    this.physics,
+  });
 
-  final List<RenamePlanItem> items;
+  final RenameController controller;
+  final QpicPalette? palette;
+  final bool shrinkWrap;
+  final ScrollPhysics? physics;
+
+  @override
+  Widget build(BuildContext context) {
+    final pairs = controller.previewPairs;
+    final renameItems = controller.items;
+
+    return GridView.builder(
+      key: const ValueKey<String>('rename-preview-list'),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 240,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.85,
+      ),
+      itemCount: pairs.length,
+      shrinkWrap: shrinkWrap,
+      physics: physics,
+      itemBuilder: (context, index) {
+        if (index >= renameItems.length) return const SizedBox.shrink();
+        return _PreviewCard(
+          item: renameItems[index],
+          renamedName: pairs[index].renamed,
+          controller: controller,
+          index: index,
+          palette: palette,
+        );
+      },
+    );
+  }
+}
+
+class _PreviewCard extends StatelessWidget {
+  const _PreviewCard({
+    required this.item,
+    required this.renamedName,
+    required this.controller,
+    required this.index,
+    required this.palette,
+  });
+
+  final RenameItem item;
+  final String renamedName;
+  final RenameController controller;
+  final int index;
   final QpicPalette? palette;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Show at most 20 items to keep the preview compact.
-    final displayItems = items.length > 20 ? items.sublist(0, 20) : items;
-    final hasMore = items.length > 20;
+    final bytes = item.bytesForUpload();
 
-    return Column(
-      key: const ValueKey<String>('rename-preview-list'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        for (final item in displayItems)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Row(
-              children: <Widget>[
-                Expanded(
-                  child: Text(
-                    item.original,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+    return Container(
+      decoration: BoxDecoration(
+        color: palette?.field ?? theme.colorScheme.surfaceContainerHighest.withAlpha(120),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: palette?.border ?? theme.dividerColor,
+          width: 1.5,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Image Preview Container - Expanded to fill available height in grid cell
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () {
+                      showDialog<void>(
+                        context: context,
+                        barrierDismissible: true,
+                        builder: (_) => _ImageViewerDialog(
+                          controller: controller,
+                          initialIndex: index,
+                          palette: palette,
+                        ),
+                      );
+                    },
+                    child: Container(
+                      color: Colors.black.withAlpha(20),
+                      child: bytes.isNotEmpty
+                          ? Image.memory(
+                              item.getUint8List(),
+                              fit: BoxFit.contain,
+                            )
+                          : const Center(
+                              child: Icon(Icons.broken_image_outlined, size: 36),
+                            ),
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Icon(
-                    Icons.arrow_forward,
-                    size: 14,
-                    color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                // Delete button overlay
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: _OverlayIconButton(
+                    icon: Icons.delete_outline_rounded,
+                    iconColor: Colors.redAccent,
+                    tooltip: 'Delete Image',
+                    onPressed: () => controller.removeItem(index),
                   ),
                 ),
-                Expanded(
-                  child: Text(
-                    item.renamed,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: palette?.text ?? theme.colorScheme.onSurface,
-                    ),
+                // Reorder controls overlay
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  child: Row(
+                    children: [
+                      if (index > 0) ...[
+                        _OverlayIconButton(
+                          icon: Icons.arrow_back_rounded,
+                          tooltip: 'Move Left',
+                          onPressed: () => controller.reorderItem(index, index - 1),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      if (index < controller.itemCount - 1)
+                        _OverlayIconButton(
+                          icon: Icons.arrow_forward_rounded,
+                          tooltip: 'Move Right',
+                          onPressed: () => controller.reorderItem(index, index + 1),
+                        ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        if (hasMore)
-          Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              '… and ${items.length - 20} more',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                fontStyle: FontStyle.italic,
+          // Compare Names Row (fixed height bottom container)
+          Container(
+            height: 60,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border(
+                top: BorderSide(
+                  color: palette?.border ?? theme.dividerColor,
+                  width: 1,
+                ),
               ),
             ),
+            child: Row(
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Original',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          color: palette?.text ?? theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 14,
+                    color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Renamed',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w700,
+                          color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        renamedName,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: palette?.text ?? theme.colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -722,11 +1296,13 @@ class _RenameButton extends StatelessWidget {
     required this.busy,
     required this.enabled,
     required this.onRename,
+    required this.itemCount,
   });
 
   final bool busy;
   final bool enabled;
   final VoidCallback? onRename;
+  final int itemCount;
 
   @override
   Widget build(BuildContext context) {
@@ -740,7 +1316,551 @@ class _RenameButton extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : const Icon(Icons.drive_file_rename_outline),
-      label: const Text('Rename & Download ZIP'),
+      label: Text(
+        itemCount > 0
+            ? 'Rename & Download ZIP ($itemCount file${itemCount == 1 ? '' : 's'})'
+            : 'Rename & Download ZIP',
+      ),
+    );
+  }
+}
+
+class _ImageGalleryRow extends StatelessWidget {
+  const _ImageGalleryRow({
+    required this.controller,
+    required this.palette,
+    required this.isExpanded,
+    required this.onToggle,
+  });
+
+  final RenameController controller;
+  final QpicPalette? palette;
+  final bool isExpanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final borderColor = palette?.border ?? theme.dividerColor;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: palette?.panel ?? theme.colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(
+                    isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
+                    color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Loaded Images (${controller.itemCount})',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: palette?.text ?? theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (isExpanded)
+                    Text(
+                      'Click to view each image',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (isExpanded) ...[
+            const Divider(height: 1),
+            SizedBox(
+              height: 94,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                itemCount: controller.itemCount,
+                itemBuilder: (context, index) {
+                  final item = controller.items[index];
+                  return _GalleryThumbnail(
+                    item: item,
+                    index: index,
+                    controller: controller,
+                    palette: palette,
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GalleryThumbnail extends StatelessWidget {
+  const _GalleryThumbnail({
+    required this.item,
+    required this.index,
+    required this.controller,
+    required this.palette,
+  });
+
+  final RenameItem item;
+  final int index;
+  final RenameController controller;
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bytes = item.bytesForUpload();
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+          showDialog<void>(
+            context: context,
+            barrierDismissible: true,
+            builder: (_) => _ImageViewerDialog(
+              controller: controller,
+              initialIndex: index,
+              palette: palette,
+            ),
+          );
+        },
+        child: Container(
+          width: 80,
+          margin: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: palette?.border ?? theme.dividerColor,
+              width: 1.5,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              bytes.isNotEmpty
+                  ? Image.memory(
+                      item.getUint8List(),
+                      fit: BoxFit.cover,
+                    )
+                  : Container(
+                      color: Colors.black.withAlpha(20),
+                      child: const Center(
+                        child: Icon(Icons.broken_image_outlined, size: 20),
+                      ),
+                    ),
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  color: Colors.black.withAlpha(160),
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                  child: Text(
+                    item.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageViewerDialog extends StatefulWidget {
+  const _ImageViewerDialog({
+    required this.controller,
+    required this.initialIndex,
+    required this.palette,
+  });
+
+  final RenameController controller;
+  final int initialIndex;
+  final QpicPalette? palette;
+
+  @override
+  State<_ImageViewerDialog> createState() => _ImageViewerDialogState();
+}
+
+class _ImageViewerDialogState extends State<_ImageViewerDialog> {
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+  }
+
+  void _next() {
+    if (_currentIndex < widget.controller.items.length - 1) {
+      setState(() {
+        _currentIndex++;
+      });
+    }
+  }
+
+  void _prev() {
+    if (_currentIndex > 0) {
+      setState(() {
+        _currentIndex--;
+      });
+    }
+  }
+
+  void _deleteCurrent() {
+    final itemsCount = widget.controller.items.length;
+    if (itemsCount == 0) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    widget.controller.removeItem(_currentIndex);
+
+    final newCount = widget.controller.items.length;
+    if (newCount == 0) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() {
+        if (_currentIndex >= newCount) {
+          _currentIndex = newCount - 1;
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (widget.controller.items.isEmpty || _currentIndex >= widget.controller.items.length) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop();
+      });
+      return const SizedBox.shrink();
+    }
+
+    final item = widget.controller.items[_currentIndex];
+    final bytes = item.bytesForUpload();
+
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.all(24),
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        behavior: HitTestBehavior.translucent,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.of(context).pop(),
+                behavior: HitTestBehavior.translucent,
+                child: const SizedBox.expand(),
+              ),
+            ),
+            Center(
+              child: GestureDetector(
+                onTap: () {}, // Prevent closing when tapping card itself
+                child: Container(
+                  constraints: const BoxConstraints(maxWidth: 800, maxHeight: 700),
+                  decoration: BoxDecoration(
+                    color: widget.palette?.panel ?? theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: widget.palette?.border ?? theme.dividerColor,
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(80),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.name,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: widget.palette?.text ?? theme.colorScheme.onSurface,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  if (item.width != null && item.height != null) ...[
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '${item.width} × ${item.height} px • ${_humanSize(item.sizeBytes)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline_rounded,
+                                color: Colors.redAccent,
+                              ),
+                              tooltip: 'Delete Image',
+                              onPressed: _deleteCurrent,
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              icon: Icon(
+                                Icons.close,
+                                color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                              ),
+                              onPressed: () => Navigator.of(context).pop(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      // Main content
+                      Expanded(
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.all(24.0),
+                              child: bytes.isNotEmpty
+                                  ? InteractiveViewer(
+                                      maxScale: 4.0,
+                                      child: Image.memory(
+                                        item.getUint8List(),
+                                        fit: BoxFit.contain,
+                                      ),
+                                    )
+                                  : const Center(
+                                      child: Text('Could not load image'),
+                                    ),
+                            ),
+                            // Navigation
+                            if (_currentIndex > 0)
+                              Positioned(
+                                left: 16,
+                                child: CircleAvatar(
+                                  backgroundColor: Colors.black.withAlpha(120),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.chevron_left, color: Colors.white),
+                                    onPressed: _prev,
+                                  ),
+                                ),
+                              ),
+                            if (_currentIndex < widget.controller.items.length - 1)
+                              Positioned(
+                                right: 16,
+                                child: CircleAvatar(
+                                  backgroundColor: Colors.black.withAlpha(120),
+                                  child: IconButton(
+                                    icon: const Icon(Icons.chevron_right, color: Colors.white),
+                                    onPressed: _next,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      // Footer
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        child: Center(
+                          child: Text(
+                            'Image ${_currentIndex + 1} of ${widget.controller.items.length}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _humanSize(int bytes) {
+    if (bytes < 1024) return '${bytes}B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)}KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)}MB';
+  }
+}
+
+class _OverlayIconButton extends StatelessWidget {
+  const _OverlayIconButton({
+    required this.icon,
+    required this.onPressed,
+    this.iconColor,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final Color? iconColor;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final bg = isDark ? Colors.black.withAlpha(160) : Colors.white.withAlpha(200);
+    final fg = iconColor ?? (isDark ? Colors.white : Colors.black87);
+
+    Widget button = Material(
+      color: bg,
+      type: MaterialType.circle,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        child: SizedBox(
+          width: 32,
+          height: 32,
+          child: Icon(
+            icon,
+            size: 18,
+            color: onPressed != null ? fg : fg.withAlpha(80),
+          ),
+        ),
+      ),
+    );
+
+    if (tooltip != null) {
+      button = Tooltip(
+        message: tooltip!,
+        child: button,
+      );
+    }
+
+    return button;
+  }
+}
+
+class _DpiSelector extends StatelessWidget {
+  const _DpiSelector({required this.controller});
+
+  final RenameController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text('PDF Render DPI', style: theme.textTheme.bodyMedium),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          key: const ValueKey<String>('rename-pdf-dpi'),
+          value: controller.pdfDpi,
+          isExpanded: true,
+          decoration: const InputDecoration(
+            isDense: true,
+            border: OutlineInputBorder(),
+          ),
+          items: const [
+            DropdownMenuItem(value: 'Original', child: Text('Original')),
+            DropdownMenuItem(value: '72', child: Text('72')),
+            DropdownMenuItem(value: '150', child: Text('150')),
+            DropdownMenuItem(value: '200', child: Text('200')),
+            DropdownMenuItem(value: '300', child: Text('300')),
+            DropdownMenuItem(value: '400', child: Text('400')),
+            DropdownMenuItem(value: '600', child: Text('600')),
+          ],
+          onChanged: (val) {
+            if (val != null) {
+              controller.pdfDpi = val;
+            }
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _HoverDropZone extends StatefulWidget {
+  const _HoverDropZone({
+    super.key,
+    required this.builder,
+    required this.onTap,
+    required this.enabled,
+  });
+
+  final Widget Function(BuildContext context, bool hovered) builder;
+  final VoidCallback? onTap;
+  final bool enabled;
+
+  @override
+  State<_HoverDropZone> createState() => _HoverDropZoneState();
+}
+
+class _HoverDropZoneState extends State<_HoverDropZone> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: GestureDetector(
+        onTap: widget.enabled ? widget.onTap : null,
+        child: widget.builder(context, _hovered),
+      ),
     );
   }
 }

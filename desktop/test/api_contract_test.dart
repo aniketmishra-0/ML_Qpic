@@ -199,6 +199,7 @@ void main() {
           qNum: _word(r),
           isSolution: r.nextBool(),
           source: _pick(r, const ['auto', 'manual']),
+          align: r.nextBool() ? r.nextBool() : null,
           segments: List<QuestionSegment>.generate(
             r.nextInt(2) + 1,
             (_) => QuestionSegment(
@@ -239,6 +240,46 @@ void main() {
         for (final s in segs) {
           expect(s.keys.toSet(), _segmentKeys);
         }
+      }
+    });
+  });
+
+  test('POST /api/crop/preview — exact JSON body keys (CropPreviewRequest)',
+      () async {
+    await _forEach((cap, client, r) async {
+      await client.cropPreview(
+        CropPreviewRequest(
+          jobId: _word(r),
+          qNum: _word(r),
+          isSolution: r.nextBool(),
+          source: _pick(r, const ['auto', 'manual']),
+          align: r.nextBool() ? r.nextBool() : null,
+          dpi: _i(r, 72, 600),
+          padding: _i(r, 0, 200),
+          imageFormat: _pick(r, const ['png', 'jpg', 'jpeg']),
+          jpgQuality: _i(r, 1, 100),
+          segments: List<QuestionSegment>.generate(
+            r.nextInt(2) + 1,
+            (_) => QuestionSegment(
+              page: _i(r, 1, 50),
+              yStartPct: _d(r),
+              yEndPct: _d(r),
+              xStartPct: _d(r),
+              xEndPct: _d(r),
+            ),
+          ),
+        ),
+      );
+      final o = cap.require();
+      expect(o.method, 'POST');
+      expect(o.path, '/api/crop/preview');
+      expect(_bodyKeys(o), _cropPreviewBodyKeys);
+
+      final body = o.data as Map<String, dynamic>;
+      final segs =
+          (body['segments'] as List<dynamic>).cast<Map<String, dynamic>>();
+      for (final s in segs) {
+        expect(s.keys.toSet(), _segmentKeys);
       }
     });
   });
@@ -650,6 +691,21 @@ const Set<String> _finalizeItemKeys = {
   'is_solution',
   'segments',
   'source',
+  'align',
+};
+
+// CropPreviewRequest (app/models/schemas.py).
+const Set<String> _cropPreviewBodyKeys = {
+  'job_id',
+  'q_num',
+  'is_solution',
+  'segments',
+  'source',
+  'align',
+  'dpi',
+  'padding',
+  'image_format',
+  'jpg_quality',
 };
 const Set<String> _segmentKeys = {
   'page',
@@ -657,6 +713,8 @@ const Set<String> _segmentKeys = {
   'y_end_pct',
   'x_start_pct',
   'x_end_pct',
+  'x_offset_pct',
+  'y_offset_pct',
 };
 
 // POST /api/rename/session/{id}/finalize — finalize_rename_session form fields.

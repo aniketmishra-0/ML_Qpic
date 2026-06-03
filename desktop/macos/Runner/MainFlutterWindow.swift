@@ -10,6 +10,9 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    // Register custom file picker channel that uses runModal() for CMD+A support.
+    FilePickerChannel.register(with: flutterViewController.registrar(forPlugin: "FilePickerChannel"))
+
     super.awakeFromNib()
   }
 }

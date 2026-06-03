@@ -113,9 +113,19 @@ def snap_region(
     box_w_pct = original["x_end_pct"] - original["x_start_pct"]
     box_h_pct = original["y_end_pct"] - original["y_start_pct"]
 
-    # Vertical: tighten to the actual content (with a small margin).
-    new_y_start = original["y_start_pct"] + (r_top / h) * box_h_pct - _MARGIN_PCT
-    new_y_end = original["y_start_pct"] + ((r_bot + 1) / h) * box_h_pct + _MARGIN_PCT
+    # Vertical: tighten to the actual content (with a small margin). Snap may
+    # only move edges INWARD — the margin gives breathing room around the ink
+    # but must never push past the box the user drew, otherwise a tightly drawn
+    # selection visibly grows by _MARGIN_PCT on release (extra space above and
+    # below). Clamp each edge back to the original drawn bounds.
+    new_y_start = max(
+        original["y_start_pct"],
+        original["y_start_pct"] + (r_top / h) * box_h_pct - _MARGIN_PCT,
+    )
+    new_y_end = min(
+        original["y_end_pct"],
+        original["y_start_pct"] + ((r_bot + 1) / h) * box_h_pct + _MARGIN_PCT,
+    )
 
     # Horizontal: KEEP the left edge exactly where the user drew it. That drawn
     # left edge is the alignment reference — every part of a column-split
@@ -125,8 +135,12 @@ def snap_region(
     # per-part (stem vs "(C)") and made "(C)/(D)" drift off "(A)/(B)".
     new_x_start = original["x_start_pct"]
     # Right edge: tighten to content (with a margin) so the box doesn't balloon
-    # out to grab the empty right half.
-    new_x_end = original["x_start_pct"] + ((c_right + 1) / w) * box_w_pct + _MARGIN_PCT
+    # out to grab the empty right half — but, like the vertical edges, never
+    # past the drawn right edge.
+    new_x_end = min(
+        original["x_end_pct"],
+        original["x_start_pct"] + ((c_right + 1) / w) * box_w_pct + _MARGIN_PCT,
+    )
 
     snapped = {
         "x_start_pct": _clamp(min(new_x_start, original["x_end_pct"])),

@@ -39,7 +39,7 @@ class TextBlock(NamedTuple):
 
 class TextDetector:
     def detect(
-        self, pdf_bytes: bytes, padding_px: int = 0, marker_style: str = "auto"
+        self, pdf_bytes: bytes, padding_px: int = 0, marker_style: str = "auto", layout_columns: Optional[int] = None
     ) -> list[DetectedQuestion]:
         """Detect question start positions using extracted text.
 
@@ -164,6 +164,7 @@ class TextDetector:
                             for p in page_heights
                         },
                     ),
+                    layout_columns=layout_columns,
                 )
         except Exception as exc:
             logger.warning("text_detector_failed error=%s", str(exc))

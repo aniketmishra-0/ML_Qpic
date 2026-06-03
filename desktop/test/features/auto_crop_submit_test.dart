@@ -94,7 +94,7 @@ class _Harness {
     controller = AutoCropController(
       apiClient: apiClient,
       downloadService: downloadService,
-    );
+    )..smartMode = false;
   }
 
   late final _CapturingAdapter adapter;

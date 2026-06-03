@@ -85,12 +85,16 @@ class EditController extends ChangeNotifier {
   String? _fileName;
   String? _errorDetail;
   String? _selectedSpanId;
+  String? _selectedVectorObjectId;
 
   // --- Edits / actions ------------------------------------------------------
 
   /// span id → replacement text. Only spans whose text actually changed are
   /// kept here (mirrors the web editor's `state.edits` map).
   final Map<String, String> _edits = <String, String>{};
+
+  /// Set of vector object IDs marked for deletion.
+  final Set<String> _deletedVectorObjectIds = <String>{};
 
   String _ocrLanguages = '';
   String _ocrDpiText = '${EditOcrBounds.dpiDefault}';
@@ -163,11 +167,27 @@ class EditController extends ChangeNotifier {
   /// Whether [spanId] has a pending (uncommitted-to-engine) text override.
   bool isSpanEdited(String spanId) => _edits.containsKey(spanId);
 
-  /// Number of spans with a pending text change (drives the "N changes" chip).
-  int get pendingEditCount => _edits.length;
+  /// Selected vector/image object ID.
+  String? get selectedVectorObjectId => _selectedVectorObjectId;
 
-  /// Whether there is at least one pending text change to apply.
-  bool get hasPendingEdits => _edits.isNotEmpty;
+  /// List of vector/image objects returned by the engine.
+  List<VectorObjectModel> get vectorObjects =>
+      _response?.vectorObjects ?? const <VectorObjectModel>[];
+
+  /// The vector/image objects on [pageNumber] (1-indexed).
+  List<VectorObjectModel> vectorObjectsForPage(int pageNumber) {
+    return vectorObjects.where((v) => v.page == pageNumber).toList(growable: false);
+  }
+
+  /// Whether the vector/image object [objectId] is marked for deletion.
+  bool isVectorObjectDeleted(String objectId) =>
+      _deletedVectorObjectIds.contains(objectId);
+
+  /// Number of spans/objects with a pending change.
+  int get pendingEditCount => _edits.length + _deletedVectorObjectIds.length;
+
+  /// Whether there is at least one pending edit/deletion to apply.
+  bool get hasPendingEdits => _edits.isNotEmpty || _deletedVectorObjectIds.isNotEmpty;
 
   // --- OCR control getters --------------------------------------------------
 
@@ -219,9 +239,9 @@ class EditController extends ChangeNotifier {
   /// An apply / OCR / download error to display in the ready view, or null.
   String? get actionError => _actionError;
 
-  /// Whether [apply] can run: the doc has text, there are pending edits, and no
+  /// Whether [apply] can run: the doc has text (or there are pending vector object deletions), there are pending edits, and no
   /// action is in flight.
-  bool get canApply => hasText && hasPendingEdits && !busy;
+  bool get canApply => (hasText || _deletedVectorObjectIds.isNotEmpty) && hasPendingEdits && !busy;
 
   /// Whether OCR can run: a document is staged and no action is in flight.
   bool get canRunOcr => _fileBytes != null && !busy && isOcrDpiValid;
@@ -270,6 +290,32 @@ class EditController extends ChangeNotifier {
   void selectSpan(String? spanId) {
     if (_selectedSpanId == spanId) return;
     _selectedSpanId = spanId;
+    if (spanId != null) {
+      _selectedVectorObjectId = null;
+    }
+    notifyListeners();
+  }
+
+  /// Selects a vector graphic/image object [objectId]. Pass null to clear.
+  void selectVectorObject(String? objectId) {
+    if (_selectedVectorObjectId == objectId) return;
+    _selectedVectorObjectId = objectId;
+    if (objectId != null) {
+      _selectedSpanId = null;
+    }
+    notifyListeners();
+  }
+
+  /// Marks a vector graphic/image object [objectId] for deletion (toggles it).
+  void deleteVectorObject(String objectId) {
+    if (_deletedVectorObjectIds.contains(objectId)) {
+      _deletedVectorObjectIds.remove(objectId);
+    } else {
+      _deletedVectorObjectIds.add(objectId);
+    }
+    if (_selectedVectorObjectId == objectId) {
+      _selectedVectorObjectId = null;
+    }
     notifyListeners();
   }
 
@@ -297,7 +343,7 @@ class EditController extends ChangeNotifier {
 
   /// Builds the `edit_text` operations for the pending edits (Req 15.5). Each
   /// op carries the span's page/bbox and original style so the engine can
-  /// re-lay the replacement text in the matched font.
+  /// Builds the operations for text edits and vector deletions (Req 15.5).
   List<OperationModel> buildOperations() {
     final ops = <OperationModel>[];
     for (final entry in _edits.entries) {
@@ -312,6 +358,17 @@ class EditController extends ChangeNotifier {
           font: span.font,
           size: span.size,
           color: span.color,
+        ),
+      );
+    }
+    for (final id in _deletedVectorObjectIds) {
+      final vec = _vectorObjectById(id);
+      if (vec == null) continue;
+      ops.add(
+        OperationModel(
+          type: 'delete_vector_object',
+          page: vec.page,
+          bbox: vec.bbox,
         ),
       );
     }
@@ -460,11 +517,20 @@ class EditController extends ChangeNotifier {
     return null;
   }
 
+  VectorObjectModel? _vectorObjectById(String id) {
+    for (final v in vectorObjects) {
+      if (v.id == id) return v;
+    }
+    return null;
+  }
+
   /// Resets per-document edit/action state (kept together so open, OCR-reopen,
   /// and reset stay consistent).
   void _resetEditState() {
     _selectedSpanId = null;
+    _selectedVectorObjectId = null;
     _edits.clear();
+    _deletedVectorObjectIds.clear();
     _applyResult = null;
     _ocrResult = null;
     _downloadJobId = null;

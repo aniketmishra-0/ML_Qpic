@@ -20,6 +20,19 @@ class QuestionSegment(BaseModel):
     y_end_pct: float
     x_start_pct: float = 0.0
     x_end_pct: float = 100.0
+    # Manual horizontal nudge for this part when stitched into a multi-part
+    # crop, as a signed percentage of the page width (positive shifts the part
+    # right, negative left). Set from the review "Manual align" controls and
+    # applied only during stitching, so a preview and the finalized download —
+    # which both stitch the same segments — line the parts up identically.
+    # Defaults to 0.0 so single-column and auto-detected crops are untouched.
+    x_offset_pct: float = 0.0
+    # Manual vertical nudge for this part when stitched into a multi-part
+    # crop, as a signed percentage of the page height (positive shifts the part
+    # down, negative up). Set from the review "Manual align" controls and
+    # applied only during stitching.
+    # Defaults to 0.0 so single-column and auto-detected crops are untouched.
+    y_offset_pct: float = 0.0
 
 
 class DetectedQuestion(BaseModel):
@@ -38,6 +51,11 @@ class DetectedQuestion(BaseModel):
     is_solution: bool = False
     option_labels: str = ""
     source: Literal["auto", "manual"] = "auto"
+    # Explicit override for left-aligning stitched column-split parts. None keeps
+    # the legacy per-source default (align manual items only); True/False force
+    # the choice. Set from the review "Align parts" toggle and carried verbatim
+    # so a finalized crop matches the preview the user approved.
+    align: Optional[bool] = None
 
 class CropResponse(BaseModel):
     """Response after creating a crop job.
@@ -146,12 +164,43 @@ class FinalizeItem(BaseModel):
     drew/re-selected by hand, ``"auto"`` for kept pipeline detections. Finalize
     uses it to apply manual-only post-processing (content left-alignment of
     stitched column-split parts) without touching auto crops.
+
+    ``align`` is an explicit override for that left-alignment of stitched parts
+    (the "Align parts" toggle in the review preview). ``None`` keeps the legacy
+    default (align only manual items); ``True``/``False`` force the choice for
+    this item regardless of its source, so the user can straighten an
+    auto-detected multi-part question (or turn alignment off) and have the
+    finalized crop match exactly what the preview showed.
     """
 
     q_num: str
     is_solution: bool = False
     segments: list[QuestionSegment]
     source: Literal["auto", "manual"] = "auto"
+    align: Optional[bool] = None
+
+
+class CropPreviewRequest(BaseModel):
+    """A single item to render as a standalone preview crop.
+
+    Used by ``POST /api/crop/preview`` to show the user exactly how one question
+    (or solution) will look once cropped — reusing the same crop/stitch pipeline
+    the finalized download runs, so the preview is "what you see is what you
+    get". ``align`` mirrors :class:`FinalizeItem.align` (``None`` = legacy
+    per-source default); the other fields mirror the relevant finalize output
+    config so the preview honours the same DPI / padding / format.
+    """
+
+    job_id: str
+    q_num: str = "0"
+    is_solution: bool = False
+    segments: list[QuestionSegment]
+    source: Literal["auto", "manual"] = "auto"
+    align: Optional[bool] = None
+    dpi: int = 200
+    padding: int = 20
+    image_format: Literal["png", "jpg", "jpeg"] = "png"
+    jpg_quality: int = 90
 
 
 class FinalizeRequest(BaseModel):
@@ -244,6 +293,15 @@ class RenameFinalizeResponse(BaseModel):
 # --- PDF power tools: Compress / Edit / Preflight ----------------------------
 
 
+class EditPageModel(BaseModel):
+    """Geometry + preview for one page in the editor."""
+
+    page: int
+    width: float
+    height: float
+    preview_url: str
+
+
 class CompressResponse(BaseModel):
     """Result of a PDF compression job."""
 
@@ -255,6 +313,7 @@ class CompressResponse(BaseModel):
     target_met: Optional[bool] = None
     note: str = ""
     download_url: str
+    pages: list[EditPageModel] = []
 
 
 class EditableSpanModel(BaseModel):
@@ -271,13 +330,15 @@ class EditableSpanModel(BaseModel):
     italic: bool = False
 
 
-class EditPageModel(BaseModel):
-    """Geometry + preview for one page in the editor."""
+class VectorObjectModel(BaseModel):
+    """One selectable vector graphic or image object on a page."""
 
+    id: str
     page: int
-    width: float
-    height: float
-    preview_url: str
+    type: str  # "image" or "vector"
+    bbox: list[float]  # [x0, y0, x1, y1] in PDF points
+
+
 
 
 class EditExtractResponse(BaseModel):
@@ -287,6 +348,7 @@ class EditExtractResponse(BaseModel):
     has_text: bool
     pages: list[EditPageModel]
     spans: list[EditableSpanModel]
+    vector_objects: list[VectorObjectModel] = []
 
 
 class EditOpModel(BaseModel):
@@ -408,6 +470,8 @@ class PreflightResponse(BaseModel):
     mixed_page_sizes: bool = False
     # Per-page detailed geometry for the Preflight Check modal table.
     page_details: list[PreflightPageDetail] = []
+    job_id: Optional[str] = None
+    pages: list[EditPageModel] = []
 
 
 class PreflightFixResponse(BaseModel):
@@ -421,3 +485,14 @@ class PreflightFixResponse(BaseModel):
     pages_changed: int
     note: str
     download_url: str
+    pages: list[EditPageModel] = []
+
+
+class EnhanceResponse(BaseModel):
+    """Result of a PDF enhancement job."""
+
+    job_id: str
+    pages_total: int
+    note: str = ""
+    download_url: str
+
