@@ -64,7 +64,7 @@ class _StatefulToolFieldState extends State<_StatefulToolField> {
 /// the shell renders its default [ToolPlaceholder]s.
 Widget _host(
   ThemeController controller, {
-  Widget Function(QpicTool tool)? toolViewBuilder,
+  Widget Function(QpicTool tool, int subTab)? toolViewBuilder,
 }) {
   return MaterialApp(
     theme: QpicTheme.light,
@@ -232,7 +232,7 @@ void main() {
       await tester.pumpWidget(
         _host(
           theme,
-          toolViewBuilder: (tool) => _StatefulToolField(
+          toolViewBuilder: (tool, subTab) => _StatefulToolField(
             key: ValueKey<String>('tool-view-${tool.name}'),
             tool: tool,
           ),

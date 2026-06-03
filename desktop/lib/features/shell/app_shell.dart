@@ -74,7 +74,7 @@ class AppShell extends StatefulWidget {
   /// Optional builder for a tool's view. The host supplies the real Auto Crop
   /// form, Manual Crop, Rename Batch, and Tools widgets here; when null the
   /// shell renders a [ToolPlaceholder] for each tool.
-  final Widget Function(QpicTool tool)? toolViewBuilder;
+  final Widget Function(QpicTool tool, int subTab)? toolViewBuilder;
 
   /// When false, the navigation rail and Help control are disabled. The
   /// startup gate uses this to keep the tool UI inert until the engine reports
@@ -88,6 +88,7 @@ class AppShell extends StatefulWidget {
 class AppShellState extends State<AppShell> {
   // Default selected tool is Auto Crop (index 0) per Requirement 4.4.
   QpicTool _selected = QpicTool.autoCrop;
+  int _selectedSubToolIndex = 0;
 
   /// Programmatically switches the active tab. Exposed so the host can drive
   /// tab navigation from outside (e.g. the PDF Enhancer's "Send to Crop").
@@ -96,6 +97,13 @@ class AppShellState extends State<AppShell> {
   void _selectTool(QpicTool tool) {
     if (tool == _selected) return;
     setState(() => _selected = tool);
+  }
+
+  void selectSubTool(int index) {
+    setState(() {
+      _selected = QpicTool.tools;
+      _selectedSubToolIndex = index;
+    });
   }
 
   @override
@@ -111,8 +119,10 @@ class AppShellState extends State<AppShell> {
             palette: palette,
             theme: theme,
             selected: _selected,
+            selectedSubToolIndex: _selectedSubToolIndex,
             enabled: widget.enabled,
             onSelected: _selectTool,
+            onSubToolSelected: selectSubTool,
             themeController: widget.themeController,
             sidecarBootstrap: widget.sidecarBootstrap,
           ),
@@ -134,7 +144,7 @@ class AppShellState extends State<AppShell> {
   Widget _buildToolView(QpicTool tool) {
     final builder = widget.toolViewBuilder;
     if (builder != null) {
-      return builder(tool);
+      return builder(tool, _selectedSubToolIndex);
     }
     return ToolPlaceholder(
       key: ValueKey<String>('tool-view-${tool.name}'),
@@ -146,13 +156,15 @@ class AppShellState extends State<AppShell> {
 /// Left navigation rail with the Qpic brand mark at the top, the four tool
 /// destinations, and a Help control + vertical theme switcher pinned to the
 /// bottom.
-class _QpicNavRail extends StatelessWidget {
+class _QpicNavRail extends StatefulWidget {
   const _QpicNavRail({
     required this.palette,
     required this.theme,
     required this.selected,
+    required this.selectedSubToolIndex,
     required this.enabled,
     required this.onSelected,
+    required this.onSubToolSelected,
     required this.themeController,
     this.sidecarBootstrap,
   });
@@ -160,15 +172,40 @@ class _QpicNavRail extends StatelessWidget {
   final QpicPalette? palette;
   final ThemeData theme;
   final QpicTool selected;
+  final int selectedSubToolIndex;
   final bool enabled;
   final ValueChanged<QpicTool> onSelected;
+  final ValueChanged<int> onSubToolSelected;
   final ThemeController themeController;
   final SidecarBootstrap? sidecarBootstrap;
 
   @override
+  State<_QpicNavRail> createState() => _QpicNavRailState();
+}
+
+class _QpicNavRailState extends State<_QpicNavRail> {
+  bool _toolsExpanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.selected == QpicTool.tools) {
+      _toolsExpanded = true;
+    }
+  }
+
+  @override
+  void didUpdateWidget(_QpicNavRail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selected == QpicTool.tools && oldWidget.selected != QpicTool.tools) {
+      _toolsExpanded = true;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final Color railColor = palette?.appBar ?? theme.colorScheme.surface;
-    final Color borderColor = palette?.border ?? theme.dividerColor;
+    final Color railColor = widget.palette?.appBar ?? widget.theme.colorScheme.surface;
+    final Color borderColor = widget.palette?.border ?? widget.theme.dividerColor;
 
     return Container(
       width: 76,
@@ -186,20 +223,123 @@ class _QpicNavRail extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 const SizedBox(height: 10),
-                _QpicBrandMark(palette: palette),
+                _QpicBrandMark(palette: widget.palette),
                 const SizedBox(height: 12),
-                // Tool destinations.
-                for (final tool in QpicTool.values)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: _NavRailItem(
-                      tool: tool,
-                      active: tool == selected,
-                      enabled: enabled,
-                      onTap: () => onSelected(tool),
-                      palette: palette,
-                    ),
+                
+                // Main tools (excluding tools)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: _NavRailItem(
+                    tool: QpicTool.autoCrop,
+                    active: widget.selected == QpicTool.autoCrop,
+                    enabled: widget.enabled,
+                    onTap: () => widget.onSelected(QpicTool.autoCrop),
+                    palette: widget.palette,
                   ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: _NavRailItem(
+                    tool: QpicTool.manualCrop,
+                    active: widget.selected == QpicTool.manualCrop,
+                    enabled: widget.enabled,
+                    onTap: () => widget.onSelected(QpicTool.manualCrop),
+                    palette: widget.palette,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: _NavRailItem(
+                    tool: QpicTool.renameBatch,
+                    active: widget.selected == QpicTool.renameBatch,
+                    enabled: widget.enabled,
+                    onTap: () => widget.onSelected(QpicTool.renameBatch),
+                    palette: widget.palette,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: _NavRailItem(
+                    tool: QpicTool.pdfEnhancer,
+                    active: widget.selected == QpicTool.pdfEnhancer,
+                    enabled: widget.enabled,
+                    onTap: () => widget.onSelected(QpicTool.pdfEnhancer),
+                    palette: widget.palette,
+                  ),
+                ),
+
+                // Tools header item
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: _NavToolsHeaderItem(
+                    active: widget.selected == QpicTool.tools,
+                    expanded: _toolsExpanded,
+                    enabled: widget.enabled,
+                    onTap: () {
+                      setState(() {
+                        if (widget.selected != QpicTool.tools) {
+                          _toolsExpanded = true;
+                          widget.onSelected(QpicTool.tools);
+                        } else {
+                          _toolsExpanded = !_toolsExpanded;
+                        }
+                      });
+                    },
+                    palette: widget.palette,
+                  ),
+                ),
+
+                // Sub-items of Tools
+                if (_toolsExpanded) ...[
+                  const SizedBox(height: 4),
+                  _NavRailSubItem(
+                    label: 'Compress',
+                    icon: Icons.compress_rounded,
+                    active: widget.selected == QpicTool.tools && widget.selectedSubToolIndex == 0,
+                    enabled: widget.enabled,
+                    onTap: () {
+                      widget.onSelected(QpicTool.tools);
+                      widget.onSubToolSelected(0);
+                    },
+                    palette: widget.palette,
+                  ),
+                  const SizedBox(height: 4),
+                  _NavRailSubItem(
+                    label: 'Vector',
+                    icon: Icons.shape_line_rounded,
+                    active: widget.selected == QpicTool.tools && widget.selectedSubToolIndex == 1,
+                    enabled: widget.enabled,
+                    onTap: () {
+                      widget.onSelected(QpicTool.tools);
+                      widget.onSubToolSelected(1);
+                    },
+                    palette: widget.palette,
+                  ),
+                  const SizedBox(height: 4),
+                  _NavRailSubItem(
+                    label: 'Preflight',
+                    icon: Icons.fact_check_rounded,
+                    active: widget.selected == QpicTool.tools && widget.selectedSubToolIndex == 2,
+                    enabled: widget.enabled,
+                    onTap: () {
+                      widget.onSelected(QpicTool.tools);
+                      widget.onSubToolSelected(2);
+                    },
+                    palette: widget.palette,
+                  ),
+                  const SizedBox(height: 4),
+                  _NavRailSubItem(
+                    label: 'Editing',
+                    icon: Icons.edit_note_rounded,
+                    active: widget.selected == QpicTool.tools && widget.selectedSubToolIndex == 3,
+                    enabled: widget.enabled,
+                    onTap: () {
+                      widget.onSelected(QpicTool.tools);
+                      widget.onSubToolSelected(3);
+                    },
+                    palette: widget.palette,
+                  ),
+                ],
               ],
             ),
           ),
@@ -210,7 +350,7 @@ class _QpicNavRail extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: <Widget>[
-                  AppCredit(palette: palette),
+                  AppCredit(palette: widget.palette),
                   const SizedBox(height: 16),
                   Container(
                     width: 40,
@@ -219,20 +359,217 @@ class _QpicNavRail extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   // Help control.
-                  _NavHelpButton(palette: palette, enabled: enabled),
+                  _NavHelpButton(palette: widget.palette, enabled: widget.enabled),
                   const SizedBox(height: 4),
                   // Settings control.
                   _NavSettingsButton(
-                    themeController: themeController,
-                    sidecarBootstrap: sidecarBootstrap,
-                    enabled: enabled,
-                    palette: palette,
+                    themeController: widget.themeController,
+                    sidecarBootstrap: widget.sidecarBootstrap,
+                    enabled: widget.enabled,
+                    palette: widget.palette,
                   ),
                 ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _NavToolsHeaderItem extends StatefulWidget {
+  const _NavToolsHeaderItem({
+    required this.active,
+    required this.expanded,
+    required this.enabled,
+    required this.onTap,
+    required this.palette,
+  });
+
+  final bool active;
+  final bool expanded;
+  final bool enabled;
+  final VoidCallback onTap;
+  final QpicPalette? palette;
+
+  @override
+  State<_NavToolsHeaderItem> createState() => _NavToolsHeaderItemState();
+}
+
+class _NavToolsHeaderItemState extends State<_NavToolsHeaderItem> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = widget.palette;
+    final activeColor = palette?.brand ?? theme.colorScheme.primary;
+    final textColor = palette?.appBarText ?? theme.colorScheme.onSurface;
+    final inactiveColor = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+    final fieldColor = palette?.field ?? theme.colorScheme.surfaceContainerHighest;
+
+    final Color fgColor = widget.active
+        ? activeColor
+        : (_hovered ? textColor : inactiveColor);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      child: GestureDetector(
+        key: const ValueKey<String>('tool-tab-tools'),
+        onTap: widget.enabled ? widget.onTap : null,
+        child: Opacity(
+          opacity: widget.enabled ? 1.0 : 0.4,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            width: 60,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: widget.active
+                  ? activeColor.withValues(alpha: 0.08)
+                  : (_hovered ? fieldColor : Colors.transparent),
+              borderRadius: BorderRadius.circular(12),
+              border: widget.active
+                  ? Border.all(color: activeColor.withValues(alpha: 0.3))
+                  : Border.all(color: Colors.transparent),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Icon(Icons.build_rounded, size: 21, color: fgColor),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Icon(
+                        widget.expanded
+                            ? Icons.keyboard_arrow_up_rounded
+                            : Icons.keyboard_arrow_down_rounded,
+                        size: 10,
+                        color: fgColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Tools',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: widget.active ? FontWeight.w700 : FontWeight.w500,
+                    color: fgColor,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NavRailSubItem extends StatefulWidget {
+  const _NavRailSubItem({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.enabled,
+    required this.onTap,
+    required this.palette,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool active;
+  final bool enabled;
+  final VoidCallback onTap;
+  final QpicPalette? palette;
+
+  @override
+  State<_NavRailSubItem> createState() => _NavRailSubItemState();
+}
+
+class _NavRailSubItemState extends State<_NavRailSubItem> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = widget.palette;
+    final activeColor = palette?.brand ?? theme.colorScheme.primary;
+    final textColor = palette?.appBarText ?? theme.colorScheme.onSurface;
+    final inactiveColor = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+    final fieldColor = palette?.field ?? theme.colorScheme.surfaceContainerHighest;
+
+    final Color fgColor = widget.active
+        ? activeColor
+        : (_hovered ? textColor : inactiveColor);
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      child: GestureDetector(
+        key: ValueKey<String>('tool-tab-sub-${widget.label.toLowerCase()}'),
+        onTap: widget.enabled ? widget.onTap : null,
+        child: Opacity(
+          opacity: widget.enabled ? 1.0 : 0.4,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Visual connector line for nested feel
+              Container(
+                width: 2,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: widget.active
+                      ? activeColor
+                      : (_hovered ? activeColor.withValues(alpha: 0.3) : Colors.transparent),
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+              const SizedBox(width: 4),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                curve: Curves.easeOut,
+                width: 50,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                decoration: BoxDecoration(
+                  color: widget.active
+                      ? activeColor.withValues(alpha: 0.12)
+                      : (_hovered ? fieldColor : Colors.transparent),
+                  borderRadius: BorderRadius.circular(8),
+                  border: widget.active
+                      ? Border.all(color: activeColor.withValues(alpha: 0.4))
+                      : Border.all(color: Colors.transparent),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(widget.icon, size: 17, color: fgColor),
+                    const SizedBox(height: 3),
+                    Text(
+                      widget.label,
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: widget.active ? FontWeight.w700 : FontWeight.w500,
+                        color: fgColor,
+                        letterSpacing: 0.1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

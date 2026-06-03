@@ -19,18 +19,41 @@ class PdfToolsView extends StatefulWidget {
     super.key,
     required this.apiClient,
     required this.downloadService,
+    this.subTab,
+    this.onSubTabChanged,
   });
 
   final ApiClient? apiClient;
   final DownloadService? downloadService;
+  final int? subTab;
+  final ValueChanged<int>? onSubTabChanged;
 
   @override
   State<PdfToolsView> createState() => _PdfToolsViewState();
 }
 
 class _PdfToolsViewState extends State<PdfToolsView> {
-  // Sub-tabs: 0 = Compress, 1 = Preflight, 2 = Edit
+  // Sub-tabs: 0 = Compress, 1 = Vector Editor, 2 = Preflight, 3 = Edit
   int _currentSubTab = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.subTab != null) {
+      _currentSubTab = widget.subTab!;
+    }
+  }
+
+  @override
+  void didUpdateWidget(PdfToolsView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.subTab != null && widget.subTab != oldWidget.subTab) {
+      setState(() {
+        _currentSubTab = widget.subTab!;
+        _errorText = null;
+      });
+    }
+  }
 
   CompressController? _compressController;
   PreflightController? _preflightController;
@@ -88,6 +111,9 @@ class _PdfToolsViewState extends State<PdfToolsView> {
               onTap: () => setState(() {
                 _currentSubTab = t.index;
                 _errorText = null;
+                if (widget.onSubTabChanged != null) {
+                  widget.onSubTabChanged!(t.index);
+                }
               }),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
