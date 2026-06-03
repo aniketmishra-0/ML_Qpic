@@ -112,6 +112,7 @@ class ReviewItemsPanel extends StatelessWidget {
                     onDelete: () => _confirmDelete(context, indexedItems[i].value, indexedItems[i].key),
                     onMoveUp: (int seg) => controller.moveSegment(indexedItems[i].key, seg, -1),
                     onMoveDown: (int seg) => controller.moveSegment(indexedItems[i].key, seg, 1),
+                    onDeletePart: (int seg) => controller.deleteSegment(indexedItems[i].key, seg),
                   ),
                 ),
           ],
@@ -286,6 +287,7 @@ class _ItemRow extends StatelessWidget {
     required this.onDelete,
     required this.onMoveUp,
     required this.onMoveDown,
+    required this.onDeletePart,
   });
 
   final QpicPalette palette;
@@ -299,6 +301,7 @@ class _ItemRow extends StatelessWidget {
   final VoidCallback onDelete;
   final ValueChanged<int> onMoveUp;
   final ValueChanged<int> onMoveDown;
+  final ValueChanged<int> onDeletePart;
 
   @override
   Widget build(BuildContext context) {
@@ -381,6 +384,7 @@ class _ItemRow extends StatelessWidget {
               prefix: prefix,
               onMoveUp: onMoveUp,
               onMoveDown: onMoveDown,
+              onDeletePart: onDeletePart,
             ),
           ],
         ],
@@ -417,6 +421,7 @@ class _PartsList extends StatelessWidget {
     required this.prefix,
     required this.onMoveUp,
     required this.onMoveDown,
+    required this.onDeletePart,
   });
 
   final QpicPalette palette;
@@ -424,6 +429,7 @@ class _PartsList extends StatelessWidget {
   final String prefix;
   final ValueChanged<int> onMoveUp;
   final ValueChanged<int> onMoveDown;
+  final ValueChanged<int> onDeletePart;
 
   @override
   Widget build(BuildContext context) {
@@ -493,6 +499,14 @@ class _PartsList extends StatelessWidget {
                     tooltip: 'Move down',
                     palette: palette,
                     onPressed: s == count - 1 ? null : () => onMoveDown(s),
+                  ),
+                  const SizedBox(width: 4),
+                  _PartMoveButton(
+                    icon: Icons.close_rounded,
+                    tooltip: 'Remove part',
+                    palette: palette,
+                    onPressed: () => onDeletePart(s),
+                    danger: true,
                   ),
                 ],
               ),
@@ -630,12 +644,14 @@ class _PartMoveButton extends StatelessWidget {
     required this.tooltip,
     required this.palette,
     required this.onPressed,
+    this.danger = false,
   });
 
   final IconData icon;
   final String tooltip;
   final QpicPalette palette;
   final VoidCallback? onPressed;
+  final bool danger;
 
   @override
   Widget build(BuildContext context) {
@@ -656,9 +672,9 @@ class _PartMoveButton extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(5),
-                border: Border.all(color: palette.border),
+                border: Border.all(color: danger ? palette.danger.withAlpha(128) : palette.border),
               ),
-              child: Icon(icon, size: 13, color: palette.text),
+              child: Icon(icon, size: 13, color: danger ? palette.danger : palette.text),
             ),
           ),
         ),

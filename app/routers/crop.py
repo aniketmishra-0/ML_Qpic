@@ -18,6 +18,7 @@ from ..config import Settings
 from ..dependencies import build_ai_detector, get_anthropic_client_optional, get_settings
 from ..models.schemas import (
     AnalyzeResponse,
+    AnalyzedItem,
     CropPreviewRequest,
     CropResponse,
     FinalizeRequest,
@@ -408,6 +409,10 @@ async def crop_pdf(
         None,
         description="Pages that contain answers/solutions, e.g. '7-10'. Required when has_answers is true.",
     ),
+    skip_pages: Optional[str] = Query(
+        None,
+        description="Pages to skip during crop, e.g. '3, 5'.",
+    ),
     question_prefix: str = Query(
         "Q",
         max_length=10,
@@ -518,6 +523,12 @@ async def crop_pdf(
             answer_page_set = (
                 parse_page_ranges(answer_pages, max_page=total_pages) if has_answers else set()
             )
+            skip_page_set = (
+                parse_page_ranges(skip_pages, max_page=total_pages) if skip_pages else set()
+            )
+            if skip_page_set:
+                question_page_set -= skip_page_set
+                answer_page_set -= skip_page_set
         except PageRangeError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -739,6 +750,7 @@ async def analyze_pdf(
     question_pages: Optional[str] = Query(None),
     has_answers: bool = Query(True),
     answer_pages: Optional[str] = Query(None),
+    skip_pages: Optional[str] = Query(None),
     use_ai: bool = Query(
         False,
         description="Online mode: allow the AI vision tier when a key is configured. "
@@ -797,6 +809,12 @@ async def analyze_pdf(
             answer_page_set = (
                 parse_page_ranges(answer_pages, max_page=total_pages) if has_answers else set()
             )
+            skip_page_set = (
+                parse_page_ranges(skip_pages, max_page=total_pages) if skip_pages else set()
+            )
+            if skip_page_set:
+                question_page_set -= skip_page_set
+                answer_page_set -= skip_page_set
         except PageRangeError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -1094,6 +1112,149 @@ async def prepare_manual(
         if job_dir is not None:
             await asyncio.to_thread(safe_cleanup_job, job_id, temp_root)
         raise
+
+
+@router.post("/crop/{job_id}/auto-detect", response_model=list[AnalyzedItem])
+async def auto_detect_job_page(
+    request: Request,
+    job_id: str,
+    page: Optional[int] = Query(None, description="1-indexed page. If null, run on all pages."),
+    use_ai: bool = Query(False),
+    marker_style: str = Query("auto"),
+    settings: Settings = Depends(get_settings),
+    client: Optional[anthropic.AsyncAnthropic] = Depends(get_anthropic_client_optional),
+) -> list[AnalyzedItem]:
+    """Run detection pipeline on the cached PDF page(s) of an active job."""
+
+    temp_root = _get_temp_root(request, settings)
+    job_dir = get_job_dir(job_id, temp_root)
+    source_pdf = job_dir / "source.pdf"
+
+    def _exists(p: Path) -> bool:
+        return p.exists()
+
+    if not await asyncio.to_thread(_exists, source_pdf):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERR_JOB_NOT_FOUND)
+
+    file_bytes = await asyncio.to_thread(source_pdf.read_bytes)
+    dpi = settings.PDF_RENDER_DPI
+    page_images = await asyncio.to_thread(LazyPageImages, file_bytes, dpi)
+    total_pages = len(page_images)
+
+    try:
+        if page is not None:
+            if page < 1 or page > total_pages:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Page number {page} is out of bounds.")
+            question_page_set = {page}
+            answer_page_set = {page}
+        else:
+            question_page_set = set(range(1, total_pages + 1))
+            answer_page_set = set(range(1, total_pages + 1))
+
+        from PIL import Image
+
+        class SinglePageLazyImagesWrapper:
+            def __init__(self, lazy: LazyPageImages, target_page: int) -> None:
+                self.lazy = lazy
+                self.target_idx = target_page - 1
+                self.count = len(lazy)
+            def __len__(self) -> int:
+                return self.count
+            def __getitem__(self, idx: Any) -> Any:
+                if isinstance(idx, slice):
+                    indices = range(*idx.indices(self.count))
+                    return [self[i] for i in indices]
+                i = int(idx)
+                if i == self.target_idx:
+                    return self.lazy[i]
+                else:
+                    return Image.new("RGB", (10, 10), (255, 255, 255))
+            def __iter__(self):
+                for i in range(self.count):
+                    yield self[i]
+            def close(self) -> None:
+                self.lazy.close()
+
+        if page is not None:
+            wrapped_images: Any = SinglePageLazyImagesWrapper(page_images, page)
+        else:
+            wrapped_images = page_images
+
+        pipeline = DetectionPipeline(
+            ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client)
+        )
+        style = (marker_style or "auto").strip().lower()
+        if style not in ("auto", "q", "numbered"):
+            style = "auto"
+
+        detected, method_used = await pipeline.detect(
+            pdf_bytes=file_bytes,
+            page_images=wrapped_images,
+            settings=settings,
+            render_dpi=dpi,
+            smart=True,
+            prefer_ai=use_ai,
+            marker_style=style,
+        )
+
+        detected = apply_page_ranges(
+            questions=detected,
+            question_pages=question_page_set,
+            answer_pages=answer_page_set,
+            strict=True,
+        )
+        detected = drop_phantom_numbers(detected)
+
+        def _page_text_lines() -> dict[int, list[tuple[float, float, float, float]]]:
+            out: dict[int, list[tuple[float, float, float, float]]] = {}
+            try:
+                with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+                    for p_num in question_page_set | answer_page_set:
+                        page_idx = p_num - 1
+                        page = doc.load_page(page_idx)
+                        rect = page.rect
+                        pw, ph = float(rect.width), float(rect.height)
+                        if pw <= 0 or ph <= 0:
+                            continue
+                        lines: list[tuple[float, float, float, float]] = []
+                        data = page.get_text("dict") or {}
+                        for block in data.get("blocks", []):
+                            for ln in block.get("lines", []):
+                                spans = ln.get("spans", [])
+                                if not spans:
+                                    continue
+                                if not any((s.get("text") or "").strip() for s in spans):
+                                    continue
+                                x0, y0, x1, y1 = ln.get("bbox", (0, 0, 0, 0))
+                                lines.append(
+                                    (
+                                        (y0 / ph) * 100.0,
+                                        (y1 / ph) * 100.0,
+                                        (x0 / pw) * 100.0,
+                                        (x1 / pw) * 100.0,
+                                    )
+                                )
+                        if lines:
+                            out[p_num] = lines
+            except Exception:
+                return {}
+            return out
+
+        page_lines = await asyncio.to_thread(_page_text_lines)
+        ocr_lines = getattr(
+            getattr(pipeline, "ocr_detector", None), "page_lines_pct", None
+        )
+        if ocr_lines:
+            for p_num, lines in ocr_lines.items():
+                if p_num not in (question_page_set | answer_page_set):
+                    continue
+                if not page_lines.get(p_num) and lines:
+                    page_lines[p_num] = list(lines)
+
+        items = build_analyzed_items(detected, page_lines or None)
+        return items
+    finally:
+        await asyncio.to_thread(page_images.close)
 
 
 @router.get("/analyze/{job_id}/page/{page_no}")

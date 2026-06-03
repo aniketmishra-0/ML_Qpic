@@ -259,13 +259,16 @@ void main() {
       await tester.pump();
 
       // ...then turn both off and attempt to crop.
-      await tester.tap(
-        find.byKey(const ValueKey<String>('auto-crop-has-questions')),
-      );
+      final questionsToggle = find.byKey(const ValueKey<String>('auto-crop-has-questions'));
+      await tester.ensureVisible(questionsToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(questionsToggle);
       await tester.pump();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('auto-crop-has-answers')),
-      );
+
+      final answersToggle = find.byKey(const ValueKey<String>('auto-crop-has-answers'));
+      await tester.ensureVisible(answersToggle);
+      await tester.pumpAndSettle();
+      await tester.tap(answersToggle);
       await tester.pump();
 
       await _tapSubmit(tester);

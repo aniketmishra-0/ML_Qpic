@@ -74,6 +74,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
   /// Whether the right-hand notes panel is shown. Toggled from the toolbar so
   /// the canvas can take the full width when the user wants more room.
   bool _notesOpen = true;
+  bool _autoDetectUseAi = false;
 
   void _toggleNotes() => setState(() => _notesOpen = !_notesOpen);
 
@@ -97,6 +98,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   onFinalize: widget.onFinalize,
                   notesOpen: _notesOpen,
                   onToggleNotes: _toggleNotes,
+                  autoDetectUseAi: _autoDetectUseAi,
+                  onToggleUseAi: (bool val) => setState(() => _autoDetectUseAi = val),
                 ),
                 _AnswerSheetAdvisory(
                     controller: widget.controller, palette: palette),
@@ -155,6 +158,8 @@ class _ReviewToolbar extends StatelessWidget {
     required this.onFinalize,
     required this.notesOpen,
     required this.onToggleNotes,
+    required this.autoDetectUseAi,
+    required this.onToggleUseAi,
   });
 
   final ReviewController controller;
@@ -163,6 +168,8 @@ class _ReviewToolbar extends StatelessWidget {
   final VoidCallback? onFinalize;
   final bool notesOpen;
   final VoidCallback onToggleNotes;
+  final bool autoDetectUseAi;
+  final ValueChanged<bool> onToggleUseAi;
 
   @override
   Widget build(BuildContext context) {
@@ -280,10 +287,93 @@ class _ReviewToolbar extends StatelessWidget {
               onPressed: controller.doneReselecting,
               child: const Text('Done re-selecting'),
             ),
+          if (controller.autoDetecting)
+            FilledButton.icon(
+              key: const ValueKey<String>('review-auto-detect-busy'),
+              onPressed: null,
+              icon: const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              label: const Text('Detecting…'),
+            )
+          else
+            PopupMenuButton<String>(
+              key: const ValueKey<String>('review-auto-detect-menu'),
+              tooltip: 'Auto-detect questions',
+              offset: const Offset(0, 40),
+              onSelected: (String value) {
+                if (value == 'toggle-ai') {
+                  onToggleUseAi(!autoDetectUseAi);
+                } else if (value == 'detect-page') {
+                  controller.runAutoDetect(pageOnly: true, useAi: autoDetectUseAi);
+                } else if (value == 'detect-all') {
+                  controller.runAutoDetect(pageOnly: false, useAi: autoDetectUseAi);
+                }
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                CheckedPopupMenuItem<String>(
+                  key: const ValueKey<String>('review-auto-detect-use-ai'),
+                  value: 'toggle-ai',
+                  checked: autoDetectUseAi,
+                  child: const Text('Use AI (Online mode)'),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem<String>(
+                  key: const ValueKey<String>('review-auto-detect-page'),
+                  value: 'detect-page',
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(Icons.find_in_page_rounded, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'Auto-detect Page $displayIndex',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  key: const ValueKey<String>('review-auto-detect-all'),
+                  value: 'detect-all',
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(Icons.auto_awesome_motion_rounded, size: 18),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: const Text(
+                          'Auto-detect All Pages',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              child: IgnorePointer(
+                child: FilledButton.icon(
+                  key: const ValueKey<String>('review-auto-detect-button'),
+                  onPressed: () {},
+                  icon: const Icon(Icons.auto_awesome_rounded, size: 16),
+                  label: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      Text('Auto Detect'),
+                      SizedBox(width: 4),
+                      Icon(Icons.arrow_drop_down_rounded, size: 18),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(width: 8),
           FilledButton.icon(
             key: const ValueKey<String>('review-finalize'),
             onPressed:
-                (onFinalize == null || controller.finalizing) ? null : onFinalize,
+                (onFinalize == null || controller.finalizing || controller.autoDetecting) ? null : onFinalize,
             icon: controller.finalizing
                 ? const SizedBox(
                     width: 16,

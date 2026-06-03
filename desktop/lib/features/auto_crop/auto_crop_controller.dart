@@ -190,6 +190,7 @@ class AutoCropController extends ChangeNotifier {
   String _questionPages = '';
   bool _hasAnswers = true;
   String _answerPages = '';
+  String _skipPages = '';
 
   /// Whether the PDF contains a question section (`has_questions`). When off,
   /// the engine ignores [questionPages].
@@ -227,6 +228,14 @@ class AutoCropController extends ChangeNotifier {
   set answerPages(String value) {
     if (_answerPages == value) return;
     _answerPages = value;
+    notifyListeners();
+  }
+
+  /// The pages to skip exactly as entered (`skip_pages`).
+  String get skipPages => _skipPages;
+  set skipPages(String value) {
+    if (_skipPages == value) return;
+    _skipPages = value;
     notifyListeners();
   }
 
@@ -508,6 +517,7 @@ class AutoCropController extends ChangeNotifier {
     _questionPages = '';
     _hasAnswers = true;
     _answerPages = '';
+    _skipPages = '';
 
     // Mode toggles + numbering.
     _smartMode = defaults?.defaultSmartMode ?? true;
@@ -649,6 +659,7 @@ class AutoCropController extends ChangeNotifier {
         questionPages: _hasQuestions ? _questionPages : null,
         hasAnswers: _hasAnswers,
         answerPages: _hasAnswers ? _answerPages : null,
+        skipPages: _skipPages.isNotEmpty ? _skipPages : null,
         questionPrefix: _questionPrefix,
         solutionPrefix: _solutionPrefix,
         startNumber: _startNumber,
@@ -713,6 +724,7 @@ class AutoCropController extends ChangeNotifier {
         questionPages: _hasQuestions ? _questionPages : null,
         hasAnswers: _hasAnswers,
         answerPages: _hasAnswers ? _answerPages : null,
+        skipPages: _skipPages.isNotEmpty ? _skipPages : null,
         useAi: useAi,
         answerSheet: _answerSheet,
       );

@@ -56,45 +56,118 @@ class PreflightView extends StatelessWidget {
   Widget _buildPanel(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
+    
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool wide = constraints.maxWidth >= 900;
+        final result = controller.result;
 
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
+        if (wide) {
+          return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              _Header(palette: palette),
-              const SizedBox(height: 16),
-              _DropZone(
-                controller: controller,
-                onPickFile: onPickFile,
-                palette: palette,
-              ),
-              if (controller.errorText != null) ...<Widget>[
-                const SizedBox(height: 16),
-                _ErrorBanner(
-                    message: controller.errorText!, palette: palette),
-              ],
-              const SizedBox(height: 24),
-              _PreflightButton(controller: controller),
-              if (controller.result != null) ...<Widget>[
-                const SizedBox(height: 24),
-                _ResultCard(
-                  controller: controller,
-                  palette: palette,
-                  initiallyExpanded: initiallyExpanded,
+            children: [
+              SizedBox(
+                width: 380,
+                child: Material(
+                  color: palette?.panel ?? theme.colorScheme.surface,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        _Header(palette: palette),
+                        const SizedBox(height: 24),
+                        _DropZone(
+                          controller: controller,
+                          onPickFile: onPickFile,
+                          palette: palette,
+                        ),
+                        if (controller.errorText != null) ...<Widget>[
+                          const SizedBox(height: 16),
+                          _ErrorBanner(message: controller.errorText!, palette: palette),
+                        ],
+                        const SizedBox(height: 32),
+                        _PreflightButton(controller: controller),
+                        if (result != null && result.mixedPageSizes) ...<Widget>[
+                          const SizedBox(height: 24),
+                          _FixPageSizesSection(controller: controller, palette: palette),
+                        ],
+                        if (controller.fixResult != null) ...<Widget>[
+                          const SizedBox(height: 24),
+                          _FixResultCard(controller: controller, palette: palette),
+                        ],
+                      ],
+                    ),
+                  ),
                 ),
-              ],
-              if (controller.fixResult != null) ...<Widget>[
-                const SizedBox(height: 24),
-                _FixResultCard(controller: controller, palette: palette),
-              ],
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: Container(
+                  color: palette?.background ?? theme.colorScheme.surface,
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(32),
+                      child: result != null
+                          ? ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 600),
+                              child: _ResultCard(
+                                controller: controller,
+                                palette: palette,
+                                initiallyExpanded: initiallyExpanded,
+                              ),
+                            )
+                          : ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 500),
+                              child: _ResultPlaceholder(palette: palette),
+                            ),
+                    ),
+                  ),
+                ),
+              ),
             ],
+          );
+        }
+
+        return Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _Header(palette: palette),
+                  const SizedBox(height: 16),
+                  _DropZone(
+                    controller: controller,
+                    onPickFile: onPickFile,
+                    palette: palette,
+                  ),
+                  if (controller.errorText != null) ...<Widget>[
+                    const SizedBox(height: 16),
+                    _ErrorBanner(message: controller.errorText!, palette: palette),
+                  ],
+                  const SizedBox(height: 24),
+                  _PreflightButton(controller: controller),
+                  if (result != null) ...<Widget>[
+                    const SizedBox(height: 24),
+                    _ResultCard(
+                      controller: controller,
+                      palette: palette,
+                      initiallyExpanded: initiallyExpanded,
+                    ),
+                  ],
+                  if (controller.fixResult != null) ...<Widget>[
+                    const SizedBox(height: 24),
+                    _FixResultCard(controller: controller, palette: palette),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -1056,6 +1129,58 @@ class _CollapsibleSectionState extends State<_CollapsibleSection> {
           widget.child,
         ],
       ],
+    );
+  }
+}
+
+class _ResultPlaceholder extends StatelessWidget {
+  const _ResultPlaceholder({required this.palette});
+
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+    final border = palette?.border ?? theme.dividerColor;
+
+    return Card(
+      color: palette?.panel ?? theme.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: border),
+      ),
+      elevation: 0,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.checklist_rtl_rounded,
+              size: 48,
+              color: muted.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Inspection Report',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: palette?.text ?? theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Once preflight check completes, the print-readiness verdict, warning checks, font/image tables, and geometry details will be available here.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: muted,
+                height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

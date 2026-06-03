@@ -418,6 +418,7 @@ def _render_pdf_to_items(file_bytes: bytes, dpi: int, stem: str) -> list[PdfImag
 @router.post("/rename/pdf-to-images", response_model=PdfToImagesResponse)
 async def pdf_to_images_endpoint(
     file: UploadFile = File(..., description="A PDF to convert into page images."),
+    dpi: Optional[int] = Form(None, description="Optional rasterization DPI."),
     settings: Settings = Depends(get_settings),
 ) -> PdfToImagesResponse:
     """Convert an uploaded PDF into one PNG image per page.
@@ -444,9 +445,10 @@ async def pdf_to_images_endpoint(
 
     stem, _ = split_extension(name)
     stem = (stem or "page").strip() or "page"
+    render_dpi = dpi if dpi is not None else settings.PDF_RENDER_DPI
     try:
         items = await asyncio.to_thread(
-            _render_pdf_to_items, file_bytes, settings.PDF_RENDER_DPI, stem
+            _render_pdf_to_items, file_bytes, render_dpi, stem
         )
     except HTTPException:
         raise

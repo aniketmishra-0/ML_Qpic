@@ -254,6 +254,15 @@ class RenameController extends ChangeNotifier {
   int _padding = RenameBounds.paddingDefault;
   RenameOutputFormat _outputFormat = RenameOutputFormat.original;
   int _jpgQuality = RenameBounds.jpgQualityDefault;
+  String _pdfDpi = 'Original';
+
+  /// PDF render DPI for PDF-to-images conversion ('Original', '72', '150', '200', '300', '400', '600').
+  String get pdfDpi => _pdfDpi;
+  set pdfDpi(String value) {
+    if (_pdfDpi == value) return;
+    _pdfDpi = value;
+    notifyListeners();
+  }
 
   /// Naming pattern. `#` is replaced by the running number; variable tokens
   /// like `(name)`, `(width)`, etc. are expanded client-side.
@@ -372,6 +381,7 @@ class RenameController extends ChangeNotifier {
     _padding = RenameBounds.paddingDefault;
     _outputFormat = RenameOutputFormat.original;
     _jpgQuality = RenameBounds.jpgQualityDefault;
+    _pdfDpi = 'Original';
 
     // Messages.
     _errorText = null;
@@ -578,6 +588,7 @@ class RenameController extends ChangeNotifier {
       final response = await client.renamePdfToImages(
         fileBytes: bytes,
         filename: filename,
+        dpi: int.tryParse(_pdfDpi),
       );
       final pages = response.images
           .map((image) => RenameItem.fromPdfImage(image))

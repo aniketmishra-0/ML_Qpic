@@ -637,6 +637,61 @@ class ReviewCanvasController extends ChangeNotifier {
     _bump();
   }
 
+  /// Clears all existing items' segments on [page], then adds [newPageItems]' segments.
+  /// If an item already has segments on other pages, it keeps them and merges
+  /// the new page segments into it.
+  void replaceItemsForPage(int page, List<AnalyzedItem> newPageItems) {
+    final List<AnalyzedItem> nextItems = <AnalyzedItem>[];
+    for (final AnalyzedItem item in _items) {
+      final List<QuestionSegment> keptSegs = item.segments
+          .where((QuestionSegment s) => s.page != page)
+          .toList();
+      if (keptSegs.isNotEmpty) {
+        nextItems.add(AnalyzedItem(
+          qNum: item.qNum,
+          isSolution: item.isSolution,
+          segments: keptSegs,
+          source: item.source,
+          align: item.align,
+          flagged: item.flagged,
+          flagReason: item.flagReason,
+        ));
+      }
+    }
+
+    for (final AnalyzedItem newItem in newPageItems) {
+      final int existingIdx = nextItems.indexWhere(
+        (AnalyzedItem it) => it.qNum == newItem.qNum && it.isSolution == newItem.isSolution,
+      );
+      if (existingIdx >= 0) {
+        final AnalyzedItem existing = nextItems[existingIdx];
+        final List<QuestionSegment> mergedSegs = List<QuestionSegment>.of(existing.segments)
+          ..addAll(newItem.segments);
+        mergedSegs.sort((QuestionSegment a, QuestionSegment b) => a.page != b.page
+            ? a.page.compareTo(b.page)
+            : a.yStartPct.compareTo(b.yStartPct));
+        nextItems[existingIdx] = AnalyzedItem(
+          qNum: existing.qNum,
+          isSolution: existing.isSolution,
+          segments: mergedSegs,
+          source: newItem.source == 'manual' || existing.source == 'manual' ? 'manual' : 'auto',
+          align: existing.align,
+          flagged: existing.flagged,
+          flagReason: existing.flagReason,
+        );
+      } else {
+        nextItems.add(newItem);
+      }
+    }
+
+    _items = nextItems;
+    // Clear any notes associated with the newly detected items on this page
+    for (final AnalyzedItem newItem in newPageItems) {
+      _clearNoteFor(newItem.qNum, newItem.isSolution);
+    }
+    _bump();
+  }
+
   // ---- Internal helpers ---------------------------------------------------
 
   /// Returns a copy of [it] marked as a manual fix with [segments].

@@ -125,6 +125,7 @@ class ApiClient {
     String? questionPages,
     bool hasAnswers = true,
     String? answerPages,
+    String? skipPages,
     String questionPrefix = 'Q',
     String solutionPrefix = 'S',
     int startNumber = 1,
@@ -150,6 +151,7 @@ class ApiClient {
       };
       if (questionPages != null) query['question_pages'] = questionPages;
       if (answerPages != null) query['answer_pages'] = answerPages;
+      if (skipPages != null) query['skip_pages'] = skipPages;
 
       final form = FormData();
       form.files.add(
@@ -183,6 +185,7 @@ class ApiClient {
     String? questionPages,
     bool hasAnswers = true,
     String? answerPages,
+    String? skipPages,
     bool useAi = false,
     bool answerSheet = true,
   }) {
@@ -197,6 +200,7 @@ class ApiClient {
       };
       if (questionPages != null) query['question_pages'] = questionPages;
       if (answerPages != null) query['answer_pages'] = answerPages;
+      if (skipPages != null) query['skip_pages'] = skipPages;
 
       final form = FormData();
       form.files.add(
@@ -245,6 +249,30 @@ class ApiClient {
         data: form,
       );
       return AnalyzeResponse.fromJson(res.data!);
+    });
+  }
+
+  /// `POST /api/crop/{job_id}/auto-detect` — run auto-detection on a page or all pages of the cached document.
+  Future<List<AnalyzedItem>> autoDetect({
+    required String jobId,
+    int? page,
+    bool useAi = false,
+    String markerStyle = 'auto',
+  }) {
+    return _guard(() async {
+      final query = <String, dynamic>{
+        'use_ai': useAi,
+        'marker_style': markerStyle,
+      };
+      if (page != null) query['page'] = page;
+
+      final res = await _dio.post<List<dynamic>>(
+        '$_api/crop/$jobId/auto-detect',
+        queryParameters: query,
+      );
+      return res.data!
+          .map((e) => AnalyzedItem.fromJson(e as Map<String, dynamic>))
+          .toList();
     });
   }
 
@@ -327,6 +355,7 @@ class ApiClient {
   Future<PdfToImagesResponse> renamePdfToImages({
     required List<int> fileBytes,
     required String filename,
+    int? dpi,
   }) {
     return _guard(() async {
       final form = FormData();
@@ -340,6 +369,9 @@ class ApiClient {
           ),
         ),
       );
+      if (dpi != null) {
+        form.fields.add(MapEntry('dpi', dpi.toString()));
+      }
 
       final res = await _dio.post<Map<String, dynamic>>(
         '$_api/rename/pdf-to-images',

@@ -257,6 +257,10 @@ class ReviewController extends ChangeNotifier {
   CropResponse? _finalizeResult;
   String _finalizeQuestionPrefix = 'Q';
   String _finalizeSolutionPrefix = 'S';
+  bool _autoDetecting = false;
+
+  /// Whether an auto-detection request is in flight.
+  bool get autoDetecting => _autoDetecting;
 
   // Output config used for per-item previews so a preview render matches the
   // finalized download exactly (same DPI / padding / format). The host keeps
@@ -797,6 +801,46 @@ class ReviewController extends ChangeNotifier {
       return false;
     } finally {
       _finalizing = false;
+      notifyListeners();
+    }
+  }
+
+  /// Runs on-demand auto-detection on the cached PDF.
+  /// If [pageOnly] is true, runs on the current page only and merges the detected boxes
+  /// onto the current page. If false, runs on all pages and replaces all boxes.
+  Future<void> runAutoDetect({
+    bool pageOnly = true,
+    bool useAi = false,
+    String markerStyle = 'auto',
+  }) async {
+    final ApiClient? client = _apiClient;
+    if (client == null || _autoDetecting) return;
+
+    _autoDetecting = true;
+    notifyListeners();
+
+    try {
+      final int? targetPage = pageOnly ? currentPageNumber : null;
+      final List<AnalyzedItem> detected = await client.autoDetect(
+        jobId: _jobId,
+        page: targetPage,
+        useAi: useAi,
+        markerStyle: markerStyle,
+      );
+
+      if (pageOnly) {
+        if (targetPage != null) {
+          _canvas.replaceItemsForPage(targetPage, detected);
+        }
+      } else {
+        _canvas.load(
+          pages: _canvas.pages,
+          items: detected,
+          notes: _canvas.notes,
+        );
+      }
+    } finally {
+      _autoDetecting = false;
       notifyListeners();
     }
   }

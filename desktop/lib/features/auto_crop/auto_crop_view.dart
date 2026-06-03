@@ -158,6 +158,8 @@ class AutoCropView extends StatelessWidget {
                     _QuestionsSection(controller: controller),
                     const SizedBox(height: 16),
                     _SolutionsSection(controller: controller),
+                    const SizedBox(height: 16),
+                    _SkipPagesSection(controller: controller),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -231,6 +233,8 @@ class AutoCropView extends StatelessWidget {
               _QuestionsSection(controller: controller),
               const SizedBox(height: 16),
               _SolutionsSection(controller: controller),
+              const SizedBox(height: 16),
+              _SkipPagesSection(controller: controller),
             ],
           ),
           const SizedBox(height: 16),
@@ -354,6 +358,7 @@ class _FilePickerRow extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
     final brand = palette?.brand ?? theme.colorScheme.primary;
+    final successColor = palette?.success ?? theme.colorScheme.primary;
     final bool hasFile = fileName != null;
 
     final dropZone = _HoverDropZone(
@@ -364,35 +369,52 @@ class _FilePickerRow extends StatelessWidget {
         final bool active = hovered && onPickFile != null;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           decoration: BoxDecoration(
             color: active
-                ? brand.withValues(alpha: 0.06)
-                : (palette?.field ?? theme.colorScheme.surfaceContainerHighest),
-            borderRadius: BorderRadius.circular(12),
+                ? brand.withValues(alpha: 0.08)
+                : (hasFile 
+                    ? (palette?.panelAlt ?? theme.colorScheme.surface)
+                    : (palette?.field ?? theme.colorScheme.surfaceContainerHighest)),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: active ? brand : (palette?.border ?? theme.dividerColor),
+              color: active 
+                  ? brand 
+                  : (hasFile 
+                      ? successColor.withValues(alpha: 0.5) 
+                      : (palette?.border ?? theme.dividerColor)),
               width: 1.5,
             ),
+            boxShadow: active
+                ? [
+                    BoxShadow(
+                      color: brand.withValues(alpha: 0.15),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ]
+                : [],
           ),
           child: Row(
             children: <Widget>[
               Container(
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                  color: brand.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(10),
+                  color: hasFile 
+                      ? successColor.withValues(alpha: 0.12)
+                      : brand.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   hasFile
                       ? Icons.picture_as_pdf_rounded
                       : Icons.cloud_upload_outlined,
-                  color: brand,
-                  size: 21,
+                  color: hasFile ? successColor : brand,
+                  size: 22,
                 ),
               ),
-              const SizedBox(width: 14),
+              const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -403,12 +425,12 @@ class _FilePickerRow extends StatelessWidget {
                       key: const ValueKey<String>('auto-crop-file-name'),
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
                         color: palette?.text ?? theme.colorScheme.onSurface,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       hasFile ? 'Tap to choose a different PDF' : 'or click to browse',
                       style: TextStyle(
@@ -420,6 +442,36 @@ class _FilePickerRow extends StatelessWidget {
                   ],
                 ),
               ),
+              if (hasFile) ...[
+                const SizedBox(width: 12),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: successColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: 14,
+                        color: successColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'LOADED',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: successColor,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         );
@@ -432,7 +484,7 @@ class _FilePickerRow extends StatelessWidget {
     return Row(
       children: <Widget>[
         Expanded(child: dropZone),
-        const SizedBox(width: 12),
+        const SizedBox(width: 14),
         _ViewButton(
           onView: onView,
           loading: previewLoading,
@@ -464,17 +516,23 @@ class _ViewButton extends StatelessWidget {
       key: const ValueKey<String>('auto-crop-view'),
       onPressed: loading ? null : onView,
       icon: loading
-          ? const SizedBox(
+          ? SizedBox(
               width: 16,
               height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(brand),
+              ),
             )
-          : const Icon(Icons.visibility_outlined, size: 18),
+          : const Icon(Icons.remove_red_eye_rounded, size: 18),
       label: const Text('View'),
       style: OutlinedButton.styleFrom(
         foregroundColor: brand,
-        side: BorderSide(color: brand.withValues(alpha: 0.5)),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+        side: BorderSide(color: brand.withValues(alpha: 0.4), width: 1.5),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
     );
   }
@@ -566,36 +624,91 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final accentColor = _getAccentColor(palette);
+    final sectionIcon = _getIcon();
+
     // Use a Material (not a colored Container) as the card surface so the
-    // SwitchListTiles inside paint their background/ink on it directly — a
-    // colored DecoratedBox between a ListTile and its Material is flagged by
-    // Flutter. The border is carried by the Material's shape.
+    // SwitchListTiles inside paint their background/ink on it directly.
     return Material(
       color: palette?.panel ?? theme.colorScheme.surface,
+      elevation: 2,
+      shadowColor: (palette?.border ?? theme.dividerColor).withValues(alpha: 0.08),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: palette?.border ?? theme.dividerColor),
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: palette?.borderSoft ?? theme.dividerColor, width: 1.5),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: <Widget>[
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                letterSpacing: 0.8,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Row(
+                children: [
+                  Container(
+                    width: 4,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: accentColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    sectionIcon,
+                    size: 18,
+                    color: accentColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    title.toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: palette?.text ?? theme.colorScheme.onSurface,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 14),
-            ...children,
-          ],
+              const SizedBox(height: 16),
+              ...children,
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Color _getAccentColor(QpicPalette? palette) {
+    switch (title) {
+      case 'Pages':
+        return palette?.brand ?? const Color(0xFF7C6CFF);
+      case 'Detection':
+        return palette?.brandMagenta ?? const Color(0xFFB14EFF);
+      case 'Output':
+        return palette?.brandBlue ?? const Color(0xFF4B8DFF);
+      case 'Render':
+        return palette?.warn ?? const Color(0xFFFBBF24);
+      default:
+        return palette?.brand ?? const Color(0xFF7C6CFF);
+    }
+  }
+
+  IconData _getIcon() {
+    switch (title) {
+      case 'Pages':
+        return Icons.auto_stories_rounded;
+      case 'Detection':
+        return Icons.psychology_rounded;
+      case 'Output':
+        return Icons.snippet_folder_rounded;
+      case 'Render':
+        return Icons.display_settings_rounded;
+      default:
+        return Icons.settings_rounded;
+    }
   }
 }
 
@@ -606,26 +719,72 @@ class _QuestionsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        SwitchListTile(
-          key: const ValueKey<String>('auto-crop-has-questions'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Questions'),
-          subtitle: const Text('Crop the question pages of this PDF.'),
-          value: controller.hasQuestions,
-          onChanged: (value) => controller.hasQuestions = value,
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+
+    return Material(
+      color: controller.hasQuestions 
+          ? brand.withValues(alpha: 0.03) 
+          : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: controller.hasQuestions 
+              ? brand.withValues(alpha: 0.3) 
+              : (palette?.borderSoft ?? theme.dividerColor),
+          width: 1.2,
         ),
-        if (controller.hasQuestions)
-          _PageRangeField(
-            fieldKey: const ValueKey<String>('auto-crop-question-pages'),
-            label: 'Question pages',
-            hint: "e.g. '1-5' or '1 to 5, 8'",
-            value: controller.questionPages,
-            onChanged: (value) => controller.questionPages = value,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          SwitchListTile(
+            key: const ValueKey<String>('auto-crop-has-questions'),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            title: Row(
+              children: [
+                Icon(
+                  Icons.help_outline_rounded,
+                  size: 20,
+                  color: controller.hasQuestions ? brand : palette?.muted,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Questions',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: controller.hasQuestions ? palette?.text : palette?.muted,
+                  ),
+                ),
+              ],
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(left: 30),
+              child: Text(
+                'Crop the question pages of this PDF.',
+                style: TextStyle(fontSize: 12.5, color: palette?.mutedAlt),
+              ),
+            ),
+            value: controller.hasQuestions,
+            onChanged: (value) => controller.hasQuestions = value,
           ),
-      ],
+          if (controller.hasQuestions) ...[
+            const Divider(height: 1, thickness: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: _PageRangeField(
+                fieldKey: const ValueKey<String>('auto-crop-question-pages'),
+                label: 'Question pages range',
+                hint: "e.g. '1-5' or '1 to 5, 8'",
+                value: controller.questionPages,
+                onChanged: (value) => controller.questionPages = value,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -637,26 +796,140 @@ class _SolutionsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        SwitchListTile(
-          key: const ValueKey<String>('auto-crop-has-answers'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Solutions'),
-          subtitle: const Text('Crop the answer / solution pages of this PDF.'),
-          value: controller.hasAnswers,
-          onChanged: (value) => controller.hasAnswers = value,
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+
+    return Material(
+      color: controller.hasAnswers 
+          ? brand.withValues(alpha: 0.03) 
+          : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: controller.hasAnswers 
+              ? brand.withValues(alpha: 0.3) 
+              : (palette?.borderSoft ?? theme.dividerColor),
+          width: 1.2,
         ),
-        if (controller.hasAnswers)
-          _PageRangeField(
-            fieldKey: const ValueKey<String>('auto-crop-answer-pages'),
-            label: 'Answer / solution pages',
-            hint: "e.g. '7-10'",
-            value: controller.answerPages,
-            onChanged: (value) => controller.answerPages = value,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          SwitchListTile(
+            key: const ValueKey<String>('auto-crop-has-answers'),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            title: Row(
+              children: [
+                Icon(
+                  Icons.lightbulb_outline_rounded,
+                  size: 20,
+                  color: controller.hasAnswers ? brand : palette?.muted,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Solutions',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: controller.hasAnswers ? palette?.text : palette?.muted,
+                  ),
+                ),
+              ],
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(left: 30),
+              child: Text(
+                'Crop the answer / solution pages of this PDF.',
+                style: TextStyle(fontSize: 12.5, color: palette?.mutedAlt),
+              ),
+            ),
+            value: controller.hasAnswers,
+            onChanged: (value) => controller.hasAnswers = value,
           ),
-      ],
+          if (controller.hasAnswers) ...[
+            const Divider(height: 1, thickness: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              child: _PageRangeField(
+                fieldKey: const ValueKey<String>('auto-crop-answer-pages'),
+                label: 'Answer / solution pages range',
+                hint: "e.g. '7-10'",
+                value: controller.answerPages,
+                onChanged: (value) => controller.answerPages = value,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _SkipPagesSection extends StatelessWidget {
+  const _SkipPagesSection({required this.controller});
+
+  final AutoCropController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+    final danger = palette?.danger ?? theme.colorScheme.error;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: controller.skipPages.isNotEmpty 
+            ? danger.withValues(alpha: 0.02) 
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: controller.skipPages.isNotEmpty 
+              ? danger.withValues(alpha: 0.25) 
+              : (palette?.borderSoft ?? theme.dividerColor),
+          width: 1.2,
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: [
+              Icon(
+                Icons.block_rounded,
+                size: 18,
+                color: controller.skipPages.isNotEmpty ? danger : palette?.muted,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Skip Pages (Optional)',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: controller.skipPages.isNotEmpty ? palette?.text : palette?.muted,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 28),
+            child: Text(
+              'Exclude specific page numbers from the crop output.',
+              style: TextStyle(fontSize: 12, color: palette?.mutedAlt),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _PageRangeField(
+            fieldKey: const ValueKey<String>('auto-crop-skip-pages'),
+            label: 'Pages to exclude',
+            hint: "e.g. '3, 5' or '12'",
+            value: controller.skipPages,
+            onChanged: (value) => controller.skipPages = value,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -708,24 +981,31 @@ class _PageRangeFieldState extends State<_PageRangeField> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
-      child: TextField(
-        key: widget.fieldKey,
-        controller: _textController,
-        keyboardType: TextInputType.text,
-        inputFormatters: <TextInputFormatter>[
-          // Accept digits, range/list separators, the word "to", and spaces.
-          FilteringTextInputFormatter.allow(RegExp(r'[0-9,\-to ]')),
-        ],
-        decoration: InputDecoration(
-          labelText: widget.label,
-          hintText: widget.hint,
-          isDense: true,
-          border: const OutlineInputBorder(),
-        ),
-        onChanged: widget.onChanged,
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+    return TextField(
+      key: widget.fieldKey,
+      controller: _textController,
+      keyboardType: TextInputType.text,
+      inputFormatters: <TextInputFormatter>[
+        // Accept digits, range/list separators, the word "to", and spaces.
+        FilteringTextInputFormatter.allow(RegExp(r'[0-9,\-to ]')),
+      ],
+      style: TextStyle(
+        fontSize: 14,
+        color: palette?.text ?? theme.colorScheme.onSurface,
       ),
+      decoration: InputDecoration(
+        labelText: widget.label,
+        hintText: widget.hint,
+        isDense: true,
+        prefixIcon: Icon(
+          Icons.pin_outlined,
+          size: 16,
+          color: palette?.muted,
+        ),
+      ),
+      onChanged: widget.onChanged,
     );
   }
 }
@@ -737,35 +1017,105 @@ class _ModeToggles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+
     return Column(
       children: <Widget>[
-        SwitchListTile(
+        _buildToggleItem(
           key: const ValueKey<String>('auto-crop-smart-mode'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Smart mode'),
-          subtitle:
-              const Text('Analyze and review detections before downloading.'),
+          icon: Icons.auto_awesome_rounded,
+          title: 'Smart Mode',
+          subtitle: 'Analyze and review detections before downloading.',
           value: controller.smartMode,
           onChanged: (value) => controller.smartMode = value,
+          brandColor: brand,
+          palette: palette,
+          theme: theme,
         ),
-        SwitchListTile(
+        const SizedBox(height: 12),
+        _buildToggleItem(
           key: const ValueKey<String>('auto-crop-online-mode'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Online mode (Coming Soon)'),
-          subtitle: const Text('Allow the AI vision tier when configured.'),
+          icon: Icons.cloud_outlined,
+          title: 'Online Mode (Coming Soon)',
+          subtitle: 'Allow the AI vision tier when configured.',
           value: false,
           onChanged: null,
+          brandColor: brand,
+          palette: palette,
+          theme: theme,
         ),
-        SwitchListTile(
+        const SizedBox(height: 12),
+        _buildToggleItem(
           key: const ValueKey<String>('auto-crop-answer-sheet'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Answer sheet'),
-          subtitle:
-              const Text('Bundle an answer sheet when the paper has a key.'),
+          icon: Icons.checklist_rtl_rounded,
+          title: 'Answer Sheet',
+          subtitle: 'Bundle an answer sheet when the paper has a key.',
           value: controller.answerSheet,
           onChanged: (value) => controller.answerSheet = value,
+          brandColor: brand,
+          palette: palette,
+          theme: theme,
         ),
       ],
+    );
+  }
+
+  Widget _buildToggleItem({
+    required Key key,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool>? onChanged,
+    required Color brandColor,
+    required QpicPalette? palette,
+    required ThemeData theme,
+  }) {
+    final active = value && onChanged != null;
+    return Material(
+      color: active ? brandColor.withValues(alpha: 0.03) : Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: active 
+              ? brandColor.withValues(alpha: 0.3) 
+              : (palette?.borderSoft ?? theme.dividerColor),
+          width: 1.2,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SwitchListTile(
+        key: key,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        title: Row(
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: active ? brandColor : palette?.muted,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              title,
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                color: active ? palette?.text : palette?.muted,
+              ),
+            ),
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(left: 30),
+          child: Text(
+            subtitle,
+            style: TextStyle(fontSize: 12, color: palette?.mutedAlt),
+          ),
+        ),
+        value: value,
+        onChanged: onChanged,
+      ),
     );
   }
 }
@@ -778,17 +1128,37 @@ class _NumberingSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Question numbering', style: theme.textTheme.bodyMedium),
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            'Question numbering',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: palette?.text ?? theme.colorScheme.onSurface,
+            ),
+          ),
+        ),
         const SizedBox(height: 8),
         DropdownButtonFormField<NumberingMode>(
           key: const ValueKey<String>('auto-crop-numbering'),
           initialValue: controller.numbering,
-          decoration: const InputDecoration(
+          style: TextStyle(
+            fontSize: 14,
+            color: palette?.text ?? theme.colorScheme.onSurface,
+          ),
+          decoration: InputDecoration(
             isDense: true,
-            border: OutlineInputBorder(),
+            prefixIcon: Icon(
+              Icons.format_list_numbered_rounded,
+              size: 18,
+              color: palette?.muted,
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           ),
           items: <DropdownMenuItem<NumberingMode>>[
             for (final mode in NumberingMode.values)
@@ -872,24 +1242,41 @@ class _ImageFormatSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('Image format', style: theme.textTheme.bodyMedium),
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            'Image format',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: palette?.text ?? theme.colorScheme.onSurface,
+            ),
+          ),
+        ),
         const SizedBox(height: 8),
-        SegmentedButton<CropImageFormat>(
-          key: const ValueKey<String>('auto-crop-image-format'),
-          segments: <ButtonSegment<CropImageFormat>>[
-            for (final format in CropImageFormat.values)
-              ButtonSegment<CropImageFormat>(
-                value: format,
-                label: Text(format.label),
-              ),
-          ],
-          selected: <CropImageFormat>{controller.imageFormat},
-          onSelectionChanged: (selection) {
-            controller.imageFormat = selection.first;
-          },
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<CropImageFormat>(
+            key: const ValueKey<String>('auto-crop-image-format'),
+            segments: <ButtonSegment<CropImageFormat>>[
+              for (final format in CropImageFormat.values)
+                ButtonSegment<CropImageFormat>(
+                  value: format,
+                  label: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(format.label),
+                  ),
+                ),
+            ],
+            selected: <CropImageFormat>{controller.imageFormat},
+            onSelectionChanged: (selection) {
+              controller.imageFormat = selection.first;
+            },
+          ),
         ),
       ],
     );
@@ -970,16 +1357,26 @@ class _PrefixFieldState extends State<_PrefixField> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
     return TextField(
       key: widget.fieldKey,
       controller: _textController,
       inputFormatters: <TextInputFormatter>[
         LengthLimitingTextInputFormatter(AutoCropBounds.prefixMaxLength),
       ],
+      style: TextStyle(
+        fontSize: 14,
+        color: palette?.text ?? theme.colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
         labelText: widget.label,
         isDense: true,
-        border: const OutlineInputBorder(),
+        prefixIcon: Icon(
+          Icons.title_rounded,
+          size: 16,
+          color: palette?.muted,
+        ),
         counterText: '',
       ),
       onChanged: widget.onChanged,
@@ -1046,6 +1443,7 @@ class _BoundedIntFieldState extends State<_BoundedIntField> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
     return TextField(
       key: widget.fieldKey,
       controller: _textController,
@@ -1053,12 +1451,23 @@ class _BoundedIntFieldState extends State<_BoundedIntField> {
       inputFormatters: <TextInputFormatter>[
         FilteringTextInputFormatter.digitsOnly,
       ],
+      style: TextStyle(
+        fontSize: 14,
+        color: palette?.text ?? theme.colorScheme.onSurface,
+      ),
       decoration: InputDecoration(
         labelText: widget.label,
         helperText: 'Range ${widget.min}–${widget.max}',
         isDense: true,
-        border: const OutlineInputBorder(),
-        helperStyle: theme.textTheme.bodySmall,
+        prefixIcon: Icon(
+          Icons.pin_outlined,
+          size: 16,
+          color: palette?.muted,
+        ),
+        helperStyle: TextStyle(
+          fontSize: 11,
+          color: palette?.mutedAlt,
+        ),
       ),
       onChanged: _handleChanged,
     );
@@ -1087,35 +1496,84 @@ class _BoundedSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    // Guard against an out-of-range incoming value so the Slider never asserts.
+    final palette = theme.extension<QpicPalette>();
+    final brand = palette?.brand ?? theme.colorScheme.primary;
     final clamped = value < min ? min : (value > max ? max : value);
+
+    final sliderValueKeyString = (sliderKey as ValueKey<String>).value;
+    final icon = _getIcon();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: <Widget>[
-            Text(label, style: theme.textTheme.bodyMedium),
-            Text(
-              '$clamped',
-              key: ValueKey<String>('${(sliderKey as ValueKey<String>).value}-value'),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: palette?.muted,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: palette?.text ?? theme.colorScheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+              decoration: BoxDecoration(
+                color: brand.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '$clamped',
+                key: ValueKey<String>('$sliderValueKeyString-value'),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: brand,
+                ),
               ),
             ),
           ],
         ),
-        Slider(
-          key: sliderKey,
-          value: clamped.toDouble(),
-          min: min.toDouble(),
-          max: max.toDouble(),
-          divisions: max - min,
-          label: '$clamped',
-          onChanged: (v) => onChanged(v.round()),
+        const SizedBox(height: 4),
+        SliderTheme(
+          data: theme.sliderTheme.copyWith(
+            trackHeight: 4,
+            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+          ),
+          child: Slider(
+            key: sliderKey,
+            value: clamped.toDouble(),
+            min: min.toDouble(),
+            max: max.toDouble(),
+            divisions: max - min > 0 ? max - min : 1,
+            label: '$clamped',
+            onChanged: (v) => onChanged(v.round()),
+          ),
         ),
       ],
     );
+  }
+
+  IconData _getIcon() {
+    if (label.toLowerCase().contains('quality')) {
+      return Icons.high_quality_rounded;
+    } else if (label.toLowerCase().contains('dpi')) {
+      return Icons.photo_size_select_large_rounded;
+    } else {
+      return Icons.settings_overscan_rounded;
+    }
   }
 }
 
@@ -1132,19 +1590,61 @@ class _SubmitButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
     // Smart mode opens the review canvas; non-Smart crops straight to a ZIP.
     final label = smartMode ? 'Analyze & Review' : 'Crop';
-    return FilledButton.icon(
-      key: const ValueKey<String>('auto-crop-submit'),
-      onPressed: busy ? null : onSubmit,
-      icon: busy
-          ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : Icon(smartMode ? Icons.travel_explore : Icons.crop),
-      label: Text(label),
+    final disabled = onSubmit == null || busy;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: disabled
+            ? null
+            : LinearGradient(
+                colors: [
+                  palette?.brand ?? const Color(0xFF7C6CFF),
+                  palette?.brandMagenta ?? const Color(0xFFB14EFF),
+                ],
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+              ),
+        color: disabled ? (palette?.border ?? theme.dividerColor) : null,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: disabled
+            ? null
+            : [
+                BoxShadow(
+                  color: (palette?.brand ?? const Color(0xFF7C6CFF)).withValues(alpha: 0.25),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+      ),
+      child: FilledButton.icon(
+        key: const ValueKey<String>('auto-crop-submit'),
+        onPressed: busy ? null : onSubmit,
+        icon: busy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Icon(smartMode ? Icons.travel_explore_rounded : Icons.crop_rounded),
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          disabledBackgroundColor: Colors.transparent,
+          disabledForegroundColor: palette?.mutedAlt,
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
     );
   }
 }
