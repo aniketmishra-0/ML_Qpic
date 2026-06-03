@@ -6,7 +6,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:qpic_desktop/core/api_client.dart';
-import 'package:qpic_desktop/features/review/review_canvas_controller.dart';
 import 'package:qpic_desktop/features/review/review_controller.dart';
 import 'package:qpic_desktop/models/analyze.dart';
 import 'package:qpic_desktop/models/crop.dart';
@@ -113,10 +112,18 @@ AnalyzeResponse _analyze({
 
 void main() {
   group('Auto Detect on-demand review session API integration', () {
-    test('runAutoDetect for pageOnly sends page query param and merges segments', () async {
+    test(
+        'runAutoDetect for pageOnly sends page query param and merges segments',
+        () async {
       final detectedJson = jsonEncode(<Map<String, dynamic>>[
-        _item(qNum: '1', segments: <QuestionSegment>[_seg(page: 2, y0: 15, y1: 35)]).toJson(),
-        _item(qNum: '3', segments: <QuestionSegment>[_seg(page: 2, y0: 50, y1: 70)]).toJson(),
+        _item(
+                qNum: '1',
+                segments: <QuestionSegment>[_seg(page: 2, y0: 15, y1: 35)])
+            .toJson(),
+        _item(
+                qNum: '3',
+                segments: <QuestionSegment>[_seg(page: 2, y0: 50, y1: 70)])
+            .toJson(),
       ]);
 
       final h = _Harness(statusCode: 200, body: detectedJson);
@@ -143,7 +150,8 @@ void main() {
       var notifies = 0;
       h.controller.addListener(() => notifies++);
 
-      await h.controller.runAutoDetect(pageOnly: true, useAi: true, markerStyle: 'numbered');
+      await h.controller
+          .runAutoDetect(pageOnly: true, useAi: true, markerStyle: 'numbered');
 
       // Verify request parameters
       expect(h.adapter.requestCount, 1);
@@ -155,20 +163,26 @@ void main() {
       expect(h.adapter.lastQueryParams?['marker_style'], 'numbered');
 
       // Verify state was merged
-      expect(h.controller.items.length, 2, reason: 'Q2 removed, Q3 added, Q1 kept');
-      
+      expect(h.controller.items.length, 2,
+          reason: 'Q2 removed, Q3 added, Q1 kept');
+
       final q1 = h.controller.items.firstWhere((it) => it.qNum == '1');
       expect(q1.segments.length, 2);
-      expect(q1.segments.any((s) => s.page == 1 && s.yStartPct == 10), isTrue, reason: 'page 1 segment preserved');
-      expect(q1.segments.any((s) => s.page == 2 && s.yStartPct == 15), isTrue, reason: 'page 2 segment replaced');
+      expect(q1.segments.any((s) => s.page == 1 && s.yStartPct == 10), isTrue,
+          reason: 'page 1 segment preserved');
+      expect(q1.segments.any((s) => s.page == 2 && s.yStartPct == 15), isTrue,
+          reason: 'page 2 segment replaced');
 
       expect(h.controller.items.any((it) => it.qNum == '2'), isFalse);
       expect(h.controller.items.any((it) => it.qNum == '3'), isTrue);
 
-      expect(notifies, greaterThanOrEqualTo(2), reason: 'notified during loading and when complete');
+      expect(notifies, greaterThanOrEqualTo(2),
+          reason: 'notified during loading and when complete');
     });
 
-    test('runAutoDetect for all pages does not send page parameter and replaces all items', () async {
+    test(
+        'runAutoDetect for all pages does not send page parameter and replaces all items',
+        () async {
       final detectedJson = jsonEncode(<Map<String, dynamic>>[
         _item(qNum: '5').toJson(),
       ]);

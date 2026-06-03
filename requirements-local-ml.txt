@@ -1,0 +1,3 @@
+# Optional offline Local ML tier.
+# Install/include these only for builds that bundle a local question detector.
+onnxruntime>=1.19.0

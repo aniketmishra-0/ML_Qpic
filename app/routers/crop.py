@@ -15,7 +15,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from fastapi.responses import FileResponse, Response
 
 from ..config import Settings
-from ..dependencies import build_ai_detector, get_anthropic_client_optional, get_settings
+from ..dependencies import (
+    build_ai_detector,
+    build_local_ml_detector,
+    get_anthropic_client_optional,
+    get_settings,
+)
 from ..models.schemas import (
     AnalyzeResponse,
     AnalyzedItem,
@@ -40,6 +45,7 @@ from ..services.detector.answer_key import (
 from ..services.detector.furniture import collect_document_furniture
 from ..services.detector.ocr_detector import OCRDetector
 from ..services.detector.pipeline import DetectionPipeline
+from ..services.detector.training_data import write_training_example
 from ..services.page_filter import PageRangeError, apply_page_ranges, parse_page_ranges
 from ..services.pdf_service import LazyPageImages, validate_pdf
 from ..services.review_service import build_analyzed_items, build_review_notes, drop_phantom_numbers
@@ -303,6 +309,10 @@ async def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
     tesseract_available = OCRDetector()._is_available()
     ai_available = settings.ai_is_configured()
     provider = settings.resolved_ai_provider()
+    local_ml_detector = build_local_ml_detector(settings)
+    local_ml_available = (
+        local_ml_detector is not None and local_ml_detector.is_available()
+    )
     ai_model = None
     if provider == "openrouter":
         ai_model = settings.OPENROUTER_MODEL
@@ -315,6 +325,8 @@ async def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
         version="2.0.0",
         ai_provider=provider,
         ai_model=ai_model,
+        local_ml_available=local_ml_available,
+        local_ml_model=settings.LOCAL_ML_MODEL_NAME if local_ml_available else None,
     )
 
 
@@ -561,7 +573,8 @@ async def crop_pdf(
             )
 
         pipeline = DetectionPipeline(
-            ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client)
+            ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client),
+            local_ml_detector=build_local_ml_detector(settings),
         )
         layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
@@ -842,7 +855,8 @@ async def analyze_pdf(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
         pipeline = DetectionPipeline(
-            ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client)
+            ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client),
+            local_ml_detector=build_local_ml_detector(settings),
         )
         layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
@@ -1207,7 +1221,8 @@ async def auto_detect_job_page(
             wrapped_images = page_images
 
         pipeline = DetectionPipeline(
-            ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client)
+            ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client),
+            local_ml_detector=build_local_ml_detector(settings),
         )
         style = (marker_style or "auto").strip().lower()
         if style not in ("auto", "q", "numbered"):
@@ -1487,6 +1502,18 @@ async def finalize_crop(
     detected = _dedupe_by_output_file(detected)
     if not detected:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_NO_QUESTIONS)
+
+    if settings.LOCAL_ML_COLLECT_TRAINING_DATA:
+        training_root = Path(settings.LOCAL_ML_TRAINING_DIR).expanduser()
+        if not training_root.is_absolute():
+            training_root = Path.cwd() / training_root
+        await asyncio.to_thread(
+            write_training_example,
+            job_id=job_id,
+            source_pdf=source_pdf,
+            questions=detected,
+            output_root=training_root,
+        )
 
     file_bytes = await asyncio.to_thread(source_pdf.read_bytes)
 

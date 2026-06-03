@@ -43,11 +43,24 @@ def test_uses_text_for_searchable_pdf() -> None:
 
 def test_falls_back_to_ocr_for_scanned() -> None:
     class DummyTextDetector:
-        def detect(self, pdf_bytes: bytes, padding_px: int = 0, marker_style: str = "auto"):
+        def detect(
+            self,
+            pdf_bytes: bytes,
+            padding_px: int = 0,
+            marker_style: str = "auto",
+            layout_columns=None,
+        ):
             return []
 
     class DummyOCRDetector:
-        def detect(self, page_images, settings: Settings, render_dpi=None, marker_style: str = "auto"):
+        def detect(
+            self,
+            page_images,
+            settings: Settings,
+            render_dpi=None,
+            marker_style: str = "auto",
+            layout_columns=None,
+        ):
             return [
                 DetectedQuestion(
                     q_num="1",
@@ -102,10 +115,33 @@ class _FakeAIDetector:
         return list(self._questions)
 
 
+class _FakeLocalMLDetector:
+    """Offline detector stand-in for the Local ML tier."""
+
+    def __init__(self, questions, available: bool = True):
+        self._questions = questions
+        self._available = available
+        self.calls = 0
+
+    def is_available(self) -> bool:
+        return self._available
+
+    async def detect(self, page_images, settings, *, marker_style: str = "auto"):
+        self.calls += 1
+        return list(self._questions)
+
+
 def _ai_question(q_num: str = "1") -> DetectedQuestion:
     return DetectedQuestion(
         q_num=q_num,
         segments=[QuestionSegment(page=1, y_start_pct=5.0, y_end_pct=40.0)],
+    )
+
+
+def _local_question(q_num: str, page: int = 1) -> DetectedQuestion:
+    return DetectedQuestion(
+        q_num=q_num,
+        segments=[QuestionSegment(page=page, y_start_pct=5.0, y_end_pct=40.0)],
     )
 
 
@@ -162,3 +198,67 @@ def test_no_prefer_ai_keeps_cheap_first_behaviour() -> None:
 
     assert ai.calls == 0
     assert method_used == "text"
+
+
+def test_local_ml_runs_after_insufficient_ocr() -> None:
+    class EmptyOCRDetector:
+        page_confidence = {}
+
+        def detect(
+            self,
+            page_images,
+            settings: Settings,
+            render_dpi=None,
+            marker_style: str = "auto",
+            layout_columns=None,
+        ):
+            return [_local_question("1", page=1)]
+
+    pdf_bytes = _make_blank_pdf_bytes(pages=4)
+    page_images = [Image.new("RGB", (100, 100), (255, 255, 255)) for _ in range(4)]
+    settings = Settings(MIN_QUESTIONS_PER_2_PAGES=0.5)
+
+    local_ml = _FakeLocalMLDetector([_local_question("1"), _local_question("2", page=2)])
+    pipeline = DetectionPipeline(ocr_detector=EmptyOCRDetector(), local_ml_detector=local_ml)
+    questions, method_used = asyncio.run(
+        pipeline.detect(pdf_bytes, page_images, settings, smart=True)
+    )
+
+    assert local_ml.calls == 1
+    assert method_used == "local_ml"
+    assert [q.q_num for q in questions] == ["1", "2"]
+
+
+def test_local_ml_prevents_cloud_ai_when_sufficient() -> None:
+    class EmptyOCRDetector:
+        page_confidence = {}
+
+        def detect(
+            self,
+            page_images,
+            settings: Settings,
+            render_dpi=None,
+            marker_style: str = "auto",
+            layout_columns=None,
+        ):
+            return []
+
+    pdf_bytes = _make_blank_pdf_bytes(pages=2)
+    page_images = [Image.new("RGB", (100, 100), (255, 255, 255)) for _ in range(2)]
+    settings = Settings(MIN_QUESTIONS_PER_2_PAGES=0.5)
+
+    local_ml = _FakeLocalMLDetector([_local_question("1")])
+    ai = _FakeAIDetector([_ai_question("9")])
+    pipeline = DetectionPipeline(
+        ocr_detector=EmptyOCRDetector(),
+        local_ml_detector=local_ml,
+        ai_detector=ai,
+    )
+    questions, method_used = asyncio.run(
+        pipeline.detect(pdf_bytes, page_images, settings, smart=True)
+    )
+
+    assert local_ml.calls == 1
+    assert ai.calls == 0
+    assert method_used == "local_ml"
+    assert [q.q_num for q in questions] == ["1"]

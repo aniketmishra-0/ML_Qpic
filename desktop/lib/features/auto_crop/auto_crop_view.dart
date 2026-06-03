@@ -170,6 +170,8 @@ class AutoCropView extends StatelessWidget {
                     _ModeToggles(controller: controller),
                     const SizedBox(height: 16),
                     _NumberingSelector(controller: controller),
+                    const SizedBox(height: 16),
+                    _LayoutColumnsSelector(controller: controller),
                   ],
                 ),
               ],
@@ -245,6 +247,8 @@ class AutoCropView extends StatelessWidget {
               _ModeToggles(controller: controller),
               const SizedBox(height: 16),
               _NumberingSelector(controller: controller),
+              const SizedBox(height: 16),
+              _LayoutColumnsSelector(controller: controller),
             ],
           ),
           const SizedBox(height: 16),
@@ -1169,6 +1173,62 @@ class _NumberingSelector extends StatelessWidget {
           ],
           onChanged: (mode) {
             if (mode != null) controller.numbering = mode;
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _LayoutColumnsSelector extends StatelessWidget {
+  const _LayoutColumnsSelector({required this.controller});
+
+  final AutoCropController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            'Page layout columns',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: palette?.text ?? theme.colorScheme.onSurface,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<LayoutColumnsMode>(
+          key: const ValueKey<String>('auto-crop-layout-columns'),
+          initialValue: controller.layoutColumns,
+          style: TextStyle(
+            fontSize: 14,
+            color: palette?.text ?? theme.colorScheme.onSurface,
+          ),
+          decoration: InputDecoration(
+            isDense: true,
+            prefixIcon: Icon(
+              Icons.view_column_rounded,
+              size: 18,
+              color: palette?.muted,
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          ),
+          items: <DropdownMenuItem<LayoutColumnsMode>>[
+            for (final mode in LayoutColumnsMode.values)
+              DropdownMenuItem<LayoutColumnsMode>(
+                value: mode,
+                child: Text(mode.label),
+              ),
+          ],
+          onChanged: (mode) {
+            if (mode != null) controller.layoutColumns = mode;
           },
         ),
       ],

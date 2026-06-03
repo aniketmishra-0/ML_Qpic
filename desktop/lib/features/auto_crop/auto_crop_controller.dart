@@ -258,6 +258,7 @@ class AutoCropController extends ChangeNotifier {
   bool _onlineMode = false;
   bool _answerSheet = false;
   NumberingMode _numbering = NumberingMode.autoDetect;
+  LayoutColumnsMode _layoutColumns = LayoutColumnsMode.auto;
 
   /// Smart mode: when on, submit calls `POST /api/analyze` and opens the
   /// Review Canvas instead of cropping straight to a ZIP (task 12.5).
@@ -292,6 +293,17 @@ class AutoCropController extends ChangeNotifier {
     _numbering = value;
     notifyListeners();
   }
+
+  /// Page layout columns override.
+  LayoutColumnsMode get layoutColumns => _layoutColumns;
+  set layoutColumns(LayoutColumnsMode value) {
+    if (_layoutColumns == value) return;
+    _layoutColumns = value;
+    notifyListeners();
+  }
+
+  /// The engine `layout_columns` value for the current selection.
+  String get layoutColumnsValue => _layoutColumns.value;
 
   /// The engine `marker_style` value for the current [numbering] selection
   /// (`auto` / `q` / `numbered`). Always one of the three accepted values.
@@ -537,6 +549,7 @@ class AutoCropController extends ChangeNotifier {
     _onlineMode = false;
     _answerSheet = false;
     _numbering = NumberingMode.autoDetect;
+    _layoutColumns = LayoutColumnsMode.auto;
 
     // Output configuration.
     _questionPrefix = defaults?.defaultQuestionPrefix ?? 'Q';
@@ -680,6 +693,7 @@ class AutoCropController extends ChangeNotifier {
         jpgQuality: _jpgQuality,
         useAi: useAi,
         answerSheet: _answerSheet,
+        layoutColumns: layoutColumnsValue,
       );
       _result = response;
       return true;
@@ -740,6 +754,7 @@ class AutoCropController extends ChangeNotifier {
         skipPages: _skipPages.isNotEmpty ? _skipPages : null,
         useAi: useAi,
         answerSheet: _answerSheet,
+        layoutColumns: layoutColumnsValue,
       );
       _analyzeResult = response;
       return true;

@@ -129,7 +129,8 @@ class _RenameViewState extends State<RenameView> {
                   controller: widget.controller,
                   palette: palette,
                   isExpanded: _galleryExpanded,
-                  onToggle: () => setState(() => _galleryExpanded = !_galleryExpanded),
+                  onToggle: () =>
+                      setState(() => _galleryExpanded = !_galleryExpanded),
                 ),
               ],
             ],
@@ -179,7 +180,8 @@ class _RenameViewState extends State<RenameView> {
                     _OutputFormatSelector(controller: widget.controller),
                     const SizedBox(height: 12),
                     _DpiSelector(controller: widget.controller),
-                    if (widget.controller.outputFormat == RenameOutputFormat.jpg ||
+                    if (widget.controller.outputFormat ==
+                            RenameOutputFormat.jpg ||
                         widget.controller.outputFormat ==
                             RenameOutputFormat.jpeg) ...<Widget>[
                       const SizedBox(height: 12),
@@ -200,7 +202,8 @@ class _RenameViewState extends State<RenameView> {
         ),
         const SizedBox(width: 20),
         Expanded(
-          child: _PreviewSection(controller: widget.controller, palette: palette),
+          child:
+              _PreviewSection(controller: widget.controller, palette: palette),
         ),
       ],
     );
@@ -377,7 +380,8 @@ class _FilePickerRow extends StatelessWidget {
                 ? brand.withValues(alpha: 0.08)
                 : (hasItems
                     ? (palette?.panelAlt ?? theme.colorScheme.surface)
-                    : (palette?.field ?? theme.colorScheme.surfaceContainerHighest)),
+                    : (palette?.field ??
+                        theme.colorScheme.surfaceContainerHighest)),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: active
@@ -435,7 +439,9 @@ class _FilePickerRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      hasItems ? 'Tap to choose different files' : 'or click to browse',
+                      hasItems
+                          ? 'Tap to choose different files'
+                          : 'or click to browse',
                       style: TextStyle(
                         fontSize: 11.5,
                         color: palette?.mutedAlt ??
@@ -448,7 +454,8 @@ class _FilePickerRow extends StatelessWidget {
               if (hasItems) ...[
                 const SizedBox(width: 12),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: successColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
@@ -670,7 +677,7 @@ class _PatternFieldState extends State<_PatternField> {
       children: [
         DropdownButtonFormField<String>(
           key: const ValueKey<String>('rename-pattern-preset'),
-          value: selectedValue,
+          initialValue: selectedValue,
           isExpanded: true,
           decoration: const InputDecoration(
             labelText: 'Pattern Preset',
@@ -700,7 +707,8 @@ class _PatternFieldState extends State<_PatternField> {
           decoration: const InputDecoration(
             labelText: 'Prefix / Pattern',
             hintText: 'e.g. Q#, (name), page-#',
-            helperText: '# = number. Variables: (name), (width), (height), (date), (ext)',
+            helperText:
+                '# = number. Variables: (name), (width), (height), (date), (ext)',
             isDense: true,
             border: OutlineInputBorder(),
           ),
@@ -1128,7 +1136,8 @@ class _PreviewCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: palette?.field ?? theme.colorScheme.surfaceContainerHighest.withAlpha(120),
+        color: palette?.field ??
+            theme.colorScheme.surfaceContainerHighest.withAlpha(120),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: palette?.border ?? theme.dividerColor,
@@ -1166,7 +1175,8 @@ class _PreviewCard extends StatelessWidget {
                               fit: BoxFit.contain,
                             )
                           : const Center(
-                              child: Icon(Icons.broken_image_outlined, size: 36),
+                              child:
+                                  Icon(Icons.broken_image_outlined, size: 36),
                             ),
                     ),
                   ),
@@ -1192,7 +1202,8 @@ class _PreviewCard extends StatelessWidget {
                         _OverlayIconButton(
                           icon: Icons.arrow_back_rounded,
                           tooltip: 'Move Left',
-                          onPressed: () => controller.reorderItem(index, index - 1),
+                          onPressed: () =>
+                              controller.reorderItem(index, index - 1),
                         ),
                         const SizedBox(width: 6),
                       ],
@@ -1200,7 +1211,8 @@ class _PreviewCard extends StatelessWidget {
                         _OverlayIconButton(
                           icon: Icons.arrow_forward_rounded,
                           tooltip: 'Move Right',
-                          onPressed: () => controller.reorderItem(index, index + 1),
+                          onPressed: () =>
+                              controller.reorderItem(index, index + 1),
                         ),
                     ],
                   ),
@@ -1232,7 +1244,8 @@ class _PreviewCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 9.5,
                           fontWeight: FontWeight.w700,
-                          color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                          color: palette?.muted ??
+                              theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1265,7 +1278,8 @@ class _PreviewCard extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 9.5,
                           fontWeight: FontWeight.w700,
-                          color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                          color: palette?.muted ??
+                              theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1360,7 +1374,9 @@ class _ImageGalleryRow extends StatelessWidget {
               child: Row(
                 children: [
                   Icon(
-                    isExpanded ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
+                    isExpanded
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_right_rounded,
                     color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
                     size: 20,
                   ),
@@ -1379,7 +1395,8 @@ class _ImageGalleryRow extends StatelessWidget {
                       'Click to view each image',
                       style: TextStyle(
                         fontSize: 11,
-                        color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                        color: palette?.muted ??
+                            theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
                 ],
@@ -1392,7 +1409,8 @@ class _ImageGalleryRow extends StatelessWidget {
               height: 94,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 itemCount: controller.itemCount,
                 itemBuilder: (context, index) {
                   final item = controller.items[index];
@@ -1475,7 +1493,8 @@ class _GalleryThumbnail extends StatelessWidget {
                 right: 0,
                 child: Container(
                   color: Colors.black.withAlpha(160),
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
                   child: Text(
                     item.name,
                     style: const TextStyle(
@@ -1562,7 +1581,8 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (widget.controller.items.isEmpty || _currentIndex >= widget.controller.items.length) {
+    if (widget.controller.items.isEmpty ||
+        _currentIndex >= widget.controller.items.length) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) Navigator.of(context).pop();
       });
@@ -1592,7 +1612,8 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
               child: GestureDetector(
                 onTap: () {}, // Prevent closing when tapping card itself
                 child: Container(
-                  constraints: const BoxConstraints(maxWidth: 800, maxHeight: 700),
+                  constraints:
+                      const BoxConstraints(maxWidth: 800, maxHeight: 700),
                   decoration: BoxDecoration(
                     color: widget.palette?.panel ?? theme.colorScheme.surface,
                     borderRadius: BorderRadius.circular(16),
@@ -1614,7 +1635,8 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
                     children: [
                       // Header
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 14),
                         child: Row(
                           children: [
                             Expanded(
@@ -1626,17 +1648,20 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
-                                      color: widget.palette?.text ?? theme.colorScheme.onSurface,
+                                      color: widget.palette?.text ??
+                                          theme.colorScheme.onSurface,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  if (item.width != null && item.height != null) ...[
+                                  if (item.width != null &&
+                                      item.height != null) ...[
                                     const SizedBox(height: 3),
                                     Text(
                                       '${item.width} × ${item.height} px • ${_humanSize(item.sizeBytes)}',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                                        color: widget.palette?.muted ??
+                                            theme.colorScheme.onSurfaceVariant,
                                       ),
                                     ),
                                   ],
@@ -1655,7 +1680,8 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
                             IconButton(
                               icon: Icon(
                                 Icons.close,
-                                color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                                color: widget.palette?.muted ??
+                                    theme.colorScheme.onSurfaceVariant,
                               ),
                               onPressed: () => Navigator.of(context).pop(),
                             ),
@@ -1689,18 +1715,21 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
                                 child: CircleAvatar(
                                   backgroundColor: Colors.black.withAlpha(120),
                                   child: IconButton(
-                                    icon: const Icon(Icons.chevron_left, color: Colors.white),
+                                    icon: const Icon(Icons.chevron_left,
+                                        color: Colors.white),
                                     onPressed: _prev,
                                   ),
                                 ),
                               ),
-                            if (_currentIndex < widget.controller.items.length - 1)
+                            if (_currentIndex <
+                                widget.controller.items.length - 1)
                               Positioned(
                                 right: 16,
                                 child: CircleAvatar(
                                   backgroundColor: Colors.black.withAlpha(120),
                                   child: IconButton(
-                                    icon: const Icon(Icons.chevron_right, color: Colors.white),
+                                    icon: const Icon(Icons.chevron_right,
+                                        color: Colors.white),
                                     onPressed: _next,
                                   ),
                                 ),
@@ -1711,14 +1740,16 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
                       const Divider(height: 1),
                       // Footer
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 14),
                         child: Center(
                           child: Text(
                             'Image ${_currentIndex + 1} of ${widget.controller.items.length}',
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                              color: widget.palette?.muted ??
+                                  theme.colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ),
@@ -1759,7 +1790,8 @@ class _OverlayIconButton extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final bg = isDark ? Colors.black.withAlpha(160) : Colors.white.withAlpha(200);
+    final bg =
+        isDark ? Colors.black.withAlpha(160) : Colors.white.withAlpha(200);
     final fg = iconColor ?? (isDark ? Colors.white : Colors.black87);
 
     Widget button = Material(
@@ -1806,7 +1838,7 @@ class _DpiSelector extends StatelessWidget {
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           key: const ValueKey<String>('rename-pdf-dpi'),
-          value: controller.pdfDpi,
+          initialValue: controller.pdfDpi,
           isExpanded: true,
           decoration: const InputDecoration(
             isDense: true,
@@ -1854,7 +1886,8 @@ class _HoverDropZoneState extends State<_HoverDropZone> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor:
+          widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(

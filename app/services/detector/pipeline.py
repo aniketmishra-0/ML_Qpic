@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from typing import Optional
+from typing import Any, Optional
 
 import fitz
 from PIL import Image
@@ -28,9 +28,11 @@ class DetectionPipeline:
         text_detector: Optional[TextDetector] = None,
         ocr_detector: Optional[OCRDetector] = None,
         ai_detector: Optional[AIDetector] = None,
+        local_ml_detector: Optional[Any] = None,
     ) -> None:
         self.text_detector = text_detector or TextDetector()
         self.ocr_detector = ocr_detector or OCRDetector()
+        self.local_ml_detector = local_ml_detector
         self.ai_detector = ai_detector
 
     async def detect(
@@ -47,7 +49,7 @@ class DetectionPipeline:
     ) -> tuple[list[DetectedQuestion], str]:
         """Return (questions, method_used).
 
-        method_used: "text" | "ocr" | "ai"
+        method_used: "text" | "ocr" | "local_ml" | "ai"
 
         When ``prefer_ai`` is True (the user explicitly turned the online/AI
         toggle on) and a vision detector is configured, the AI tier runs *first*
@@ -81,6 +83,10 @@ class DetectionPipeline:
 
         searchable = self._is_searchable_pdf(pdf_bytes)
         ai_ready = self.ai_detector is not None and self.ai_detector.is_available()
+        local_ml_ready = (
+            self.local_ml_detector is not None
+            and self.local_ml_detector.is_available()
+        )
 
         # AI-first: when the user opted into the AI tier, use vision as the
         # PRIMARY detector instead of a last-resort fallback. Run it up front and
@@ -141,7 +147,24 @@ class DetectionPipeline:
         if accept_ocr:
             return ocr_questions, "ocr"
 
-        # Tier 2.5: Selective AI repair of weak OCR pages.
+        # Tier 2.5: Local ML (fully offline).
+        #
+        # This tier is meant for a bundled/fine-tuned Qpic detector that emits
+        # whole question/solution boxes. It sits before any online vision model
+        # so hard scanned PDFs can still improve when the user is offline.
+        if local_ml_ready:
+            local_questions = await self.local_ml_detector.detect(
+                page_images, settings, marker_style=marker_style
+            )
+            if len(local_questions) > len(best_questions):
+                best_questions, best_method = local_questions, "local_ml"
+            if local_questions and (
+                self._result_is_sufficient(local_questions, total_pages, settings)
+                or not ai_ready
+            ):
+                return local_questions, "local_ml"
+
+        # Tier 2.75: Selective AI repair of weak OCR pages.
         # When OCR produced a usable result but some pages scored low confidence
         # (a few blurry/greyish scans in an otherwise clean document), it's
         # wasteful to re-run the whole document through the AI tier. Instead we

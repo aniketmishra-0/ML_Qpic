@@ -1,0 +1,6 @@
+# Developer-only training/export tools for scripts/local_ml.
+# Do not bundle these into the desktop app runtime.
+-r requirements-local-ml.txt
+ultralytics>=8.3.0
+onnx>=1.16.0
+pyyaml>=6.0.0

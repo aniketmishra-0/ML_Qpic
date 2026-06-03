@@ -56,7 +56,6 @@
 // These tests require `python3` on PATH. When it is absent (rare CI images)
 // they are skipped with a clear message rather than failing spuriously.
 
-import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -187,7 +186,7 @@ void main() {
   // PID file; tracked here so we can clean them all up afterwards.
   final tempDirs = <Directory>[];
 
-  Directory _newWorkDir() {
+  Directory newWorkDir() {
     final dir = Directory.systemTemp.createTempSync('qpic-sidecar-itest');
     tempDirs.add(dir);
     return dir;
@@ -195,7 +194,7 @@ void main() {
 
   /// Writes the stub script into [workDir] and returns a [SidecarCommandResolver]
   /// that launches it with the given Python interpreter.
-  SidecarCommand Function() _stubCommand(Directory workDir) {
+  SidecarCommand Function() stubCommand(Directory workDir) {
     final script = File(p.join(workDir.path, 'sidecar_stub.py'))
       ..writeAsStringSync(_kSidecarStubPy);
     return () => SidecarCommand(
@@ -211,11 +210,11 @@ void main() {
   /// [ignoreSigterm] makes the child ignore graceful termination so the
   /// force-kill path is exercised. [readyDelayMs] models a slow boot.
   ({SidecarManager manager, Directory workDir, List<int> spawnedPids})
-      _realManager({
+      realManager({
     bool ignoreSigterm = false,
     int readyDelayMs = 0,
   }) {
-    final workDir = _newWorkDir();
+    final workDir = newWorkDir();
     final spawnedPids = <int>[];
     final extraEnv = <String, String>{
       if (ignoreSigterm) 'QPIC_IGNORE_SIGTERM': '1',
@@ -223,7 +222,7 @@ void main() {
     };
 
     final manager = SidecarManager(
-      resolveCommand: _stubCommand(workDir),
+      resolveCommand: stubCommand(workDir),
       resolveTempDir: () async => workDir,
       // Production port selector (binds 127.0.0.1:0) — real free port.
       // Production process starter — real Process.start — but we record PIDs
@@ -271,7 +270,7 @@ void main() {
     test(
       'start -> health -> shutdown leaves no surviving sidecar process',
       () async {
-        final env = _realManager();
+        final env = realManager();
         final manager = env.manager;
 
         final baseUrl = await manager.start();
@@ -300,7 +299,7 @@ void main() {
       () async {
         // A real, stubborn child that ignores graceful termination: the manager
         // must escalate to a force-kill of the process tree.
-        final env = _realManager(ignoreSigterm: true);
+        final env = realManager(ignoreSigterm: true);
         final manager = env.manager;
 
         await manager.start();
@@ -341,14 +340,14 @@ void main() {
           final readyDelay = rng.nextInt(4) * 50; // 0,50,100,150 ms
 
           final binder = _CapturingBinder();
-          final env = _realManager(
+          final env = realManager(
             ignoreSigterm: ignoreTerm,
             readyDelayMs: readyDelay,
           );
           // Swap in a capturing lifecycle binder so we can drive the
           // window-close / app-detached exit path through the manager.
           final manager = SidecarManager(
-            resolveCommand: _stubCommand(env.workDir),
+            resolveCommand: stubCommand(env.workDir),
             resolveTempDir: () async => env.workDir,
             startProcess: (e, a, {workingDirectory, environment}) async {
               final proc = await Process.start(
@@ -415,12 +414,12 @@ void main() {
             await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
         final blockedPort = blocker.port;
 
-        final workDir = _newWorkDir();
+        final workDir = newWorkDir();
         final spawnedPids = <int>[];
         var selection = 0;
 
         final manager = SidecarManager(
-          resolveCommand: _stubCommand(workDir),
+          resolveCommand: stubCommand(workDir),
           resolveTempDir: () async => workDir,
           // First selection returns the actively-held port (guaranteed bind
           // failure); later selections pick a genuinely free port.
@@ -477,7 +476,7 @@ void main() {
     test(
       'killing the real sidecar after Ready transitions to engineStopped',
       () async {
-        final env = _realManager();
+        final env = realManager();
         final manager = env.manager;
 
         final statuses = <SidecarStatus>[];
@@ -503,7 +502,8 @@ void main() {
         await sub.cancel();
 
         expect(stopped, isTrue,
-            reason: 'an unexpected exit after Ready must surface engineStopped');
+            reason:
+                'an unexpected exit after Ready must surface engineStopped');
         expect(manager.currentStatus, SidecarStatus.engineStopped);
         expect(statuses, contains(SidecarStatus.engineStopped));
 

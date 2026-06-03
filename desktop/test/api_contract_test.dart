@@ -649,6 +649,7 @@ const Set<String> _cropRequiredQuery = {
   'jpg_quality',
   'use_ai',
   'answer_sheet',
+  'layout_columns',
 };
 const Set<String> _cropOptionalQuery = {'question_pages', 'answer_pages'};
 
@@ -660,6 +661,7 @@ const Set<String> _analyzeRequiredQuery = {
   'has_answers',
   'use_ai',
   'answer_sheet',
+  'layout_columns',
 };
 const Set<String> _analyzeOptionalQuery = {'question_pages', 'answer_pages'};
 
@@ -798,6 +800,8 @@ final Map<String, dynamic> _megaResponse = <String, dynamic>{
   'tesseract_available': true,
   'ai_available': false,
   'version': '2.0.0',
+  'local_ml_available': false,
+  'local_ml_model': null,
   // CropResponse / common
   'job_id': 'job',
   'total_questions': 0,

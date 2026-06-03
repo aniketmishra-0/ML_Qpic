@@ -20,9 +20,14 @@ Build (from the repo root):
     # -> dist/qpic-sidecar/qpic-sidecar[.exe]
 """
 
+import importlib.util
 import os
 
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
+from PyInstaller.utils.hooks import (
+    collect_data_files,
+    collect_dynamic_libs,
+    collect_submodules,
+)
 
 block_cipher = None
 
@@ -61,6 +66,15 @@ else:
         "system Tesseract install. Run scripts/vendor_tesseract.py to bundle it."
     )
 
+if os.path.isdir(_root("vendor", "models", "qpic-question-detector")):
+    datas += [
+        (
+            _root("vendor", "models", "qpic-question-detector"),
+            os.path.join("vendor", "models", "qpic-question-detector"),
+        )
+    ]
+    print("sidecar.spec: bundling Local ML model from vendor/models/qpic-question-detector")
+
 # pymupdf (imported as ``fitz``) occasionally needs its data files bundled.
 datas += collect_data_files("fitz", include_py_files=False)
 
@@ -73,10 +87,16 @@ hiddenimports += collect_submodules("fastapi")
 hiddenimports += collect_submodules("anthropic")
 hiddenimports += ["h11", "anyio", "click", "pydantic_settings"]
 
+binaries = []
+if importlib.util.find_spec("onnxruntime") is not None:
+    hiddenimports += collect_submodules("onnxruntime")
+    binaries += collect_dynamic_libs("onnxruntime")
+    datas += collect_data_files("onnxruntime", include_py_files=False)
+
 a = Analysis(
     [ENTRY],
     pathex=[ROOT],
-    binaries=[],
+    binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

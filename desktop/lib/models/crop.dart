@@ -579,6 +579,8 @@ class HealthResponse {
     required this.version,
     this.aiProvider,
     this.aiModel,
+    this.localMlAvailable = false,
+    this.localMlModel,
   });
 
   final String status;
@@ -587,6 +589,8 @@ class HealthResponse {
   final String version;
   final String? aiProvider;
   final String? aiModel;
+  final bool localMlAvailable;
+  final String? localMlModel;
 
   factory HealthResponse.fromJson(Map<String, dynamic> json) {
     return HealthResponse(
@@ -596,6 +600,8 @@ class HealthResponse {
       version: json['version'] as String,
       aiProvider: json['ai_provider'] as String?,
       aiModel: json['ai_model'] as String?,
+      localMlAvailable: json['local_ml_available'] as bool? ?? false,
+      localMlModel: json['local_ml_model'] as String?,
     );
   }
 
@@ -607,6 +613,8 @@ class HealthResponse {
       'version': version,
       'ai_provider': aiProvider,
       'ai_model': aiModel,
+      'local_ml_available': localMlAvailable,
+      'local_ml_model': localMlModel,
     };
   }
 }

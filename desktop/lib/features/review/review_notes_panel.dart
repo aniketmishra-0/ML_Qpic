@@ -79,7 +79,8 @@ class ReviewNotesPanel extends StatelessWidget {
                 final qNumStr = (note.qNum ?? '').toLowerCase();
                 final prefix = note.isSolution ? 'solution' : 'question';
                 final label = (note.isSolution ? 's' : 'q') + qNumStr;
-                final fullLabel = (note.isSolution ? 'solution' : 'question') + ' ' + qNumStr;
+                final fullLabel =
+                    '${note.isSolution ? 'solution' : 'question'} $qNumStr';
                 return msg.contains(query) ||
                     kind.contains(query) ||
                     qNumStr.contains(query) ||
@@ -167,8 +168,8 @@ class _NotesHeader extends StatelessWidget {
             Color.alphaBlend(accent.withValues(alpha: 0.10), palette.panelAlt),
         borderRadius: BorderRadius.circular(9),
         border: Border.all(
-          color: Color.alphaBlend(
-              accent.withValues(alpha: 0.40), palette.border),
+          color:
+              Color.alphaBlend(accent.withValues(alpha: 0.40), palette.border),
         ),
       ),
       child: Row(

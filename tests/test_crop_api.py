@@ -19,9 +19,11 @@ async def test_health_endpoint() -> None:
             assert data["status"] == "ok"
             assert "tesseract_available" in data
             assert "ai_available" in data
+            assert "local_ml_available" in data
             assert "version" in data
             assert isinstance(data["tesseract_available"], bool)
             assert isinstance(data["ai_available"], bool)
+            assert isinstance(data["local_ml_available"], bool)
 
 
 @pytest.mark.asyncio
