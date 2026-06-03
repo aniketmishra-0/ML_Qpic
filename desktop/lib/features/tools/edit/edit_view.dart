@@ -22,6 +22,8 @@
 // delegates to the [EditController]. Every interactive widget carries a stable
 // `ValueKey` so the widget tests (task 18.3) can drive it.
 
+import 'dart:math' as math;
+
 import 'package:file_selector/file_selector.dart' show XFile;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -213,60 +215,197 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-class _ReadyState extends StatelessWidget {
+class _ReadyState extends StatefulWidget {
   const _ReadyState({required this.controller});
 
   final EditController controller;
 
   @override
+  State<_ReadyState> createState() => _ReadyStateState();
+}
+
+class _ReadyStateState extends State<_ReadyState> {
+  final TransformationController _transformController = TransformationController();
+  final double _baseWidth = 850.0;
+
+  @override
+  void dispose() {
+    _transformController.dispose();
+    super.dispose();
+  }
+
+  void _zoomIn() {
+    _transformController.value = _transformController.value.clone()..multiply(Matrix4.diagonal3Values(1.2, 1.2, 1.0));
+  }
+
+  void _zoomOut() {
+    _transformController.value = _transformController.value.clone()..multiply(Matrix4.diagonal3Values(1 / 1.2, 1 / 1.2, 1.0));
+  }
+
+  void _fitScreen(double viewportHeight) {
+    if (widget.controller.pages.isEmpty) return;
+    final page = widget.controller.pages.first;
+    final double pageHeight = _baseWidth * (page.height / page.width);
+    final double totalHeight = pageHeight + 48.0; 
+    double scale = viewportHeight / totalHeight;
+    if (scale < 0.1) scale = 0.1;
+    if (scale > 5.0) scale = 5.0;
+    _transformController.value = Matrix4.diagonal3Values(scale, scale, 1.0);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
-    final pages = controller.pages;
+    final pages = widget.controller.pages;
 
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        _ReadyHeader(controller: controller),
-        _EditToolbar(controller: controller),
-        // When the PDF has no selectable text, guide the user to OCR (15.8).
-        if (!controller.hasText) _NoTextBanner(palette: palette),
-        if (controller.actionError != null)
-          _ActionErrorBanner(
-            message: controller.actionError!,
-            palette: palette,
+        Container(
+          width: 320,
+          color: palette?.panel ?? theme.colorScheme.surface,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _ReadyHeader(controller: widget.controller),
+              const Divider(height: 1),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 16),
+                      _EditToolbar(controller: widget.controller),
+                      if (!widget.controller.hasText) _NoTextBanner(palette: palette),
+                      if (widget.controller.actionError != null)
+                        _ActionErrorBanner(
+                          message: widget.controller.actionError!,
+                          palette: palette,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
+        ),
+        const VerticalDivider(width: 1),
         Expanded(
           child: Container(
             color: palette?.background ?? theme.colorScheme.surface,
-            child: ListView.separated(
-              key: const ValueKey<String>('edit-page-list'),
-              padding: const EdgeInsets.all(24),
-              itemCount: pages.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 26),
-              itemBuilder: (context, index) {
-                final EditPageModel page = pages[index];
-                return _EditPage(
-                  page: page,
-                  previewUri: controller.previewUri(page),
-                  spans: controller.spansForPage(page.page),
-                  vectorObjects: controller.vectorObjectsForPage(page.page),
-                  selectedSpanId: controller.selectedSpanId,
-                  selectedVectorObjectId: controller.selectedVectorObjectId,
-                  onSpanTap: controller.selectSpan,
-                  onVectorObjectTap: controller.selectVectorObject,
-                  onDeleteVectorObject: controller.deleteVectorObject,
-                  textForSpan: controller.effectiveText,
-                  isEdited: controller.isSpanEdited,
-                  isVectorObjectDeleted: controller.isVectorObjectDeleted,
-                  onCommitSpanText: controller.setSpanText,
-                  interactive: controller.hasText,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Stack(
+                  children: [
+                    InteractiveViewer(
+                      transformationController: _transformController,
+                      minScale: 0.1,
+                      maxScale: 5.0,
+                      constrained: false,
+                      child: Container(
+                        padding: const EdgeInsets.all(24),
+                        width: math.max(constraints.maxWidth, _baseWidth + 48),
+                        child: Column(
+                          children: [
+                            for (int i = 0; i < pages.length; i++)
+                              Container(
+                                width: _baseWidth,
+                                margin: EdgeInsets.only(bottom: i == pages.length - 1 ? 0 : 26),
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black12,
+                                      blurRadius: 12,
+                                      offset: Offset(0, 4),
+                                    )
+                                  ],
+                                ),
+                                child: _EditPage(
+                                  page: pages[i],
+                                  previewUri: widget.controller.previewUri(pages[i]),
+                                  spans: widget.controller.spansForPage(pages[i].page),
+                                  vectorObjects: widget.controller.vectorObjectsForPage(pages[i].page),
+                                  selectedSpanId: widget.controller.selectedSpanId,
+                                  selectedVectorObjectId: widget.controller.selectedVectorObjectId,
+                                  onSpanTap: widget.controller.selectSpan,
+                                  onVectorObjectTap: widget.controller.selectVectorObject,
+                                  onDeleteVectorObject: widget.controller.deleteVectorObject,
+                                  textForSpan: widget.controller.effectiveText,
+                                  isEdited: widget.controller.isSpanEdited,
+                                  isVectorObjectDeleted: widget.controller.isVectorObjectDeleted,
+                                  onCommitSpanText: widget.controller.setSpanText,
+                                  interactive: widget.controller.hasText,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 24,
+                      right: 24,
+                      child: _ZoomControls(
+                        onZoomIn: _zoomIn,
+                        onZoomOut: _zoomOut,
+                        onFitScreen: () => _fitScreen(constraints.maxHeight),
+                        palette: palette,
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ZoomControls extends StatelessWidget {
+  const _ZoomControls({
+    required this.onZoomIn,
+    required this.onZoomOut,
+    required this.onFitScreen,
+    required this.palette,
+  });
+
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+  final VoidCallback onFitScreen;
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(8),
+      color: palette?.panel ?? theme.colorScheme.surface,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.remove),
+            tooltip: 'Zoom Out',
+            onPressed: onZoomOut,
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.fit_screen),
+            tooltip: 'Fit to Screen',
+            onPressed: onFitScreen,
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'Zoom In',
+            onPressed: onZoomIn,
+          ),
+        ],
+      ),
     );
   }
 }
@@ -339,6 +478,13 @@ class _ReadyHeader extends StatelessWidget {
                   ),
                 ),
               ),
+            const SizedBox(width: 16),
+            IconButton(
+              key: const ValueKey<String>('edit-clear'),
+              onPressed: () => controller.reset(),
+              icon: const Icon(Icons.close),
+              tooltip: 'Clear PDF',
+            ),
           ],
         ),
       ),
@@ -361,53 +507,47 @@ class _EditToolbar extends StatelessWidget {
     final applyResult = controller.applyResult;
     final ocrResult = controller.ocrResult;
 
-    return Material(
-      color: palette?.panel ?? theme.colorScheme.surface,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: <Widget>[
-                _ApplyButton(controller: controller),
-                _OcrLanguagesField(controller: controller),
-                _OcrDpiField(controller: controller),
-                _RunOcrButton(controller: controller),
-                _DownloadButton(controller: controller),
-              ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _ApplyButton(controller: controller),
+          const SizedBox(height: 16),
+          _OcrLanguagesField(controller: controller),
+          const SizedBox(height: 12),
+          _OcrDpiField(controller: controller),
+          const SizedBox(height: 12),
+          _RunOcrButton(controller: controller),
+          const SizedBox(height: 16),
+          _DownloadButton(controller: controller),
+          if (applyResult != null) ...<Widget>[
+            const SizedBox(height: 16),
+            Text(
+              'Applied ${applyResult.editsApplied} '
+              'edit${applyResult.editsApplied == 1 ? '' : 's'} · '
+              'download your edited PDF.',
+              key: const ValueKey<String>('edit-apply-result'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: palette?.success ?? theme.colorScheme.primary,
+              ),
             ),
-            if (applyResult != null) ...<Widget>[
-              const SizedBox(height: 8),
-              Text(
-                'Applied ${applyResult.editsApplied} '
-                'edit${applyResult.editsApplied == 1 ? '' : 's'} · '
-                'download your edited PDF.',
-                key: const ValueKey<String>('edit-apply-result'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: palette?.success ?? theme.colorScheme.primary,
-                ),
-              ),
-            ],
-            if (ocrResult != null) ...<Widget>[
-              const SizedBox(height: 8),
-              Text(
-                ocrResult.note.isNotEmpty
-                    ? ocrResult.note
-                    : 'OCR complete — ${ocrResult.pagesOcred} '
-                        'page${ocrResult.pagesOcred == 1 ? '' : 's'} '
-                        '(${ocrResult.languages}).',
-                key: const ValueKey<String>('edit-ocr-result'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: palette?.success ?? theme.colorScheme.primary,
-                ),
-              ),
-            ],
           ],
-        ),
+          if (ocrResult != null) ...<Widget>[
+            const SizedBox(height: 16),
+            Text(
+              ocrResult.note.isNotEmpty
+                  ? ocrResult.note
+                  : 'OCR complete — ${ocrResult.pagesOcred} '
+                      'page${ocrResult.pagesOcred == 1 ? '' : 's'} '
+                      '(${ocrResult.languages}).',
+              key: const ValueKey<String>('edit-ocr-result'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: palette?.success ?? theme.colorScheme.primary,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

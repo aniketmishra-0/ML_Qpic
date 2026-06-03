@@ -312,7 +312,7 @@ class _QpicAppState extends State<QpicApp> {
   /// Builds the view for a given tool tab. Auto Crop and Rename Batch render
   /// their real forms; the remaining tools fall back to placeholders until
   /// their own tasks land.
-  Widget _buildToolView(QpicTool tool, int subTab) {
+  Widget _buildToolView(QpicTool tool) {
     switch (tool) {
       case QpicTool.autoCrop:
         // The form drives the submit guards + the non-Smart crop (task 9.2) and
@@ -451,10 +451,6 @@ class _QpicAppState extends State<QpicApp> {
               key: const ValueKey<String>('tool-view-tools'),
               apiClient: _autoCropController.apiClient,
               downloadService: _autoCropController.downloadService,
-              subTab: subTab,
-              onSubTabChanged: (index) {
-                _shellKey.currentState?.selectSubTool(index);
-              },
             );
           },
         );

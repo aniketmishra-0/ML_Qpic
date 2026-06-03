@@ -57,108 +57,44 @@ class PreflightView extends StatelessWidget {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final bool wide = constraints.maxWidth >= 960;
-        if (wide) {
-          return Padding(
-            padding: const EdgeInsets.all(24),
-            child: _buildWideBody(context, palette),
-          );
-        }
-        return Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720),
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: <Widget>[
-                  _Header(palette: palette),
-                  const SizedBox(height: 16),
-                  _DropZone(
-                    controller: controller,
-                    onPickFile: onPickFile,
-                    palette: palette,
-                  ),
-                  if (controller.errorText != null) ...<Widget>[
-                    const SizedBox(height: 16),
-                    _ErrorBanner(
-                        message: controller.errorText!, palette: palette),
-                  ],
-                  const SizedBox(height: 24),
-                  _PreflightButton(controller: controller),
-                  if (controller.result != null) ...<Widget>[
-                    const SizedBox(height: 24),
-                    _ResultCard(
-                      controller: controller,
-                      palette: palette,
-                      initiallyExpanded: initiallyExpanded,
-                    ),
-                  ],
-                  if (controller.fixResult != null) ...<Widget>[
-                    const SizedBox(height: 24),
-                    _FixResultCard(controller: controller, palette: palette),
-                  ],
-                ],
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              _Header(palette: palette),
+              const SizedBox(height: 16),
+              _DropZone(
+                controller: controller,
+                onPickFile: onPickFile,
+                palette: palette,
               ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildWideBody(BuildContext context, QpicPalette? palette) {
-    final result = controller.result;
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Expanded(
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                _Header(palette: palette),
+              if (controller.errorText != null) ...<Widget>[
                 const SizedBox(height: 16),
-                _DropZone(
-                  controller: controller,
-                  onPickFile: onPickFile,
-                  palette: palette,
-                ),
-                if (controller.errorText != null) ...<Widget>[
-                  const SizedBox(height: 16),
-                  _ErrorBanner(message: controller.errorText!, palette: palette),
-                ],
-                const SizedBox(height: 24),
-                _PreflightButton(controller: controller),
-                if (result != null && result.mixedPageSizes) ...<Widget>[
-                  const SizedBox(height: 24),
-                  _FixPageSizesSection(controller: controller, palette: palette),
-                ],
-                if (controller.fixResult != null) ...<Widget>[
-                  const SizedBox(height: 24),
-                  _FixResultCard(controller: controller, palette: palette),
-                ],
+                _ErrorBanner(
+                    message: controller.errorText!, palette: palette),
               ],
-            ),
+              const SizedBox(height: 24),
+              _PreflightButton(controller: controller),
+              if (controller.result != null) ...<Widget>[
+                const SizedBox(height: 24),
+                _ResultCard(
+                  controller: controller,
+                  palette: palette,
+                  initiallyExpanded: initiallyExpanded,
+                ),
+              ],
+              if (controller.fixResult != null) ...<Widget>[
+                const SizedBox(height: 24),
+                _FixResultCard(controller: controller, palette: palette),
+              ],
+            ],
           ),
         ),
-        const SizedBox(width: 24),
-        Expanded(
-          child: SingleChildScrollView(
-            child: result != null
-                ? _ResultCard(
-                    controller: controller,
-                    palette: palette,
-                    initiallyExpanded: initiallyExpanded,
-                    hideFixSection: true,
-                  )
-                : _ResultPlaceholder(palette: palette),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
@@ -341,13 +277,11 @@ class _ResultCard extends StatelessWidget {
     required this.controller,
     required this.palette,
     required this.initiallyExpanded,
-    this.hideFixSection = false,
   });
 
   final PreflightController controller;
   final QpicPalette? palette;
   final bool initiallyExpanded;
-  final bool hideFixSection;
 
   @override
   Widget build(BuildContext context) {
@@ -398,7 +332,7 @@ class _ResultCard extends StatelessWidget {
                 initiallyExpanded: initiallyExpanded,
               ),
             ],
-            if (result.mixedPageSizes && !hideFixSection) ...<Widget>[
+            if (result.mixedPageSizes) ...<Widget>[
               const SizedBox(height: 24),
               _FixPageSizesSection(
                   controller: controller, palette: palette),
@@ -1122,58 +1056,6 @@ class _CollapsibleSectionState extends State<_CollapsibleSection> {
           widget.child,
         ],
       ],
-    );
-  }
-}
-
-class _ResultPlaceholder extends StatelessWidget {
-  const _ResultPlaceholder({required this.palette});
-
-  final QpicPalette? palette;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
-    final border = palette?.border ?? theme.dividerColor;
-
-    return Card(
-      color: palette?.panel ?? theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: border),
-      ),
-      elevation: 0,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.checklist_rtl_rounded,
-              size: 48,
-              color: muted.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Inspection Report',
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: palette?.text ?? theme.colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Once preflight check completes, the print-readiness verdict, warning checks, font/image tables, and geometry details will be available here.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: muted,
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
