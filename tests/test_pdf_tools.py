@@ -14,6 +14,8 @@ from app.services.pdf_tools.compress_service import (
 )
 from app.services.pdf_tools.edit_service import (
     EditOp,
+    Operation,
+    apply_operations,
     apply_text_edits,
     extract_text_spans,
 )
@@ -222,3 +224,43 @@ def test_apply_edit_no_edits_is_noop_safe() -> None:
     text = doc[0].get_text("text")
     doc.close()
     assert "quick brown fox" not in text
+
+
+def _drawing_pdf() -> bytes:
+    """A PDF with a text line and a drawing (rectangle) that overlaps with the text."""
+    doc = fitz.open()
+    page = doc.new_page()
+    # Insert some text:
+    page.insert_text((50, 80), "This text should survive vector deletion", fontname="helv", fontsize=14)
+    # Draw a rectangle that covers/overlaps the text:
+    shape = page.new_shape()
+    shape.draw_rect(fitz.Rect(40, 60, 200, 100))
+    shape.finish(fill=(1, 0, 0)) # Red rectangle
+    shape.commit()
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
+def test_delete_vector_object_preserves_text() -> None:
+    src = _drawing_pdf()
+    extracted = extract_text_spans(src)
+    assert len(extracted.vector_objects) == 1
+    assert len(extracted.spans) == 1
+
+    vec = extracted.vector_objects[0]
+    # Apply a delete_vector_object operation on this vector object
+    op = Operation(
+        type="delete_vector_object",
+        page=vec.page,
+        bbox=vec.bbox,
+    )
+    out = apply_operations(src, [op])
+
+    # Verify the text is still present, but the drawing (vector object) is gone/redacted
+    doc = fitz.open(stream=out, filetype="pdf")
+    text = doc[0].get_text("text")
+    drawings = doc[0].get_drawings()
+    doc.close()
+
+    assert "This text should survive vector deletion" in text

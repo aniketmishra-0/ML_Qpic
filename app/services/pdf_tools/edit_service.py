@@ -358,10 +358,16 @@ def apply_operations(file_bytes: bytes, ops: list[Operation]) -> bytes:
             original = page.get_text("dict")
             span_lookup = _index_spans_by_bbox(original)
 
-            # Pass 1 — redact the regions of all text edits + erases + vector object deletions up front.
+            # Pass 1.1 — redact the regions of vector object deletions first (without removing overlapping text).
+            delete_vector_ops = [o for o in page_ops if o.type == "delete_vector_object"]
+            if delete_vector_ops:
+                for o in delete_vector_ops:
+                    page.add_redact_annot(fitz.Rect(*o.bbox), fill=None)
+                page.apply_redactions(images=2, graphics=1, text=1)
+
+            # Pass 1.2 — redact the regions of all text edits + erases up front.
             edit_text_ops = [o for o in page_ops if o.type == "edit_text"]
             erase_ops = [o for o in page_ops if o.type == "erase"]
-            delete_vector_ops = [o for o in page_ops if o.type == "delete_vector_object"]
             src_for_edit: dict[int, dict] = {}
             for o in edit_text_ops:
                 src_for_edit[id(o)] = _match_span(span_lookup, o.bbox) or {}
@@ -369,11 +375,8 @@ def apply_operations(file_bytes: bytes, ops: list[Operation]) -> bytes:
             for o in erase_ops:
                 fill = fitz.sRGB_to_pdf(o.fill if o.fill is not None else 0xFFFFFF)
                 page.add_redact_annot(fitz.Rect(*o.bbox), fill=fill)
-            for o in delete_vector_ops:
-                # Add redact annotation without fill color so it removes content cleanly
-                page.add_redact_annot(fitz.Rect(*o.bbox), fill=None)
-            if edit_text_ops or erase_ops or delete_vector_ops:
-                # text=0 removes glyphs in the edit boxes; erase boxes are filled; delete_vector_ops remove graphics/images.
+            if edit_text_ops or erase_ops:
+                # text=0 removes glyphs in the edit/erase boxes.
                 page.apply_redactions(images=2, graphics=1, text=0)
 
             # Pass 2 — paint every insertion on top.

@@ -78,100 +78,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
     super.dispose();
   }
 
-  Widget _buildSubTabs(BuildContext context, QpicPalette? palette) {
-    final theme = Theme.of(context);
-    final brand = palette?.brand ?? theme.colorScheme.primary;
-    final text = palette?.text ?? theme.colorScheme.onSurface;
-    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
-    final border = palette?.border ?? theme.dividerColor;
-
-    final tabs = [
-      (label: 'Compress PDF', icon: Icons.compress_rounded, index: 0),
-      (label: 'Vector Editor', icon: Icons.shape_line_rounded, index: 1),
-      (label: 'Preflight PDF', icon: Icons.fact_check_rounded, index: 2),
-      (label: 'Edit PDF', icon: Icons.edit_note_rounded, index: 3),
-    ];
-
-    return Container(
-      height: 48,
-      margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: border),
-      ),
-      padding: const EdgeInsets.all(4),
-      child: Row(
-        children: tabs.map((t) {
-          final active = _currentSubTab == t.index;
-          final isSoon = t.index == 3; // Edit PDF is Coming Soon
-
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() {
-                _currentSubTab = t.index;
-                _errorText = null;
-                if (widget.onSubTabChanged != null) {
-                  widget.onSubTabChanged!(t.index);
-                }
-              }),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                decoration: BoxDecoration(
-                  color: active ? brand.withValues(alpha: 0.12) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: active ? brand.withValues(alpha: 0.5) : Colors.transparent,
-                  ),
-                ),
-                alignment: Alignment.center,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      t.icon,
-                      size: 16,
-                      color: active ? brand : muted,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      t.label,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                        color: active ? brand : text,
-                      ),
-                    ),
-                    if (isSoon) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                        decoration: BoxDecoration(
-                          color: active 
-                              ? brand.withValues(alpha: 0.2) 
-                              : theme.colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          'Soon',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: active ? brand : muted,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
+  // _buildSubTabs removed because navigation is now handled by the left rail
 
   Widget _buildComingSoon(BuildContext context, QpicPalette? palette) {
     final theme = Theme.of(context);
@@ -361,6 +268,28 @@ class _PdfToolsViewState extends State<PdfToolsView> {
         break;
     }
 
+    String headerTitle = '';
+    String headerDesc = '';
+    switch (_currentSubTab) {
+      case 0:
+        headerTitle = 'Compress PDF';
+        headerDesc = 'Reduce the file size of your PDF documents while maintaining quality.';
+        break;
+      case 1:
+        headerTitle = 'Vector Editor';
+        headerDesc = 'Directly select and delete vector graphics, images, and other objects from your PDF.';
+        break;
+      case 2:
+        headerTitle = 'Preflight PDF';
+        headerDesc = 'Check your PDF against quality profiles and fix common issues like page sizes.';
+        break;
+      case 3:
+      default:
+        headerTitle = 'Edit PDF';
+        headerDesc = 'Directly edit text layers, erase objects, add links, insert images, and run OCR on scanned documents in place.';
+        break;
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
       child: Column(
@@ -374,7 +303,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'PDF Tools',
+                      headerTitle,
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
@@ -384,7 +313,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Compress PDFs to lower file size, preflight them for quality, or edit them.',
+                      headerDesc,
                       style: TextStyle(
                         fontSize: 13.5,
                         color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
@@ -397,9 +326,6 @@ class _PdfToolsViewState extends State<PdfToolsView> {
             ],
           ),
           const SizedBox(height: 16),
-
-          // Sub-tabs navigation
-          _buildSubTabs(context, palette),
 
           if (_errorText != null) ...[
             Container(
