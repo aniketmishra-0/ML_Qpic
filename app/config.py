@@ -49,6 +49,26 @@ class Settings(BaseSettings):
     MIN_QUESTIONS_PER_2_PAGES: float = 0.5
     QUESTION_PADDING_PX: int = 20
 
+    # --- Local ML detection tier (optional, fully offline) -----------------
+    # Runs after text/OCR and before paid/online AI. The detector expects a
+    # bundled/local model or command that returns whole question/solution boxes.
+    # Keep enabled by default: it is a no-op until a model/command is present.
+    LOCAL_ML_ENABLED: bool = True
+    LOCAL_ML_MODEL_NAME: str = "qpic-local-question-detector"
+    LOCAL_ML_MODEL_PATH: Optional[str] = "vendor/models/qpic-question-detector/model.onnx"
+    LOCAL_ML_LABELS_PATH: Optional[str] = "vendor/models/qpic-question-detector/labels.json"
+    # Optional adapter command for models that are easier to run as a local
+    # process (for example a bundled PaddleOCR-VL/PP-DocLayoutV3 pipeline).
+    # Qpic passes one JSON input path as the final argument and reads JSON from
+    # stdout, or from the output_path in the input JSON when the adapter writes it.
+    LOCAL_ML_COMMAND: Optional[str] = None
+    LOCAL_ML_CONFIDENCE: float = 0.35
+    LOCAL_ML_INPUT_SIZE: int = 640
+    # When true, /finalize stores source.pdf + reviewed boxes as training data
+    # for a future fine-tuned Qpic detector. Off by default for privacy/size.
+    LOCAL_ML_COLLECT_TRAINING_DATA: bool = False
+    LOCAL_ML_TRAINING_DIR: str = "temp/local_ml_training"
+
     # Languages passed to Tesseract OCR. Combine multiple with "+" so a paper in
     # either script is read correctly — "eng+hin" reads both English and Hindi
     # (Devanagari). This matters a lot: with the wrong/มissing language Tesseract

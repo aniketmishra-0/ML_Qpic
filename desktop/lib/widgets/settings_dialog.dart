@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../core/theme_controller.dart';
+
 import '../core/sidecar_bootstrap.dart';
 import '../core/sidecar_manager.dart';
+import '../core/theme_controller.dart';
 
 /// A premium, beautiful Settings Dialog for the Qpic desktop application.
 ///
@@ -83,11 +84,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
           animation: widget.themeController,
           builder: (context, _) {
             // Keep text fields in sync if they changed externally (e.g. on reset).
-            if (_qPrefixController.text != widget.themeController.defaultQuestionPrefix) {
-              _qPrefixController.text = widget.themeController.defaultQuestionPrefix;
+            if (_qPrefixController.text !=
+                widget.themeController.defaultQuestionPrefix) {
+              _qPrefixController.text =
+                  widget.themeController.defaultQuestionPrefix;
             }
-            if (_sPrefixController.text != widget.themeController.defaultSolutionPrefix) {
-              _sPrefixController.text = widget.themeController.defaultSolutionPrefix;
+            if (_sPrefixController.text !=
+                widget.themeController.defaultSolutionPrefix) {
+              _sPrefixController.text =
+                  widget.themeController.defaultSolutionPrefix;
             }
 
             return Column(
@@ -104,7 +109,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                           color: brand.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Icon(Icons.settings_outlined, color: brand, size: 22),
+                        child: Icon(Icons.settings_outlined,
+                            color: brand, size: 22),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -141,7 +147,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 // Scrollable Content
                 Expanded(
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
@@ -152,7 +159,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         const SizedBox(height: 24),
 
                         // Category: Default Tool Config
-                        _CategoryHeader(title: 'DEFAULT TOOL CONFIG', palette: palette),
+                        _CategoryHeader(
+                            title: 'DEFAULT TOOL CONFIG', palette: palette),
                         const SizedBox(height: 14),
                         _buildDpiConfig(context, palette),
                         const SizedBox(height: 16),
@@ -160,7 +168,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         const SizedBox(height: 24),
 
                         // Category: Output & Naming
-                        _CategoryHeader(title: 'OUTPUT & NAMING', palette: palette),
+                        _CategoryHeader(
+                            title: 'OUTPUT & NAMING', palette: palette),
                         const SizedBox(height: 14),
                         _buildNamingConfig(context, palette),
                         const SizedBox(height: 16),
@@ -171,7 +180,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
                         // Category: Backend Sidecar Status
                         if (widget.sidecarBootstrap != null) ...<Widget>[
-                          _CategoryHeader(title: 'ENGINE STATUS', palette: palette),
+                          _CategoryHeader(
+                              title: 'ENGINE STATUS', palette: palette),
                           const SizedBox(height: 12),
                           _buildEngineStatusCard(context, palette),
                           const SizedBox(height: 8),
@@ -185,7 +195,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
                 // Actions Bottom Bar
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: <Widget>[
@@ -193,7 +204,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                         icon: const Icon(Icons.restore_rounded, size: 16),
                         label: const Text('Reset to Defaults'),
                         style: TextButton.styleFrom(
-                          foregroundColor: palette?.danger ?? theme.colorScheme.error,
+                          foregroundColor:
+                              palette?.danger ?? theme.colorScheme.error,
                         ),
                         onPressed: () => _confirmReset(context, palette),
                       ),
@@ -216,7 +228,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
   Widget _buildThemeSelector(BuildContext context, QpicPalette? palette) {
     final theme = Theme.of(context);
     final currentTheme = widget.themeController.themeMode;
-    final activeBg = palette?.field ?? theme.colorScheme.surfaceContainerHighest;
+    final activeBg =
+        palette?.field ?? theme.colorScheme.surfaceContainerHighest;
     final borderColor = palette?.border ?? theme.dividerColor;
 
     return Container(
@@ -255,7 +268,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
               icon: Icons.brightness_auto_outlined,
               active: currentTheme == ThemeMode.system,
               palette: palette,
-              onTap: () => widget.themeController.setThemeMode(ThemeMode.system),
+              onTap: () =>
+                  widget.themeController.setThemeMode(ThemeMode.system),
             ),
           ),
         ],
@@ -281,21 +295,26 @@ class _SettingsDialogState extends State<SettingsDialog> {
               children: <Widget>[
                 Text(
                   'Default DPI',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: text),
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.bold, color: text),
                 ),
-                Text('Render density for PDF processing', style: TextStyle(fontSize: 11, color: muted)),
+                Text('Render density for PDF processing',
+                    style: TextStyle(fontSize: 11, color: muted)),
               ],
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: palette?.field ?? theme.colorScheme.surfaceContainerHighest,
+                color:
+                    palette?.field ?? theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: palette?.borderSoft ?? theme.dividerColor),
+                border: Border.all(
+                    color: palette?.borderSoft ?? theme.dividerColor),
               ),
               child: Text(
                 '$dpi DPI',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: text),
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.bold, color: text),
               ),
             ),
           ],
@@ -330,21 +349,26 @@ class _SettingsDialogState extends State<SettingsDialog> {
               children: <Widget>[
                 Text(
                   'Default Padding',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: text),
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.bold, color: text),
                 ),
-                Text('Extra pixel margin surrounding crops', style: TextStyle(fontSize: 11, color: muted)),
+                Text('Extra pixel margin surrounding crops',
+                    style: TextStyle(fontSize: 11, color: muted)),
               ],
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: palette?.field ?? theme.colorScheme.surfaceContainerHighest,
+                color:
+                    palette?.field ?? theme.colorScheme.surfaceContainerHighest,
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: palette?.borderSoft ?? theme.dividerColor),
+                border: Border.all(
+                    color: palette?.borderSoft ?? theme.dividerColor),
               ),
               child: Text(
                 '$padding px',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: text),
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.bold, color: text),
               ),
             ),
           ],
@@ -355,7 +379,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
           min: 0,
           max: 200,
           divisions: 200,
-          onChanged: (val) => widget.themeController.setDefaultPadding(val.round()),
+          onChanged: (val) =>
+              widget.themeController.setDefaultPadding(val.round()),
         ),
       ],
     );
@@ -372,10 +397,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
       children: <Widget>[
         Text(
           'Filename Prefixes',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: text),
+          style:
+              TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: text),
         ),
         const SizedBox(height: 2),
-        Text('Default naming prefixes for Questions and Solutions', style: TextStyle(fontSize: 11, color: muted)),
+        Text('Default naming prefixes for Questions and Solutions',
+            style: TextStyle(fontSize: 11, color: muted)),
         const SizedBox(height: 12),
         Row(
           children: <Widget>[
@@ -392,7 +419,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 inputFormatters: [
                   LengthLimitingTextInputFormatter(10),
                 ],
-                onChanged: (val) => widget.themeController.setDefaultQuestionPrefix(val),
+                onChanged: (val) =>
+                    widget.themeController.setDefaultQuestionPrefix(val),
               ),
             ),
             const SizedBox(width: 14),
@@ -409,7 +437,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 inputFormatters: [
                   LengthLimitingTextInputFormatter(10),
                 ],
-                onChanged: (val) => widget.themeController.setDefaultSolutionPrefix(val),
+                onChanged: (val) =>
+                    widget.themeController.setDefaultSolutionPrefix(val),
               ),
             ),
           ],
@@ -433,9 +462,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
           children: <Widget>[
             Text(
               'Default Output Format',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: text),
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.bold, color: text),
             ),
-            Text('Default format for exported images', style: TextStyle(fontSize: 11, color: muted)),
+            Text('Default format for exported images',
+                style: TextStyle(fontSize: 11, color: muted)),
           ],
         ),
         SegmentedButton<String>(
@@ -465,7 +496,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
       contentPadding: EdgeInsets.zero,
       title: Text(
         'Default Smart Mode',
-        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: text),
+        style:
+            TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: text),
       ),
       subtitle: Text(
         'Enable review canvas step by default',
@@ -528,14 +560,17 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 children: <Widget>[
                   Text(
                     'Local Processing Engine',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: text),
+                    style: TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.bold, color: text),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
                       color: badgeColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: badgeColor.withValues(alpha: 0.4)),
+                      border:
+                          Border.all(color: badgeColor.withValues(alpha: 0.4)),
                     ),
                     child: Text(
                       badgeText,

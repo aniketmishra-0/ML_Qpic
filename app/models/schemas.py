@@ -6,6 +6,8 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel
 
+DetectionMethod = Literal["text", "ocr", "local_ml", "ai"]
+
 
 class QuestionSegment(BaseModel):
     """A single question fragment on a page.
@@ -69,7 +71,7 @@ class CropResponse(BaseModel):
     job_id: str
     total_questions: int
     stitched_questions: int
-    method_used: Literal["text", "ocr", "ai"]
+    method_used: DetectionMethod
     download_url: str
     questions_download_url: Optional[str] = None
     solutions_download_url: Optional[str] = None
@@ -126,7 +128,7 @@ class AnalyzeResponse(BaseModel):
 
     job_id: str
     total_pages: int
-    method_used: Literal["text", "ocr", "ai"]
+    method_used: DetectionMethod
     pages: list[PageInfo]
     items: list[AnalyzedItem]
     notes: list[ReviewNote]
@@ -227,6 +229,8 @@ class HealthResponse(BaseModel):
     version: str
     ai_provider: Optional[str] = None
     ai_model: Optional[str] = None
+    local_ml_available: bool = False
+    local_ml_model: Optional[str] = None
 
 
 # --- Batch rename tool -------------------------------------------------------
@@ -495,4 +499,3 @@ class EnhanceResponse(BaseModel):
     pages_total: int
     note: str = ""
     download_url: str
-

@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
+
 import '../../core/api_client.dart';
 import '../../core/download_service.dart';
 import '../../core/file_picker_service.dart';
 import '../../core/theme_controller.dart';
 import 'compress/compress_controller.dart';
 import 'compress/compress_view.dart';
-import 'preflight/preflight_controller.dart';
-import 'preflight/preflight_view.dart';
 import 'edit/edit_controller.dart';
 import 'edit/edit_view.dart';
+import 'preflight/preflight_controller.dart';
+import 'preflight/preflight_view.dart';
 
 /// PDF Tools View.
 ///
@@ -63,9 +64,12 @@ class _PdfToolsViewState extends State<PdfToolsView> {
     final client = widget.apiClient;
     final download = widget.downloadService;
     if (client != null && download != null) {
-      _compressController ??= CompressController(apiClient: client, downloadService: download);
-      _preflightController ??= PreflightController(apiClient: client, downloadService: download);
-      _editController ??= EditController(api: client, downloadService: download);
+      _compressController ??=
+          CompressController(apiClient: client, downloadService: download);
+      _preflightController ??=
+          PreflightController(apiClient: client, downloadService: download);
+      _editController ??=
+          EditController(api: client, downloadService: download);
     }
   }
 
@@ -85,7 +89,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
     final border = palette?.border ?? theme.dividerColor;
 
     const title = 'Edit PDF';
-    const desc = 'Directly edit text layers, erase objects, add links, insert images, and run OCR on scanned documents in place.';
+    const desc =
+        'Directly edit text layers, erase objects, add links, insert images, and run OCR on scanned documents in place.';
     const icon = Icons.edit_note_rounded;
 
     return Center(
@@ -130,7 +135,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
                   ),
                   const SizedBox(width: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: brand.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
@@ -160,7 +166,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
               ),
               const SizedBox(height: 24),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(12),
@@ -248,7 +255,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
                           context,
                           index: 0,
                           title: 'Compress PDF',
-                          description: 'Reduce the file size of your PDF documents while maintaining quality.',
+                          description:
+                              'Reduce the file size of your PDF documents while maintaining quality.',
                           icon: Icons.compress_rounded,
                           palette: palette,
                         ),
@@ -256,7 +264,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
                           context,
                           index: 1,
                           title: 'Vector Editor',
-                          description: 'Directly select and delete vector graphics, images, and other objects from your PDF.',
+                          description:
+                              'Directly select and delete vector graphics, images, and other objects from your PDF.',
                           icon: Icons.shape_line_rounded,
                           palette: palette,
                         ),
@@ -264,7 +273,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
                           context,
                           index: 2,
                           title: 'Preflight PDF',
-                          description: 'Check your PDF against quality profiles and fix common issues like page sizes.',
+                          description:
+                              'Check your PDF against quality profiles and fix common issues like page sizes.',
                           icon: Icons.fact_check_rounded,
                           palette: palette,
                         ),
@@ -272,7 +282,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
                           context,
                           index: 3,
                           title: 'Edit PDF',
-                          description: 'Directly edit text layers, erase objects, add links, insert images, and run OCR on scanned documents in place.',
+                          description:
+                              'Directly edit text layers, erase objects, add links, insert images, and run OCR on scanned documents in place.',
                           icon: Icons.edit_note_rounded,
                           palette: palette,
                           isSoon: true,
@@ -362,7 +373,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
                               if (isSoon) ...[
                                 const SizedBox(width: 8),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: brand.withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(6),
@@ -426,7 +438,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
             const SizedBox(height: 16),
             Text(
               'Waiting for engine connection...',
-              style: TextStyle(color: palette?.muted ?? theme.colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                  color: palette?.muted ?? theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -477,7 +490,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
               final result = await const FilePickerService().pickPdf();
               if (result == null) return;
               final bytes = await result.readAsBytes();
-              _preflightController!.setFile(bytes: bytes, filename: result.name);
+              _preflightController!
+                  .setFile(bytes: bytes, filename: result.name);
             } catch (e) {
               setState(() => _errorText = 'Could not load PDF: $e');
             }
@@ -528,7 +542,8 @@ class _PdfToolsViewState extends State<PdfToolsView> {
               padding: const EdgeInsets.all(10),
               margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
-                color: (palette?.danger ?? theme.colorScheme.error).withValues(alpha: 0.12),
+                color: (palette?.danger ?? theme.colorScheme.error)
+                    .withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(

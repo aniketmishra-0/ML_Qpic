@@ -11,7 +11,7 @@
     and packages a Windows installer (MSIX by default, or NSIS).
 
     Pipeline (design "Build Scripts & Dev Workflow", Req 22):
-      1. pip install -r requirements.txt -r requirements-desktop.txt  (sidecar deps)
+      1. pip install runtime sidecar deps (+ optional Local ML runtime)
       2. python scripts/vendor_tesseract.py --langs eng,hin,osd       (offline OCR)
       3. pyinstaller packaging/sidecar.spec --noconfirm               (sidecar onedir)
       4. flutter build windows                                       ┐ delegated to
@@ -114,9 +114,13 @@ try {
         Write-Step "Skipping dependency install (-SkipDeps)"
     }
     else {
-        Write-Step "Installing build dependencies (requirements.txt + requirements-desktop.txt)"
+        Write-Step "Installing build dependencies (runtime + desktop + optional Local ML)"
         & $Python -m pip install -r requirements.txt -r requirements-desktop.txt
         if ($LASTEXITCODE -ne 0) { throw "pip install failed ($LASTEXITCODE)" }
+        if (Test-Path 'requirements-local-ml.txt') {
+            & $Python -m pip install -r requirements-local-ml.txt
+            if ($LASTEXITCODE -ne 0) { throw "pip install local ML runtime failed ($LASTEXITCODE)" }
+        }
     }
 
     # -----------------------------------------------------------------------

@@ -213,7 +213,9 @@
     "ai_available": false,
     "version": "1.0.0",
     "ai_provider": null,
-    "ai_model": null
+    "ai_model": null,
+    "local_ml_available": false,
+    "local_ml_model": null
   },
 
   "RenamePlanItem": {

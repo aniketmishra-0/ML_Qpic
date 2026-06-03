@@ -10,7 +10,7 @@
 # Flutter bundle and packages an installer.
 #
 # Pipeline (design "Build Scripts & Dev Workflow", Req 22):
-#   1. pip install -r requirements.txt -r requirements-desktop.txt   (sidecar deps)
+#   1. pip install runtime sidecar deps (+ optional Local ML runtime)
 #   2. python scripts/vendor_tesseract.py --langs eng,hin,osd        (offline OCR)
 #   3. pyinstaller packaging/sidecar.spec --noconfirm                (sidecar onedir)
 #   4. flutter build macos                                          ┐ delegated to
@@ -84,8 +84,11 @@ command -v "${PY}" >/dev/null 2>&1 || die "Python interpreter not found: ${PY} (
 if [ "${SKIP_DEPS}" = "1" ]; then
   log "Skipping dependency install (--skip-deps)."
 else
-  log "Installing build dependencies (requirements.txt + requirements-desktop.txt)"
+  log "Installing build dependencies (runtime + desktop + optional Local ML)"
   "${PY}" -m pip install -r requirements.txt -r requirements-desktop.txt
+  if [ -f requirements-local-ml.txt ]; then
+    "${PY}" -m pip install -r requirements-local-ml.txt
+  fi
 fi
 
 # --- 2. Vendor a self-contained Tesseract for offline OCR -------------------

@@ -46,7 +46,6 @@
 //      asserted directly against the source under `lib/models/`.
 
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
@@ -64,12 +63,14 @@ const int _iterations = 500;
 void main() {
   group('Property 2 — DTO round-trip identity (seeded property generator)', () {
     test('QuestionSegment', () {
-      _runProperty('QuestionSegment', _kQuestionSegment,
-          (r) => _genSegment(r), (j) => QuestionSegment.fromJson(j).toJson());
+      _runProperty('QuestionSegment', _kQuestionSegment, (r) => _genSegment(r),
+          (j) => QuestionSegment.fromJson(j).toJson());
     });
 
     test('DetectedQuestion', () {
-      _runProperty('DetectedQuestion', _kDetectedQuestion,
+      _runProperty(
+          'DetectedQuestion',
+          _kDetectedQuestion,
           (r) => _genDetectedQuestion(r),
           (j) => DetectedQuestion.fromJson(j).toJson());
     });
@@ -95,7 +96,9 @@ void main() {
     });
 
     test('AnalyzeResponse', () {
-      _runProperty('AnalyzeResponse', _kAnalyzeResponse,
+      _runProperty(
+          'AnalyzeResponse',
+          _kAnalyzeResponse,
           (r) => _genAnalyzeResponse(r),
           (j) => AnalyzeResponse.fromJson(j).toJson());
     });
@@ -116,32 +119,42 @@ void main() {
     });
 
     test('CropPreviewRequest', () {
-      _runProperty('CropPreviewRequest', _kCropPreviewRequest,
+      _runProperty(
+          'CropPreviewRequest',
+          _kCropPreviewRequest,
           (r) => _genCropPreviewRequest(r),
           (j) => CropPreviewRequest.fromJson(j).toJson());
     });
 
     test('FinalizeRequest', () {
-      _runProperty('FinalizeRequest', _kFinalizeRequest,
+      _runProperty(
+          'FinalizeRequest',
+          _kFinalizeRequest,
           (r) => _genFinalizeRequest(r),
           (j) => FinalizeRequest.fromJson(j).toJson());
     });
 
     test('HealthResponse', () {
-      _runProperty('HealthResponse', _kHealthResponse,
+      _runProperty(
+          'HealthResponse',
+          _kHealthResponse,
           (r) => _genHealthResponse(r),
           (j) => HealthResponse.fromJson(j).toJson());
     });
 
     // --- Rename DTOs ---
     test('RenamePlanItem', () {
-      _runProperty('RenamePlanItem', _kRenamePlanItem,
+      _runProperty(
+          'RenamePlanItem',
+          _kRenamePlanItem,
           (r) => _genRenamePlanItem(r),
           (j) => RenamePlanItem.fromJson(j).toJson());
     });
 
     test('RenamePreviewResponse', () {
-      _runProperty('RenamePreviewResponse', _kRenamePreviewResponse,
+      _runProperty(
+          'RenamePreviewResponse',
+          _kRenamePreviewResponse,
           (r) => _genRenamePreviewResponse(r),
           (j) => RenamePreviewResponse.fromJson(j).toJson());
     });
@@ -152,50 +165,66 @@ void main() {
     });
 
     test('PdfToImagesResponse', () {
-      _runProperty('PdfToImagesResponse', _kPdfToImagesResponse,
+      _runProperty(
+          'PdfToImagesResponse',
+          _kPdfToImagesResponse,
           (r) => _genPdfToImagesResponse(r),
           (j) => PdfToImagesResponse.fromJson(j).toJson());
     });
 
     test('RenameSessionResponse', () {
-      _runProperty('RenameSessionResponse', _kRenameSessionResponse,
+      _runProperty(
+          'RenameSessionResponse',
+          _kRenameSessionResponse,
           (r) => _genRenameSessionResponse(r),
           (j) => RenameSessionResponse.fromJson(j).toJson());
     });
 
     test('RenameUploadResponse', () {
-      _runProperty('RenameUploadResponse', _kRenameUploadResponse,
+      _runProperty(
+          'RenameUploadResponse',
+          _kRenameUploadResponse,
           (r) => _genRenameUploadResponse(r),
           (j) => RenameUploadResponse.fromJson(j).toJson());
     });
 
     test('RenameFinalizeResponse', () {
-      _runProperty('RenameFinalizeResponse', _kRenameFinalizeResponse,
+      _runProperty(
+          'RenameFinalizeResponse',
+          _kRenameFinalizeResponse,
           (r) => _genRenameFinalizeResponse(r),
           (j) => RenameFinalizeResponse.fromJson(j).toJson());
     });
 
     // --- Tools DTOs ---
     test('CompressResponse', () {
-      _runProperty('CompressResponse', _kCompressResponse,
+      _runProperty(
+          'CompressResponse',
+          _kCompressResponse,
           (r) => _genCompressResponse(r),
           (j) => CompressResponse.fromJson(j).toJson());
     });
 
     test('EditableSpanModel', () {
-      _runProperty('EditableSpanModel', _kEditableSpanModel,
+      _runProperty(
+          'EditableSpanModel',
+          _kEditableSpanModel,
           (r) => _genEditableSpanModel(r),
           (j) => EditableSpanModel.fromJson(j).toJson());
     });
 
     test('EditPageModel', () {
-      _runProperty('EditPageModel', _kEditPageModel,
+      _runProperty(
+          'EditPageModel',
+          _kEditPageModel,
           (r) => _genEditPageModel(r),
           (j) => EditPageModel.fromJson(j).toJson());
     });
 
     test('EditExtractResponse', () {
-      _runProperty('EditExtractResponse', _kEditExtractResponse,
+      _runProperty(
+          'EditExtractResponse',
+          _kEditExtractResponse,
           (r) => _genEditExtractResponse(r),
           (j) => EditExtractResponse.fromJson(j).toJson());
     });
@@ -206,19 +235,25 @@ void main() {
     });
 
     test('OperationModel', () {
-      _runProperty('OperationModel', _kOperationModel,
+      _runProperty(
+          'OperationModel',
+          _kOperationModel,
           (r) => _genOperationModel(r),
           (j) => OperationModel.fromJson(j).toJson());
     });
 
     test('EditApplyRequest', () {
-      _runProperty('EditApplyRequest', _kEditApplyRequest,
+      _runProperty(
+          'EditApplyRequest',
+          _kEditApplyRequest,
           (r) => _genEditApplyRequest(r),
           (j) => EditApplyRequest.fromJson(j).toJson());
     });
 
     test('EditApplyResponse', () {
-      _runProperty('EditApplyResponse', _kEditApplyResponse,
+      _runProperty(
+          'EditApplyResponse',
+          _kEditApplyResponse,
           (r) => _genEditApplyResponse(r),
           (j) => EditApplyResponse.fromJson(j).toJson());
     });
@@ -229,37 +264,49 @@ void main() {
     });
 
     test('PreflightCheckModel', () {
-      _runProperty('PreflightCheckModel', _kPreflightCheckModel,
+      _runProperty(
+          'PreflightCheckModel',
+          _kPreflightCheckModel,
           (r) => _genPreflightCheckModel(r),
           (j) => PreflightCheckModel.fromJson(j).toJson());
     });
 
     test('PreflightFontModel', () {
-      _runProperty('PreflightFontModel', _kPreflightFontModel,
+      _runProperty(
+          'PreflightFontModel',
+          _kPreflightFontModel,
           (r) => _genPreflightFontModel(r),
           (j) => PreflightFontModel.fromJson(j).toJson());
     });
 
     test('PreflightImageModel', () {
-      _runProperty('PreflightImageModel', _kPreflightImageModel,
+      _runProperty(
+          'PreflightImageModel',
+          _kPreflightImageModel,
           (r) => _genPreflightImageModel(r),
           (j) => PreflightImageModel.fromJson(j).toJson());
     });
 
     test('PreflightPageDetail', () {
-      _runProperty('PreflightPageDetail', _kPreflightPageDetail,
+      _runProperty(
+          'PreflightPageDetail',
+          _kPreflightPageDetail,
           (r) => _genPreflightPageDetail(r),
           (j) => PreflightPageDetail.fromJson(j).toJson());
     });
 
     test('PreflightResponse', () {
-      _runProperty('PreflightResponse', _kPreflightResponse,
+      _runProperty(
+          'PreflightResponse',
+          _kPreflightResponse,
           (r) => _genPreflightResponse(r),
           (j) => PreflightResponse.fromJson(j).toJson());
     });
 
     test('PreflightFixResponse', () {
-      _runProperty('PreflightFixResponse', _kPreflightFixResponse,
+      _runProperty(
+          'PreflightFixResponse',
+          _kPreflightFixResponse,
           (r) => _genPreflightFixResponse(r),
           (j) => PreflightFixResponse.fromJson(j).toJson());
     });
@@ -367,7 +414,14 @@ const List<String> _noteKinds = [
 const List<String> _imageFormats = ['png', 'jpg', 'jpeg'];
 const List<String> _verdicts = ['pass', 'warn', 'fail'];
 const List<String> _checkStatuses = ['ok', 'warn', 'fail', 'info'];
-const List<String> _pageFormats = ['A4', 'A3', 'Letter', 'Legal', 'A5', 'Custom'];
+const List<String> _pageFormats = [
+  'A4',
+  'A3',
+  'Letter',
+  'Legal',
+  'A5',
+  'Custom'
+];
 const List<String> _orientations = ['Portrait', 'Landscape'];
 const List<String> _opTypes = [
   'edit_text',
@@ -523,6 +577,8 @@ _JsonMap _genHealthResponse(math.Random r) => <String, dynamic>{
       'version': _str(r, min: 1, max: 8),
       'ai_provider': _nstr(r),
       'ai_model': _nstr(r),
+      'local_ml_available': _b(r),
+      'local_ml_model': _nstr(r),
     };
 
 _JsonMap _genRenamePlanItem(math.Random r) => <String, dynamic>{
@@ -613,7 +669,8 @@ _JsonMap _genEditExtractResponse(math.Random r) => <String, dynamic>{
       'has_text': _b(r),
       'pages': List.generate(r.nextInt(4), (_) => _genEditPageModel(r)),
       'spans': List.generate(r.nextInt(4), (_) => _genEditableSpanModel(r)),
-      'vector_objects': List.generate(r.nextInt(4), (_) => _genVectorObjectModel(r)),
+      'vector_objects':
+          List.generate(r.nextInt(4), (_) => _genVectorObjectModel(r)),
     };
 
 _JsonMap _genEditOpModel(math.Random r) => <String, dynamic>{
@@ -855,6 +912,8 @@ const Set<String> _kHealthResponse = {
   'version',
   'ai_provider',
   'ai_model',
+  'local_ml_available',
+  'local_ml_model',
 };
 
 const Set<String> _kRenamePlanItem = {

@@ -83,3 +83,19 @@ def build_ai_detector(
             timeout_seconds=settings.API_TIMEOUT_SECONDS,
         )
     return None
+
+
+def build_local_ml_detector(settings: Settings):
+    """Return the optional offline Local ML detector, or None.
+
+    The detector itself reports unavailable when the model/command is missing,
+    but returning None when the feature flag is off keeps the pipeline cheap and
+    explicit in tests.
+    """
+
+    if not settings.LOCAL_ML_ENABLED:
+        return None
+
+    from .services.detector.local_ml_detector import LocalMLDetector
+
+    return LocalMLDetector.from_settings(settings)

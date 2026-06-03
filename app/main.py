@@ -15,8 +15,7 @@ import anthropic
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 
 from .config import Settings
 from .routers.crop import router as crop_router
@@ -32,7 +31,6 @@ logger = logging.getLogger("mcq_cropper")
 REQUEST_ID_HEADER = "X-Request-ID"
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-STATIC_DIR = BASE_DIR / "static"
 
 
 async def _cleanup_loop(temp_root: Path, older_than_seconds: int) -> None:
@@ -67,7 +65,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = Settings()
     temp_root = (BASE_DIR / settings.TEMP_DIR).resolve()
     await asyncio.to_thread(temp_root.mkdir, parents=True, exist_ok=True)
-    await asyncio.to_thread(STATIC_DIR.mkdir, parents=True, exist_ok=True)
 
     app.state.settings = settings
     app.state.temp_root = str(temp_root)
@@ -118,7 +115,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# Static files mounting removed (retiring web version)
 
 
 @app.middleware("http")
@@ -160,28 +157,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     return JSONResponse(status_code=500, content={"detail": str(exc)}, headers=headers)
 
 
-@app.get("/", include_in_schema=False)
-async def index() -> FileResponse:
-    """Serve the minimal upload UI."""
-
-    # The whole UI (markup + JS) lives in this one file, so never let the
-    # browser serve a stale copy after an update — always revalidate.
-    return FileResponse(
-        str(STATIC_DIR / "index.html"),
-        media_type="text/html",
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-    )
-
-
-@app.get("/edit", include_in_schema=False)
-async def edit_page() -> FileResponse:
-    """Serve the full-screen Acrobat-style document editor."""
-
-    return FileResponse(
-        str(STATIC_DIR / "edit.html"),
-        media_type="text/html",
-        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
-    )
+# Retiring index/edit pages since only Flutter client is used
 
 
 app.include_router(crop_router, prefix="/api")

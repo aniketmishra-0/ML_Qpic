@@ -77,6 +77,7 @@ each question is, before cropping:
 | `pipeline.py` | — | Orchestrates the 3 tiers and decides when to escalate. |
 | `text_detector.py` | 1. Text | Reads the PDF's text layer (free, fast, for searchable PDFs). |
 | `ocr_detector.py` / `tesseract_locator.py` | 2. OCR | Tesseract OCR for scanned PDFs (deskew + denoise + threshold). |
+| `local_ml_detector.py` | 2.5. Local ML | Optional offline detector for bundled/fine-tuned question-region models. |
 | `ai_detector.py` / `openrouter_detector.py` | 3. AI | Vision-model fallback for hard layouts (Anthropic or OpenRouter). |
 | `answer_key.py` / `ai_answer_key.py` | — | Reads the answer key (text layer, or AI on scans). |
 | `figure_detector.py` / `furniture.py` | — | Detects figures and strips page furniture (headers/dividers). |
@@ -154,6 +155,10 @@ downloading:
    - **Option check** — standard MCQs have options (A)–(D). A crop that captured
      only some of them (e.g. just the left column `(A)/(C)` of a 2-up grid) is
      flagged as *likely missing its right-hand options* so you can re-select it.
+3. **Finalize** (`POST /api/finalize`) — combines the kept auto items and your
+   corrected/hand-drawn ones into the final ZIP, re-rendered crisp from the PDF
+   vector source. No re-upload: the source PDF is cached in the job dir by
+   `/analyze`.
 
 ### Scan quality + AI escalation
 
@@ -169,10 +174,46 @@ whole document to the model. Tune the cutoff with `OCR_MIN_CONFIDENCE` (default
 Stray horizontal dividers (question separators, table borders) drawn as flat
 zero-thickness rules are now removed from crops, while fraction bars (`500/3`)
 and text underlines are preserved as real content.
-3. **Finalize** (`POST /api/finalize`) — combines the kept auto items and your
-   corrected/hand-drawn ones into the final ZIP, re-rendered crisp from the PDF
-   vector source. No re-upload: the source PDF is cached in the job dir by
-   `/analyze`.
+
+### Local ML mode (offline)
+
+Qpic also has an optional **Local ML** tier that runs after text/OCR and before
+any online AI call:
+
+```
+text layer → Tesseract OCR → Local ML → optional online AI
+```
+
+It is fully offline once the model files are bundled. By default it is a no-op
+until a local model or adapter is present, so the app keeps the current small
+build size. Configure it with:
+
+```env
+LOCAL_ML_ENABLED=true
+LOCAL_ML_MODEL_PATH=vendor/models/qpic-question-detector/model.onnx
+LOCAL_ML_LABELS_PATH=vendor/models/qpic-question-detector/labels.json
+```
+
+The practical 800 MB route is a **HiLEx-trained YOLO question-paper detector**
+(`Question_Answer_Block`, `Question_Block`, `Description`, etc.) installed as
+`model.onnx` and run with `onnxruntime`. PyTorch/Ultralytics are training/export
+tools only and should not be bundled into the desktop app. Qpic also supports
+local adapter commands; for model stacks that need their own runner, set
+`LOCAL_ML_COMMAND`. Qpic passes a JSON input file path and accepts either
+`{"questions": [...]}` or `{"boxes": [...]}` JSON back.
+
+Training/export helpers live in `scripts/local_ml/`:
+
+```bash
+.venv/bin/pip install -r requirements-local-ml-train.txt
+.venv/bin/python scripts/local_ml/prepare_hilex_yolo.py --hilex-dir /path/to/HiLEx --out-dir temp/hilex_yolo
+.venv/bin/python scripts/local_ml/train_hilex_yolo.py --data temp/hilex_yolo/data.yaml --epochs 25 --model yolov8s.pt
+.venv/bin/python scripts/local_ml/install_yolo_model.py --weights runs/detect/qpic_hilex/weights/best.pt --imgsz 640 --opset 20
+```
+
+For future fine-tuning, turn on `LOCAL_ML_COLLECT_TRAINING_DATA=true`. Finalize
+will save `source.pdf` plus reviewed crop boxes under `LOCAL_ML_TRAINING_DIR`
+without sending anything to the network.
 
 Turn Smart mode off to keep the original "type page ranges → straight to ZIP"
 behaviour.
@@ -184,7 +225,7 @@ behaviour.
 | Backend / engine | **Python** — FastAPI, uvicorn | `app/` |
 | PDF rendering | **Python** — PyMuPDF | `app/services/pdf_service.py` |
 | **Cropping / stitching** | **Python** — PyMuPDF + Pillow | `app/services/crop_service.py` |
-| Detection (text/OCR/AI) | **Python** — OpenCV, pytesseract, anthropic/httpx | `app/services/detector/` |
+| Detection (text/OCR/Local ML/AI) | **Python** — OpenCV, pytesseract, optional ONNX/local model, anthropic/httpx | `app/services/detector/` |
 | PDF tools (compress/edit/preflight) | **Python** — PyMuPDF | `app/services/pdf_tools/` |
 | API contract | **Python** — Pydantic | `app/models/schemas.py`, `app/routers/` |
 | Web frontend | **HTML + vanilla JavaScript** | `static/` |
@@ -498,12 +539,6 @@ archive (`Qpic-macOS.zip` / `Qpic-Windows.zip`).
 ## License
 
 Released under the [MIT License](LICENSE) — © 2026 Aniket Mishra.
-
-
-
-
-
-
 
 
 

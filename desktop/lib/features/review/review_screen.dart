@@ -99,7 +99,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   notesOpen: _notesOpen,
                   onToggleNotes: _toggleNotes,
                   autoDetectUseAi: _autoDetectUseAi,
-                  onToggleUseAi: (bool val) => setState(() => _autoDetectUseAi = val),
+                  onToggleUseAi: (bool val) =>
+                      setState(() => _autoDetectUseAi = val),
                 ),
                 _AnswerSheetAdvisory(
                     controller: widget.controller, palette: palette),
@@ -175,7 +176,8 @@ class _ReviewToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final int pageCount = controller.pages.length;
     final int pageNumber = controller.currentPageNumber;
-    final int displayIndex = pageCount == 0 ? 0 : controller.currentPageIndex + 1;
+    final int displayIndex =
+        pageCount == 0 ? 0 : controller.currentPageIndex + 1;
 
     return Container(
       height: 56,
@@ -294,7 +296,8 @@ class _ReviewToolbar extends StatelessWidget {
               icon: const SizedBox(
                 width: 16,
                 height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
               ),
               label: const Text('Detecting…'),
             )
@@ -307,9 +310,11 @@ class _ReviewToolbar extends StatelessWidget {
                 if (value == 'toggle-ai') {
                   onToggleUseAi(!autoDetectUseAi);
                 } else if (value == 'detect-page') {
-                  controller.runAutoDetect(pageOnly: true, useAi: autoDetectUseAi);
+                  controller.runAutoDetect(
+                      pageOnly: true, useAi: autoDetectUseAi);
                 } else if (value == 'detect-all') {
-                  controller.runAutoDetect(pageOnly: false, useAi: autoDetectUseAi);
+                  controller.runAutoDetect(
+                      pageOnly: false, useAi: autoDetectUseAi);
                 }
               },
               itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -336,15 +341,15 @@ class _ReviewToolbar extends StatelessWidget {
                     ],
                   ),
                 ),
-                PopupMenuItem<String>(
-                  key: const ValueKey<String>('review-auto-detect-all'),
+                const PopupMenuItem<String>(
+                  key: ValueKey<String>('review-auto-detect-all'),
                   value: 'detect-all',
                   child: Row(
                     children: <Widget>[
-                      const Icon(Icons.auto_awesome_motion_rounded, size: 18),
-                      const SizedBox(width: 10),
+                      Icon(Icons.auto_awesome_motion_rounded, size: 18),
+                      SizedBox(width: 10),
                       Expanded(
-                        child: const Text(
+                        child: Text(
                           'Auto-detect All Pages',
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -372,8 +377,11 @@ class _ReviewToolbar extends StatelessWidget {
           const SizedBox(width: 8),
           FilledButton.icon(
             key: const ValueKey<String>('review-finalize'),
-            onPressed:
-                (onFinalize == null || controller.finalizing || controller.autoDetecting) ? null : onFinalize,
+            onPressed: (onFinalize == null ||
+                    controller.finalizing ||
+                    controller.autoDetecting)
+                ? null
+                : onFinalize,
             icon: controller.finalizing
                 ? const SizedBox(
                     width: 16,
@@ -456,7 +464,8 @@ class _RoundedIconButton extends StatelessWidget {
     return Tooltip(
       message: tooltip,
       child: Material(
-        color: active ? palette.brand.withValues(alpha: 0.12) : Colors.transparent,
+        color:
+            active ? palette.brand.withValues(alpha: 0.12) : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           key: ValueKey<String>(valueKey),
@@ -545,7 +554,8 @@ class _FinalizeErrorBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(palette.danger.withValues(alpha: 0.12), palette.panel),
+        color: Color.alphaBlend(
+            palette.danger.withValues(alpha: 0.12), palette.panel),
         border: Border(bottom: BorderSide(color: palette.border)),
       ),
       child: Row(
@@ -592,7 +602,8 @@ class _FinalizeDownloadBar extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Color.alphaBlend(palette.success.withValues(alpha: 0.08), palette.panel),
+        color: Color.alphaBlend(
+            palette.success.withValues(alpha: 0.08), palette.panel),
         border: Border(bottom: BorderSide(color: palette.border)),
       ),
       child: Wrap(
@@ -703,7 +714,8 @@ class _NotesSidebarState extends State<_NotesSidebar> {
             ? Container(
                 decoration: BoxDecoration(
                   color: widget.palette.panel,
-                  border: Border(left: BorderSide(color: widget.palette.border)),
+                  border:
+                      Border(left: BorderSide(color: widget.palette.border)),
                 ),
                 child: Column(
                   children: <Widget>[
@@ -711,7 +723,8 @@ class _NotesSidebarState extends State<_NotesSidebar> {
                       padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
                       child: TextField(
                         controller: _searchController,
-                        style: TextStyle(color: widget.palette.text, fontSize: 13),
+                        style:
+                            TextStyle(color: widget.palette.text, fontSize: 13),
                         decoration: InputDecoration(
                           hintText: 'Search detections and errors...',
                           prefixIcon: Icon(
@@ -800,7 +813,8 @@ class _ReviewStatusBar extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             '$pageCount page${pageCount == 1 ? '' : 's'} · '
-            '$itemCount detection${itemCount == 1 ? '' : 's'}',
+            '$itemCount detection${itemCount == 1 ? '' : 's'}'
+            '${controller.methodUsed != null ? ' · ML Detection: ${controller.methodUsed}' : ''}',
             style: TextStyle(color: palette.muted, fontSize: 11.5),
           ),
           const Spacer(),

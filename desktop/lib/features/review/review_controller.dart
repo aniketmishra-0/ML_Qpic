@@ -102,6 +102,7 @@ class ReviewState {
     required this.pan,
     required this.source,
     this.answerKeyCount,
+    this.methodUsed,
   });
 
   /// The empty/initial state before any session is loaded.
@@ -116,6 +117,7 @@ class ReviewState {
     pan: Offset.zero,
     source: ReviewSource.smartAutoCrop,
     answerKeyCount: null,
+    methodUsed: null,
   );
 
   /// Engine crop/analyze job id used by snap (12.2) and finalize (12.6).
@@ -153,6 +155,9 @@ class ReviewState {
   /// or `null` for Manual Crop where no answer key is detected.
   final int? answerKeyCount;
 
+  /// The method used for detection (e.g. 'local_ml', 'ocr').
+  final String? methodUsed;
+
   /// Whether a re-select session is active.
   bool get isEditing => editingIndex >= 0;
 
@@ -179,7 +184,8 @@ class ReviewState {
       other.zoom == zoom &&
       other.pan == pan &&
       other.source == source &&
-      other.answerKeyCount == answerKeyCount;
+      other.answerKeyCount == answerKeyCount &&
+      other.methodUsed == methodUsed;
 
   @override
   int get hashCode => Object.hash(
@@ -193,6 +199,7 @@ class ReviewState {
         pan,
         source,
         answerKeyCount,
+        methodUsed,
       );
 
   @override
@@ -200,7 +207,7 @@ class ReviewState {
       'ReviewState(jobId: $jobId, source: $source, pages: ${pages.length}, '
       'items: ${items.length}, notes: ${notes.length}, '
       'currentPageIndex: $currentPageIndex, editingIndex: $editingIndex, '
-      'zoom: $zoom, pan: $pan, answerKeyCount: $answerKeyCount)';
+      'zoom: $zoom, pan: $pan, answerKeyCount: $answerKeyCount, methodUsed: $methodUsed)';
 }
 
 /// Session-level controller for the Review Canvas, reused by Smart Auto Crop
@@ -248,6 +255,7 @@ class ReviewController extends ChangeNotifier {
   DownloadService? _downloadService;
   String _jobId = '';
   int? _answerKeyCount;
+  String? _methodUsed;
   ReviewSource _source = ReviewSource.smartAutoCrop;
   bool _snapEnabled = true;
 
@@ -320,6 +328,9 @@ class ReviewController extends ChangeNotifier {
   /// Manual Crop. See [ReviewState.answerKeyCount].
   int? get answerKeyCount => _answerKeyCount;
 
+  /// The method used by the engine for auto detection.
+  String? get methodUsed => _methodUsed;
+
   /// Which tool opened the current session.
   ReviewSource get source => _source;
 
@@ -370,6 +381,7 @@ class ReviewController extends ChangeNotifier {
         pan: _canvas.panOffset,
         source: _source,
         answerKeyCount: _answerKeyCount,
+        methodUsed: _methodUsed,
       );
 
   // ---- Loading a session (reused by both tools, Req 6.2) -----------------
@@ -382,6 +394,7 @@ class ReviewController extends ChangeNotifier {
   void loadFromAnalyze(AnalyzeResponse response) {
     _jobId = response.jobId;
     _answerKeyCount = response.answerKeyCount;
+    _methodUsed = response.methodUsed;
     _source = ReviewSource.smartAutoCrop;
     _clearFinalizeState();
     _canvas.load(
@@ -399,6 +412,7 @@ class ReviewController extends ChangeNotifier {
   void loadFromManual(AnalyzeResponse response) {
     _jobId = response.jobId;
     _answerKeyCount = null;
+    _methodUsed = null;
     _source = ReviewSource.manualCrop;
     _clearFinalizeState();
     _canvas.load(
@@ -414,6 +428,7 @@ class ReviewController extends ChangeNotifier {
   void reset() {
     _jobId = '';
     _answerKeyCount = null;
+    _methodUsed = null;
     _clearFinalizeState();
     _canvas.load(pages: const <PageInfo>[]);
     notifyListeners();
