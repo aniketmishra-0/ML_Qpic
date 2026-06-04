@@ -163,18 +163,27 @@ class LocalMLDetector:
         settings: Settings,
         *,
         marker_style: str = "auto",
+        confidence: Optional[float] = None,
     ) -> list[DetectedQuestion]:
         """Run the local detector and return whole question/solution regions."""
 
         if not page_images or not self.is_available():
             return []
-        if self.command:
-            return await asyncio.to_thread(
-                self._detect_with_command, page_images, marker_style
-            )
-        if self.model_path and self.model_path.suffix.lower() == ".pt":
-            return await asyncio.to_thread(self._detect_with_ultralytics, page_images)
-        return await asyncio.to_thread(self._detect_with_onnx, page_images)
+
+        old_confidence = self.confidence
+        if confidence is not None:
+            self.confidence = max(0.0, min(1.0, float(confidence)))
+
+        try:
+            if self.command:
+                return await asyncio.to_thread(
+                    self._detect_with_command, page_images, marker_style
+                )
+            if self.model_path and self.model_path.suffix.lower() == ".pt":
+                return await asyncio.to_thread(self._detect_with_ultralytics, page_images)
+            return await asyncio.to_thread(self._detect_with_onnx, page_images)
+        finally:
+            self.confidence = old_confidence
 
     def _detect_with_ultralytics(
         self, page_images: list[Image.Image]
@@ -550,10 +559,6 @@ class LocalMLDetector:
         normalized = max(abs(v) for v in values) <= 1.5
         if normalized:
             values = [v * self.input_size for v in values]
-        a, b, c, d = values
-        if c > a and d > b:
-            return a, b, c, d
-        # Center x/y + width/height.
         cx, cy, w, h = values
         return cx - w / 2.0, cy - h / 2.0, cx + w / 2.0, cy + h / 2.0
 

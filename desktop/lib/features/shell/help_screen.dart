@@ -37,8 +37,7 @@ class HelpScreen extends StatelessWidget {
   /// Opens the Help walkthrough directly on the Privacy tab.
   static Future<void> openPrivacy(BuildContext context) {
     // Privacy is the last tab.
-    final privacyIndex =
-        _helpTabs.indexWhere((t) => t.id == 'privacy');
+    final privacyIndex = _helpTabs.indexWhere((t) => t.id == 'privacy');
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -441,31 +440,31 @@ const List<_HelpTab> _helpTabs = <_HelpTab>[
     steps: <_HelpStep>[
       _HelpStep(
         number: 1,
-        title: '100% Local Processing',
-        detail: 'Qpic runs entirely on your machine. All PDF cropping, '
-            'image processing, and file renaming happens locally — nothing '
-            'is uploaded to any server.',
+        title: '100% Local Execution',
+        detail: 'Qpic runs entirely on your machine. All PDF extraction, '
+            'cropping, and image renaming happens locally on your processor '
+            'without remote servers.',
       ),
       _HelpStep(
         number: 2,
-        title: 'No Data Collection',
+        title: 'Zero Telemetry & Analytics',
         detail: 'We do not collect, store, or transmit any of your data. '
-            'Your PDFs, images, and files never leave your computer. '
-            'There are no analytics, no tracking, and no telemetry.',
+            'Your files never leave your computer, and there are absolutely '
+            'no tracking scripts or analytics.',
       ),
       _HelpStep(
         number: 3,
-        title: 'No Internet Required',
-        detail: 'The core features of Qpic work completely offline. '
-            'You do not need an internet connection to crop PDFs or '
-            'rename files.',
+        title: 'Offline Machine Learning',
+        detail: 'The built-in intelligence (YOLOv8 layout detection) is '
+            'fully self-contained, performing high-fidelity local model '
+            'inference entirely offline.',
       ),
       _HelpStep(
         number: 4,
-        title: 'AI Tools — Coming Soon',
-        detail: 'The Online AI mode is currently disabled. We plan to '
-            'introduce AI-powered features in a future update. When '
-            'available, AI features will be opt-in and clearly marked.',
+        title: 'Secure File System Handling',
+        detail: 'Your documents and exported cropped images remain strictly '
+            'within your local file system, protected under standard system '
+            'permissions.',
       ),
       _HelpStep(
         number: 5,

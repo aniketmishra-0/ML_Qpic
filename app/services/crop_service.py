@@ -103,25 +103,13 @@ def _median_line_gap(row_has) -> "int | None":
 
 
 def _stitch_with_left_pads(crops: list[Image.Image], pads_px: list[int]) -> Image.Image:
-    """Stack crops top-to-bottom, left-padding each by ``pads_px[i]`` white px.
-
-    The per-part left pad shifts a part to the right so a chosen reference column
-    (the MCQ option labels) lines up across parts. Pads are never negative, so no
-    content is ever cut.
-
-    Internal joins are tightened: the trailing whitespace of every non-last part
-    and the leading whitespace of every non-first part are trimmed, then a single
-    uniform gap (the median in-part line gap) is inserted between parts. This
-    stops the snap margins of two boxes from stacking into an oversized gap (the
-    "extra space between (B) and (C)" case) while keeping the question's natural
-    line spacing. The outer top/bottom margins are preserved.
-    """
+    """Stack crops top-to-bottom, left-padding each by positive pads_px[i] or cropping by negative pads_px[i]."""
 
     if not crops:
         return Image.new("RGB", (1, 1), (255, 255, 255))
 
     parts = [ensure_rgb(img) for img in crops]
-    pads = [max(0, int(p)) for p in pads_px] + [0] * max(0, len(parts) - len(pads_px))
+    raw_pads = [int(p) for p in pads_px] + [0] * max(0, len(parts) - len(pads_px))
 
     try:
         import numpy as np
@@ -129,29 +117,36 @@ def _stitch_with_left_pads(crops: list[Image.Image], pads_px: list[int]) -> Imag
         np = None  # type: ignore
 
     if np is None or len(parts) == 1:
-        max_width = max(img.size[0] + pads[i] for i, img in enumerate(parts))
-        total_height = sum(img.size[1] for img in parts)
+        processed_parts = []
+        p_pads = []
+        for i, img in enumerate(parts):
+            p = raw_pads[i]
+            if p >= 0:
+                processed_parts.append(img)
+                p_pads.append(p)
+            else:
+                left_crop = min(-p, img.size[0] - 1)
+                processed_parts.append(img.crop((left_crop, 0, img.size[0], img.size[1])))
+                p_pads.append(0)
+
+        max_width = max(img.size[0] + p_pads[i] for i, img in enumerate(processed_parts))
+        total_height = sum(img.size[1] for img in processed_parts)
         stitched = Image.new("RGB", (max_width, total_height), (255, 255, 255))
         y = 0
-        for i, img in enumerate(parts):
-            stitched.paste(img, (pads[i], y))
+        for i, img in enumerate(processed_parts):
+            stitched.paste(img, (p_pads[i], y))
             y += img.size[1]
         return stitched
 
     masks = [_row_ink(np.asarray(p)) for p in parts]
     bounds = [_content_rows(m) for m in masks]
 
-    # Target inter-part gap: the median line gap seen inside the parts, so the
-    # join reads like a normal line break. Fall back to a small fraction of the
-    # first part's height when no in-part gap can be measured.
     gaps = [g for g in (_median_line_gap(m) for m in masks) if g is not None]
     if gaps:
         target_gap = int(np.median(np.asarray(gaps)))
     else:
         target_gap = max(2, int(0.02 * parts[0].size[1]))
 
-    # Per-part vertical crop window: keep the outer margins (top of first part,
-    # bottom of last part) but trim the inner-join whitespace to the content.
     windows: list[tuple[int, int]] = []
     for i, (p, b) in enumerate(zip(parts, bounds)):
         ph = p.size[1]
@@ -162,15 +157,25 @@ def _stitch_with_left_pads(crops: list[Image.Image], pads_px: list[int]) -> Imag
         bot = ph if i == len(parts) - 1 else b[1] + 1
         windows.append((max(0, top), min(ph, bot)))
 
-    cropped = [p.crop((0, w0, p.size[0], w1)) for p, (w0, w1) in zip(parts, windows)]
+    cropped = []
+    p_pads = []
+    for i, (p, (w0, w1)) in enumerate(zip(parts, windows)):
+        pad_val = raw_pads[i]
+        if pad_val >= 0:
+            left_crop = 0
+            p_pads.append(pad_val)
+        else:
+            left_crop = min(-pad_val, p.size[0] - 1)
+            p_pads.append(0)
+        cropped.append(p.crop((left_crop, w0, p.size[0], w1)))
 
-    max_width = max(img.size[0] + pads[i] for i, img in enumerate(cropped))
+    max_width = max(img.size[0] + p_pads[i] for i, img in enumerate(cropped))
     total_height = sum(img.size[1] for img in cropped) + target_gap * (len(cropped) - 1)
     stitched = Image.new("RGB", (max_width, total_height), (255, 255, 255))
 
     y = 0
     for i, img in enumerate(cropped):
-        stitched.paste(img, (pads[i], y))
+        stitched.paste(img, (p_pads[i], y))
         y += img.size[1]
         if i != len(cropped) - 1:
             y += target_gap
@@ -350,6 +355,11 @@ def crop_and_stitch_hires(
     crop_dpi: int,
     furniture_by_page: "dict | None" = None,
     align_parts: bool = False,
+    binarize: bool = False,
+    contrast: float = 1.0,
+    brightness: float = 1.0,
+    watermark_threshold: int = 255,
+    deskew: bool = False,
 ) -> Image.Image:
     """Render a question's crop straight from the PDF vector source.
 
@@ -420,17 +430,41 @@ def crop_and_stitch_hires(
         pad_bottom = pad_y_pct if idx == seg_count - 1 else 0.0
 
         y_offset = float(getattr(seg, "y_offset_pct", 0.0) or 0.0)
-        y_start = max(0.0, seg.y_start_pct + y_offset - pad_top)
-        y_end = min(100.0, seg.y_end_pct + y_offset + pad_bottom)
-        if y_end <= y_start:
-            continue
+        y_start_pct = seg.y_start_pct + y_offset
+        y_end_pct = seg.y_end_pct + y_offset
 
-        x_start = getattr(seg, "x_start_pct", 0.0)
-        x_end = getattr(seg, "x_end_pct", 100.0)
-        if x_end <= x_start:
-            x_start, x_end = 0.0, 100.0
-        x_start = max(0.0, x_start - pad_x_pct)
-        x_end = min(100.0, x_end + pad_x_pct)
+        x_start_pct = getattr(seg, "x_start_pct", 0.0)
+        x_end_pct = getattr(seg, "x_end_pct", 100.0)
+        if x_end_pct <= x_start_pct:
+            x_start_pct, x_end_pct = 0.0, 100.0
+
+        # Convert unpadded percentages to PDF points for adjacent text checking
+        x0_pts_un = rect.x0 + (x_start_pct / 100.0) * page_w_pts
+        x1_pts_un = rect.x0 + (x_end_pct / 100.0) * page_w_pts
+        y0_pts_un = rect.y0 + (y_start_pct / 100.0) * page_h_pts
+        y1_pts_un = rect.y0 + (y_end_pct / 100.0) * page_h_pts
+
+        pad_top_pts = (pad_top / 100.0) * page_h_pts
+        pad_bottom_pts = (pad_bottom / 100.0) * page_h_pts
+
+        clamped_top_pts, clamped_bot_pts = _clamp_padding_to_adjacent_lines(
+            page,
+            x0_pts=x0_pts_un,
+            x1_pts=x1_pts_un,
+            y0_pts=y0_pts_un,
+            y1_pts=y1_pts_un,
+            pad_top_pts=pad_top_pts,
+            pad_bottom_pts=pad_bottom_pts,
+        )
+
+        pad_top_clamped_pct = (clamped_top_pts / page_h_pts) * 100.0
+        pad_bottom_clamped_pct = (clamped_bot_pts / page_h_pts) * 100.0
+
+        y_start = max(0.0, y_start_pct - pad_top_clamped_pct)
+        y_end = min(100.0, y_end_pct + pad_bottom_clamped_pct)
+
+        x_start = max(0.0, x_start_pct - pad_x_pct)
+        x_end = min(100.0, x_end_pct + pad_x_pct)
 
         page_furniture = [
             (fr[1], fr[2], fr[3], fr[4]) if len(fr) == 5 else tuple(fr)
@@ -482,36 +516,51 @@ def crop_and_stitch_hires(
         # A single part has nothing to line up against, and with neither
         # automatic alignment nor a manual nudge requested the parts stitch
         # plain flush-left (the original auto-path behaviour).
-        return _stitch_vertical(crops, align_parts=False)
+        stitched = _stitch_vertical(crops, align_parts=False)
+    else:
+        base_pads = [0.0] * len(crops)
+        if align_parts and not has_manual:
+            known = [o for o in opt_pixel_offsets if o is not None]
+            if len(known) >= 2:
+                ref = max(known)
+                base_pads = [
+                    (ref - o) if o is not None else 0.0 for o in opt_pixel_offsets
+                ]
+            else:
+                # No reliable option columns to align on (e.g. a scanned page) and
+                # no manual nudges — fall back to the content-edge aligner, then a
+                # flush-left stitch (the original behaviour).
+                trimmed = [trim_edge_rules(c) for c in crops]
+                stitched = _stitch_vertical(
+                    _align_left_by_content(trimmed), align_parts=False
+                )
 
-    # Base per-part left pad from automatic option-column alignment (when on and
-    # at least two parts expose an option column); otherwise no automatic pad.
-    base_pads = [0.0] * len(crops)
-    if align_parts:
-        known = [o for o in opt_pixel_offsets if o is not None]
-        if len(known) >= 2:
-            ref = max(known)
-            base_pads = [
-                (ref - o) if o is not None else 0.0 for o in opt_pixel_offsets
-            ]
-        elif not has_manual:
-            # No reliable option columns to align on (e.g. a scanned page) and
-            # no manual nudges — fall back to the content-edge aligner, then a
-            # flush-left stitch (the original behaviour).
-            trimmed = [trim_edge_rules(c) for c in crops]
-            return _stitch_vertical(
-                _align_left_by_content(trimmed), align_parts=False
-            )
+        if 'stitched' not in locals():
+            combined = [base + manual_offsets_px[i] for i, base in enumerate(base_pads)]
+            pads = [int(round(c)) for c in combined]
 
-    # Combine the automatic pad with the manual nudge, then renormalise so the
-    # smallest combined offset is zero (left pads can't be negative, and this
-    # keeps the stitched image flush to the left edge without clipping).
-    combined = [base + manual_offsets_px[i] for i, base in enumerate(base_pads)]
-    floor = min(combined) if combined else 0.0
-    pads = [int(round(c - floor)) for c in combined]
+            stitched = _stitch_with_left_pads(crops, pads)
+            stitched = trim_edge_rules(stitched)
 
-    stitched = _stitch_with_left_pads(crops, pads)
-    return trim_edge_rules(stitched)
+    # Apply binarize/contrast/brightness/watermark thresholding if non-default
+    if (
+        binarize
+        or contrast != 1.0
+        or brightness != 1.0
+        or watermark_threshold < 255
+        or deskew
+    ):
+        from ..services.pdf_tools.enhance_service import enhance_image
+        stitched = enhance_image(
+            stitched,
+            binarize=binarize,
+            contrast=contrast,
+            brightness=brightness,
+            watermark_threshold=watermark_threshold,
+            deskew=deskew,
+        )
+
+    return stitched
 
 
 def save_question_image(
@@ -567,3 +616,55 @@ def save_question_image(
 
     logger.info("saved_image=%s q_num=%s is_solution=%s", out_path.name, q_num, is_solution)
     return out_path
+
+
+def _clamp_padding_to_adjacent_lines(
+    page: "fitz.Page",
+    *,
+    x0_pts: float,
+    x1_pts: float,
+    y0_pts: float,
+    y1_pts: float,
+    pad_top_pts: float,
+    pad_bottom_pts: float,
+) -> tuple[float, float]:
+    """Clamp pad_top_pts and pad_bottom_pts so they do not overlap adjacent text lines in the same column."""
+    try:
+        data = page.get_text("dict") or {}
+    except Exception:
+        return pad_top_pts, pad_bottom_pts
+
+    clamped_pad_top = pad_top_pts
+    clamped_pad_bottom = pad_bottom_pts
+
+    for block in data.get("blocks", []):
+        for ln in block.get("lines", []):
+            spans = ln.get("spans", [])
+            if not spans:
+                continue
+            text = "".join(str(s.get("text", "")) for s in spans).strip()
+            if not text:
+                continue
+
+            bx0, by0, bx1, by1 = ln.get("bbox", (0, 0, 0, 0))
+            cx = (bx0 + bx1) / 2.0
+
+            # Check if this line is in the same column (overlaps horizontally)
+            if not (x0_pts <= cx <= x1_pts):
+                continue
+
+            # Line is above the unpadded region:
+            if by1 <= y0_pts:
+                # Top padding should not go above by1
+                gap = y0_pts - by1
+                if gap >= 0:
+                    clamped_pad_top = min(clamped_pad_top, gap)
+
+            # Line is below the unpadded region:
+            if by0 >= y1_pts:
+                # Bottom padding should not go below by0
+                gap = by0 - y1_pts
+                if gap >= 0:
+                    clamped_pad_bottom = min(clamped_pad_bottom, gap)
+
+    return clamped_pad_top, clamped_pad_bottom

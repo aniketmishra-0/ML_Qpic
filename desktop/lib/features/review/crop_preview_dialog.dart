@@ -17,8 +17,10 @@
 // them.
 
 import 'dart:async';
+import 'dart:io' show File;
 import 'dart:typed_data';
 
+import 'package:file_selector/file_selector.dart' as fs;
 import 'package:flutter/material.dart';
 
 import '../../core/theme_controller.dart';
@@ -99,9 +101,12 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
     _initialAlign = _align;
     // If the item already carries manual nudges (re-opening the popup), start
     // in manual mode so the user sees and keeps their adjustments.
-    _manualMode =
-        widget.controller.offsetsFor(widget.itemIndex).any((double o) => o != 0.0) ||
-        widget.controller.yOffsetsFor(widget.itemIndex).any((double o) => o != 0.0);
+    _manualMode = widget.controller
+            .offsetsFor(widget.itemIndex)
+            .any((double o) => o != 0.0) ||
+        widget.controller
+            .yOffsetsFor(widget.itemIndex)
+            .any((double o) => o != 0.0);
     _render();
   }
 
@@ -188,13 +193,18 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
     _renderDebounced();
   }
 
-  void _autoAlign() {
-    widget.controller.setItemAlign(widget.itemIndex, true);
-    widget.controller.resetSegmentOffsets(widget.itemIndex);
+  Future<void> _autoAlign() async {
     setState(() {
-      _align = true;
+      _loading = true;
     });
-    _render();
+    await widget.controller.autoAlignText(widget.itemIndex);
+    widget.controller.setItemAlign(widget.itemIndex, true);
+    if (mounted) {
+      setState(() {
+        _align = true;
+      });
+      _render();
+    }
   }
 
   void _resetAll() {
@@ -204,6 +214,57 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
       _align = _initialAlign;
     });
     _render();
+  }
+
+  Future<void> _downloadImage() async {
+    final bytes = _bytes;
+    if (bytes == null) return;
+
+    final List<AnalyzedItem> items = widget.controller.items;
+    final AnalyzedItem? item =
+        (widget.itemIndex >= 0 && widget.itemIndex < items.length)
+            ? items[widget.itemIndex]
+            : null;
+    final bool isSolution = item?.isSolution ?? false;
+    final String prefix =
+        isSolution ? widget.solutionPrefix : widget.questionPrefix;
+    final String suggestedName =
+        item != null ? '$prefix${item.qNum}.png' : 'crop.png';
+
+    final fs.FileSaveLocation? location = await fs.getSaveLocation(
+      suggestedName: suggestedName,
+      acceptedTypeGroups: const <fs.XTypeGroup>[
+        fs.XTypeGroup(
+          label: 'PNG Image',
+          extensions: <String>['png'],
+          uniformTypeIdentifiers: <String>['public.png'],
+          mimeTypes: <String>['image/png'],
+        ),
+      ],
+    );
+    if (location == null || location.path.isEmpty) {
+      return;
+    }
+
+    try {
+      final file = File(location.path);
+      await file.writeAsBytes(bytes);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saved to ${location.path}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not save image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -230,24 +291,25 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
     final int partCount = item?.segments.length ?? 0;
     final bool multiPart = partCount > 1;
     final List<double> offsets = widget.controller.offsetsFor(widget.itemIndex);
-    final List<double> yOffsets = widget.controller.yOffsetsFor(widget.itemIndex);
+    final List<double> yOffsets =
+        widget.controller.yOffsetsFor(widget.itemIndex);
 
     final bool anyNudge = offsets.any((double o) => o.abs() > 1e-6) ||
         yOffsets.any((double o) => o.abs() > 1e-6);
-    final bool canAuto = _align != true || anyNudge;
+    final bool canAuto = true;
     final bool canReset = anyNudge || _align != _initialAlign;
 
     return Dialog(
       key: const ValueKey<String>('crop-preview-dialog'),
       backgroundColor: panel,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: border),
       ),
       clipBehavior: Clip.antiAlias,
       insetPadding: const EdgeInsets.all(28),
       child: SizedBox(
-        width: size.width * 0.6,
+        width: size.width * (multiPart ? (_manualMode ? 0.75 : 0.72) : 0.6),
         height: size.height * 0.82,
         child: Column(
           children: <Widget>[
@@ -258,6 +320,7 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
               muted: muted,
               brand: brand,
               border: border,
+              onDownload: (_bytes != null && !_loading) ? _downloadImage : null,
             ),
             if (multiPart)
               _AlignBar(
@@ -266,33 +329,364 @@ class _CropPreviewDialogState extends State<CropPreviewDialog> {
                 onChanged: _setAlign,
                 manualMode: _manualMode,
                 onManualModeChanged: _toggleManualMode,
-                text: text,
-                muted: muted,
-                brand: brand,
-                border: border,
-              ),
-            if (multiPart && _manualMode)
-              _ManualAlignBar(
-                key: const ValueKey<String>('crop-preview-manual-bar'),
-                offsets: offsets,
-                yOffsets: yOffsets,
-                onChanged: _setOffset,
-                onYChanged: _setYOffset,
-                onAuto: _autoAlign,
-                onReset: _resetAll,
-                canAuto: canAuto,
-                canReset: canReset,
+                onAutoAlign: _autoAlign,
+                canAutoAlign: canAuto,
                 text: text,
                 muted: muted,
                 brand: brand,
                 border: border,
               ),
             Expanded(
-              child: _Body(
-                loading: _loading,
-                error: _error,
-                bytes: _bytes,
-                muted: muted,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (multiPart)
+                    Container(
+                      width: _manualMode ? 350 : 260,
+                      decoration: BoxDecoration(
+                        border: Border(right: BorderSide(color: border)),
+                        color: panel,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12.0, vertical: 8.0),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'STITCH SEQUENCE',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: muted,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                if (_manualMode)
+                                  Row(
+                                    key: const ValueKey<String>(
+                                        'crop-preview-manual-bar'),
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        key: const ValueKey<String>(
+                                            'crop-preview-manual-auto'),
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        iconSize: 16,
+                                        tooltip: 'Auto Align',
+                                        icon: Icon(
+                                          Icons.auto_awesome_rounded,
+                                          color: canAuto
+                                              ? brand
+                                              : muted.withValues(alpha: 0.5),
+                                        ),
+                                        onPressed: canAuto ? _autoAlign : null,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      IconButton(
+                                        key: const ValueKey<String>(
+                                            'crop-preview-manual-reset'),
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        iconSize: 16,
+                                        tooltip: 'Reset Offsets',
+                                        icon: Icon(
+                                          Icons.refresh_rounded,
+                                          color: canReset
+                                              ? brand
+                                              : muted.withValues(alpha: 0.5),
+                                        ),
+                                        onPressed: canReset ? _resetAll : null,
+                                      ),
+                                    ],
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const Divider(height: 1),
+                          Expanded(
+                            child: ReorderableListView.builder(
+                              itemCount: partCount,
+                              buildDefaultDragHandles: true,
+                              onReorder: (oldIndex, newIndex) {
+                                if (newIndex > oldIndex) {
+                                  newIndex -= 1;
+                                }
+                                widget.controller.reorderItemSegments(
+                                  widget.itemIndex,
+                                  oldIndex,
+                                  newIndex,
+                                );
+                                _render();
+                              },
+                              itemBuilder: (context, index) {
+                                final seg = item!.segments[index];
+                                final yStart =
+                                    (seg.yStartPct).toStringAsFixed(0);
+                                final yEnd = (seg.yEndPct).toStringAsFixed(0);
+                                return Card(
+                                  key: ValueKey(
+                                      'seg-$index-${seg.page}-${seg.yStartPct}'),
+                                  margin: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  elevation: 0,
+                                  color: palette?.field ??
+                                      theme.colorScheme.surfaceContainerHighest,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                    side: BorderSide(color: border),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(8.0),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: brand.withValues(
+                                                    alpha: 0.1),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                              ),
+                                              child: Text(
+                                                '#${index + 1}',
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: brand,
+                                                  fontSize: 11.5,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    'Page ${seg.page}',
+                                                    style: TextStyle(
+                                                      fontSize: 12.5,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: text,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    'Height: $yStart% - $yEnd%',
+                                                    style: TextStyle(
+                                                      fontSize: 10.5,
+                                                      color: muted,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const Icon(
+                                                Icons.drag_indicator_rounded,
+                                                size: 18),
+                                          ],
+                                        ),
+                                        if (_manualMode) ...[
+                                          const SizedBox(height: 8),
+                                          const Divider(height: 1),
+                                          const SizedBox(height: 4),
+                                          // Horizontal Slider
+                                          Row(
+                                            children: [
+                                              Icon(Icons.swap_horiz_rounded,
+                                                  size: 14, color: muted),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'H:',
+                                                style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: muted),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              _NudgeButton(
+                                                icon: Icons.remove_rounded,
+                                                onPressed: () {
+                                                  final v =
+                                                      (seg.xOffsetPct - 1.0)
+                                                          .clamp(-25.0, 25.0);
+                                                  _setOffset(index, v);
+                                                },
+                                                brand: brand,
+                                                border: border,
+                                              ),
+                                              Expanded(
+                                                child: SliderTheme(
+                                                  data: SliderTheme.of(context)
+                                                      .copyWith(
+                                                    trackHeight: 4,
+                                                    thumbShape:
+                                                        const RoundSliderThumbShape(
+                                                            enabledThumbRadius:
+                                                                7),
+                                                    overlayShape:
+                                                        const RoundSliderOverlayShape(
+                                                            overlayRadius: 12),
+                                                    activeTrackColor: brand,
+                                                    inactiveTrackColor: brand
+                                                        .withValues(alpha: 0.2),
+                                                    thumbColor: brand,
+                                                  ),
+                                                  child: Slider(
+                                                    key: ValueKey<String>(
+                                                        'crop-preview-part-slider-x-$index'),
+                                                    value: seg.xOffsetPct
+                                                        .clamp(-25.0, 25.0),
+                                                    min: -25.0,
+                                                    max: 25.0,
+                                                    onChanged: (double v) {
+                                                      _setOffset(index, v);
+                                                    },
+                                                  ),
+                                                ),
+                                              ),
+                                              _NudgeButton(
+                                                icon: Icons.add_rounded,
+                                                onPressed: () {
+                                                  final v =
+                                                      (seg.xOffsetPct + 1.0)
+                                                          .clamp(-25.0, 25.0);
+                                                  _setOffset(index, v);
+                                                },
+                                                brand: brand,
+                                                border: border,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              SizedBox(
+                                                width: 36,
+                                                child: Text(
+                                                  '${seg.xOffsetPct >= 0 ? '+' : ''}${seg.xOffsetPct.toStringAsFixed(0)}%',
+                                                  textAlign: TextAlign.end,
+                                                  style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: muted,
+                                                      fontFamily: 'monospace',
+                                                      fontWeight:
+                                                          FontWeight.w600),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          // Vertical Slider
+                                          Row(
+                                            children: [
+                                              Icon(Icons.swap_vert_rounded,
+                                                  size: 14, color: muted),
+                                              const SizedBox(width: 4),
+                                              Text(
+                                                'V:',
+                                                style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: muted),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              _NudgeButton(
+                                                icon: Icons.remove_rounded,
+                                                onPressed: () {
+                                                  final v =
+                                                      (seg.yOffsetPct - 1.0)
+                                                          .clamp(-25.0, 25.0);
+                                                  _setYOffset(index, v);
+                                                },
+                                                brand: brand,
+                                                border: border,
+                                              ),
+                                              Expanded(
+                                                child: SliderTheme(
+                                                  data: SliderTheme.of(context)
+                                                      .copyWith(
+                                                    trackHeight: 4,
+                                                    thumbShape:
+                                                        const RoundSliderThumbShape(
+                                                            enabledThumbRadius:
+                                                                7),
+                                                    overlayShape:
+                                                        const RoundSliderOverlayShape(
+                                                            overlayRadius: 12),
+                                                    activeTrackColor: brand,
+                                                    inactiveTrackColor: brand
+                                                        .withValues(alpha: 0.2),
+                                                    thumbColor: brand,
+                                                  ),
+                                                  child: Slider(
+                                                    key: ValueKey<String>(
+                                                        'crop-preview-part-slider-y-$index'),
+                                                    value: seg.yOffsetPct
+                                                        .clamp(-25.0, 25.0),
+                                                    min: -25.0,
+                                                    max: 25.0,
+                                                    onChanged: (double v) {
+                                                      _setYOffset(index, v);
+                                                    },
+                                                  ),
+                                                ),
+                                              ),
+                                              _NudgeButton(
+                                                icon: Icons.add_rounded,
+                                                onPressed: () {
+                                                  final v =
+                                                      (seg.yOffsetPct + 1.0)
+                                                          .clamp(-25.0, 25.0);
+                                                  _setYOffset(index, v);
+                                                },
+                                                brand: brand,
+                                                border: border,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              SizedBox(
+                                                width: 36,
+                                                child: Text(
+                                                  '${seg.yOffsetPct >= 0 ? '+' : ''}${seg.yOffsetPct.toStringAsFixed(0)}%',
+                                                  textAlign: TextAlign.end,
+                                                  style: TextStyle(
+                                                      fontSize: 11,
+                                                      color: muted,
+                                                      fontFamily: 'monospace',
+                                                      fontWeight:
+                                                          FontWeight.w600),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  Expanded(
+                    child: _Body(
+                      loading: _loading,
+                      error: _error,
+                      bytes: _bytes,
+                      muted: muted,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -310,6 +704,7 @@ class _Header extends StatelessWidget {
     required this.muted,
     required this.brand,
     required this.border,
+    this.onDownload,
   });
 
   final String label;
@@ -318,6 +713,7 @@ class _Header extends StatelessWidget {
   final Color muted;
   final Color brand;
   final Color border;
+  final VoidCallback? onDownload;
 
   @override
   Widget build(BuildContext context) {
@@ -352,6 +748,16 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
+          if (onDownload != null) ...[
+            IconButton(
+              key: const ValueKey<String>('crop-preview-download'),
+              tooltip: 'Download image',
+              onPressed: onDownload,
+              icon: const Icon(Icons.download_rounded),
+              color: brand,
+            ),
+            const SizedBox(width: 8),
+          ],
           IconButton(
             key: const ValueKey<String>('crop-preview-close'),
             tooltip: 'Close',
@@ -377,6 +783,8 @@ class _AlignBar extends StatelessWidget {
     required this.onChanged,
     required this.manualMode,
     required this.onManualModeChanged,
+    required this.onAutoAlign,
+    required this.canAutoAlign,
     required this.text,
     required this.muted,
     required this.brand,
@@ -388,6 +796,8 @@ class _AlignBar extends StatelessWidget {
   final ValueChanged<bool> onChanged;
   final bool manualMode;
   final ValueChanged<bool> onManualModeChanged;
+  final VoidCallback onAutoAlign;
+  final bool canAutoAlign;
   final Color text;
   final Color muted;
   final Color brand;
@@ -412,6 +822,25 @@ class _AlignBar extends StatelessWidget {
               'Align parts — line up the stitched pieces so the question is '
               'straight.',
               style: TextStyle(fontSize: 12.5, color: text),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Recommended Alignment / Auto Align Button
+          TextButton.icon(
+            key: const ValueKey<String>('crop-preview-auto-align-action'),
+            onPressed: canAutoAlign ? onAutoAlign : null,
+            icon: Icon(
+              Icons.auto_awesome_rounded,
+              size: 16,
+              color: canAutoAlign ? brand : muted.withValues(alpha: 0.5),
+            ),
+            label: Text(
+              'Recommended Align',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: canAutoAlign ? brand : muted.withValues(alpha: 0.5),
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -440,193 +869,6 @@ class _AlignBar extends StatelessWidget {
             activeThumbColor: brand,
             onChanged: onChanged,
           ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Per-part manual alignment controls (the "Manual align" mode). Each stitched
-/// part gets a slider that nudges it left/right (as a signed % of page width)
-/// or up/down (as a signed % of page height), applied on top of the automatic
-/// alignment. The nudges ride into the preview and the finalize payload,
-/// so "Done"/Finalize reproduce the exact alignment shown here.
-class _ManualAlignBar extends StatelessWidget {
-  const _ManualAlignBar({
-    super.key,
-    required this.offsets,
-    required this.yOffsets,
-    required this.onChanged,
-    required this.onYChanged,
-    required this.onAuto,
-    required this.onReset,
-    required this.canAuto,
-    required this.canReset,
-    required this.text,
-    required this.muted,
-    required this.brand,
-    required this.border,
-  });
-
-  /// Current horizontal nudge per part (% of page width), in segment order.
-  final List<double> offsets;
-
-  /// Current vertical nudge per part (% of page height), in segment order.
-  final List<double> yOffsets;
-
-  /// Called with (segmentIndex, newOffsetPct) as the user drags a slider.
-  final void Function(int segmentIndex, double xOffsetPct) onChanged;
-  final void Function(int segmentIndex, double yOffsetPct) onYChanged;
-  final VoidCallback onAuto;
-  final VoidCallback onReset;
-  final bool canAuto;
-  final bool canReset;
-  final Color text;
-  final Color muted;
-  final Color brand;
-  final Color border;
-
-  /// Largest nudge in either direction, as a % of page dimension. A part can be
-  /// pushed up to a quarter of the page.
-  static const double _range = 25.0;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: const ValueKey<String>('crop-preview-manual-controls'),
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-      decoration: BoxDecoration(
-        color: brand.withValues(alpha: 0.04),
-        border: Border(bottom: BorderSide(color: border)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Text(
-                  'Manual align — drag a part left/right or up/down to line it up.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: muted,
-                  ),
-                ),
-              ),
-              TextButton.icon(
-                key: const ValueKey<String>('crop-preview-manual-auto'),
-                onPressed: canAuto ? onAuto : null,
-                icon: Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 14,
-                  color: canAuto ? brand : muted.withValues(alpha: 0.5),
-                ),
-                label: Text(
-                  'Auto',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: canAuto ? brand : muted.withValues(alpha: 0.5),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                key: const ValueKey<String>('crop-preview-manual-reset'),
-                onPressed: canReset ? onReset : null,
-                child: Text(
-                  'Reset',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: canReset ? brand : muted.withValues(alpha: 0.5),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          for (int i = 0; i < offsets.length; i++)
-            Column(
-              key: ValueKey<String>('crop-preview-part-$i'),
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0, bottom: 4.0),
-                  child: Text(
-                    'Part ${i + 1}',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: text,
-                    ),
-                  ),
-                ),
-                Row(
-                  children: <Widget>[
-                    SizedBox(
-                      width: 80,
-                      child: Text(
-                        'Horizontal',
-                        style: TextStyle(fontSize: 12, color: muted),
-                      ),
-                    ),
-                    Expanded(
-                      child: Slider(
-                        key: ValueKey<String>('crop-preview-part-slider-x-$i'),
-                        min: -_range,
-                        max: _range,
-                        value: offsets[i].clamp(-_range, _range),
-                        activeColor: brand,
-                        onChanged: (double v) => onChanged(i, v),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 44,
-                      child: Text(
-                        '${offsets[i] >= 0 ? '+' : ''}'
-                        '${offsets[i].toStringAsFixed(0)}%',
-                        textAlign: TextAlign.end,
-                        style: TextStyle(fontSize: 12, color: muted),
-                      ),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: <Widget>[
-                    SizedBox(
-                      width: 80,
-                      child: Text(
-                        'Vertical',
-                        style: TextStyle(fontSize: 12, color: muted),
-                      ),
-                    ),
-                    Expanded(
-                      child: Slider(
-                        key: ValueKey<String>('crop-preview-part-slider-y-$i'),
-                        min: -_range,
-                        max: _range,
-                        value: yOffsets[i].clamp(-_range, _range),
-                        activeColor: brand,
-                        onChanged: (double v) => onYChanged(i, v),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 44,
-                      child: Text(
-                        '${yOffsets[i] >= 0 ? '+' : ''}'
-                        '${yOffsets[i].toStringAsFixed(0)}%',
-                        textAlign: TextAlign.end,
-                        style: TextStyle(fontSize: 12, color: muted),
-                      ),
-                    ),
-                  ],
-                ),
-                if (i != offsets.length - 1)
-                  const Divider(height: 16),
-              ],
-            ),
         ],
       ),
     );
@@ -701,6 +943,46 @@ class _Body extends StatelessWidget {
                 fit: BoxFit.contain,
                 gaplessPlayback: true,
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NudgeButton extends StatelessWidget {
+  const _NudgeButton({
+    required this.icon,
+    required this.onPressed,
+    required this.brand,
+    required this.border,
+  });
+
+  final IconData icon;
+  final VoidCallback onPressed;
+  final Color brand;
+  final Color border;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        border: Border.all(color: border),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: onPressed,
+          child: Center(
+            child: Icon(
+              icon,
+              size: 14,
+              color: brand,
             ),
           ),
         ),

@@ -134,6 +134,13 @@ class ApiClient {
     bool useAi = false,
     bool answerSheet = true,
     String layoutColumns = 'auto',
+    bool binarize = false,
+    double contrast = 1.0,
+    double brightness = 1.0,
+    int watermarkThreshold = 255,
+    bool deskew = false,
+    String? customRegex,
+    double? confidence,
   }) {
     return _guard(() async {
       final query = <String, dynamic>{
@@ -150,10 +157,21 @@ class ApiClient {
         'use_ai': useAi,
         'answer_sheet': answerSheet,
         'layout_columns': layoutColumns,
+        'binarize': binarize,
+        'contrast': contrast,
+        'brightness': brightness,
+        'watermark_threshold': watermarkThreshold,
+        'deskew': deskew,
       };
       if (questionPages != null) query['question_pages'] = questionPages;
       if (answerPages != null) query['answer_pages'] = answerPages;
       if (skipPages != null) query['skip_pages'] = skipPages;
+      if (customRegex != null && customRegex.isNotEmpty) {
+        query['custom_regex'] = customRegex;
+      }
+      if (confidence != null) {
+        query['confidence'] = confidence;
+      }
 
       final form = FormData();
       form.files.add(
@@ -191,6 +209,13 @@ class ApiClient {
     bool useAi = false,
     bool answerSheet = true,
     String layoutColumns = 'auto',
+    bool binarize = false,
+    double contrast = 1.0,
+    double brightness = 1.0,
+    int watermarkThreshold = 255,
+    bool deskew = false,
+    String? customRegex,
+    double? confidence,
   }) {
     return _guard(() async {
       final query = <String, dynamic>{
@@ -201,10 +226,21 @@ class ApiClient {
         'use_ai': useAi,
         'answer_sheet': answerSheet,
         'layout_columns': layoutColumns,
+        'binarize': binarize,
+        'contrast': contrast,
+        'brightness': brightness,
+        'watermark_threshold': watermarkThreshold,
+        'deskew': deskew,
       };
       if (questionPages != null) query['question_pages'] = questionPages;
       if (answerPages != null) query['answer_pages'] = answerPages;
       if (skipPages != null) query['skip_pages'] = skipPages;
+      if (customRegex != null && customRegex.isNotEmpty) {
+        query['custom_regex'] = customRegex;
+      }
+      if (confidence != null) {
+        query['confidence'] = confidence;
+      }
 
       final form = FormData();
       form.files.add(
@@ -233,6 +269,11 @@ class ApiClient {
     required List<int> fileBytes,
     required String filename,
     int dpi = 200,
+    bool binarize = false,
+    double contrast = 1.0,
+    double brightness = 1.0,
+    int watermarkThreshold = 255,
+    bool deskew = false,
   }) {
     return _guard(() async {
       final form = FormData();
@@ -249,7 +290,14 @@ class ApiClient {
 
       final res = await _dio.post<Map<String, dynamic>>(
         '$_api/prepare-manual',
-        queryParameters: <String, dynamic>{'dpi': dpi},
+        queryParameters: <String, dynamic>{
+          'dpi': dpi,
+          'binarize': binarize,
+          'contrast': contrast,
+          'brightness': brightness,
+          'watermark_threshold': watermarkThreshold,
+          'deskew': deskew,
+        },
         data: form,
       );
       return AnalyzeResponse.fromJson(res.data!);
@@ -263,14 +311,32 @@ class ApiClient {
     bool useAi = false,
     String markerStyle = 'auto',
     String layoutColumns = 'auto',
+    bool binarize = false,
+    double contrast = 1.0,
+    double brightness = 1.0,
+    int watermarkThreshold = 255,
+    bool deskew = false,
+    String? customRegex,
+    double? confidence,
   }) {
     return _guard(() async {
       final query = <String, dynamic>{
         'use_ai': useAi,
         'marker_style': markerStyle,
         'layout_columns': layoutColumns,
+        'binarize': binarize,
+        'contrast': contrast,
+        'brightness': brightness,
+        'watermark_threshold': watermarkThreshold,
+        'deskew': deskew,
       };
       if (page != null) query['page'] = page;
+      if (customRegex != null && customRegex.isNotEmpty) {
+        query['custom_regex'] = customRegex;
+      }
+      if (confidence != null) {
+        query['confidence'] = confidence;
+      }
 
       final res = await _dio.post<List<dynamic>>(
         '$_api/crop/$jobId/auto-detect',
@@ -390,8 +456,7 @@ class ApiClient {
   /// `POST /api/rename/session` — open a streamed rename session.
   Future<RenameSessionResponse> createRenameSession() {
     return _guard(() async {
-      final res =
-          await _dio.post<Map<String, dynamic>>('$_api/rename/session');
+      final res = await _dio.post<Map<String, dynamic>>('$_api/rename/session');
       return RenameSessionResponse.fromJson(res.data!);
     });
   }
@@ -674,6 +739,7 @@ class ApiClient {
     double contrast = 1.0,
     double brightness = 1.0,
     int watermarkThreshold = 255,
+    bool deskew = false,
     int dpi = 200,
   }) {
     return _guard(() async {
@@ -683,6 +749,7 @@ class ApiClient {
         ..add(MapEntry('contrast', contrast.toString()))
         ..add(MapEntry('brightness', brightness.toString()))
         ..add(MapEntry('watermark_threshold', watermarkThreshold.toString()))
+        ..add(MapEntry('deskew', deskew.toString()))
         ..add(MapEntry('dpi', dpi.toString()));
       form.files.add(
         MapEntry(
@@ -784,6 +851,7 @@ class ApiClient {
     double contrast = 1.0,
     double brightness = 1.0,
     int watermarkThreshold = 255,
+    bool deskew = false,
     int dpi = 150,
   }) {
     return baseUrl.replace(
@@ -793,6 +861,7 @@ class ApiClient {
         'contrast': contrast.toString(),
         'brightness': brightness.toString(),
         'watermark_threshold': watermarkThreshold.toString(),
+        'deskew': deskew.toString(),
         'dpi': dpi.toString(),
       },
     );
@@ -808,6 +877,77 @@ class ApiClient {
         options: Options(responseType: ResponseType.bytes),
       );
       return res.data ?? const <int>[];
+    });
+  }
+
+  // ===========================================================================
+  //  ML Model Runtime Config & Regex Testing
+  // ===========================================================================
+
+  /// `GET /api/config/ml-model` — read the current local ML configuration.
+  Future<MLConfigResponse> getMlConfig() {
+    return _guard(() async {
+      final res = await _dio.get<Map<String, dynamic>>('$_api/config/ml-model');
+      return MLConfigResponse.fromJson(res.data!);
+    });
+  }
+
+  /// `POST /api/config/ml-model` — update the local ML configuration parameters.
+  Future<MLConfigResponse> updateMlConfig({
+    String? modelPath,
+    String? labelsPath,
+    String? modelName,
+    double? confidence,
+    int? inputSize,
+  }) {
+    return _guard(() async {
+      final body = <String, dynamic>{};
+      if (modelPath != null) body['model_path'] = modelPath;
+      if (labelsPath != null) body['labels_path'] = labelsPath;
+      if (modelName != null) body['model_name'] = modelName;
+      if (confidence != null) body['confidence'] = confidence;
+      if (inputSize != null) body['input_size'] = inputSize;
+
+      final res = await _dio.post<Map<String, dynamic>>(
+        '$_api/config/ml-model',
+        data: body,
+      );
+      return MLConfigResponse.fromJson(res.data!);
+    });
+  }
+
+  /// `POST /api/tools/regex-test` — test a regex pattern against sample text lines.
+  Future<RegexTestResponse> testRegex({
+    required String pattern,
+    required List<String> sampleLines,
+  }) {
+    return _guard(() async {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '$_api/tools/regex-test',
+        data: <String, dynamic>{
+          'pattern': pattern,
+          'sample_lines': sampleLines,
+        },
+      );
+      return RegexTestResponse.fromJson(res.data!);
+    });
+  }
+
+  /// `POST /api/tools/align-offsets` — calculate recommended horizontal alignment offsets.
+  Future<List<double>> alignOffsets({
+    required String jobId,
+    required List<QuestionSegment> segments,
+  }) {
+    return _guard(() async {
+      final res = await _dio.post<Map<String, dynamic>>(
+        '$_api/tools/align-offsets',
+        data: <String, dynamic>{
+          'job_id': jobId,
+          'segments': segments.map((s) => s.toJson()).toList(),
+        },
+      );
+      final List<dynamic> list = res.data!['offsets'] as List<dynamic>;
+      return list.map((dynamic e) => (e as num).toDouble()).toList();
     });
   }
 

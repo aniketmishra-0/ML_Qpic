@@ -362,25 +362,46 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
     _primaryPointerKind = null;
   }
 
-  // ---- Tap: per-box delete affordance (Req 8.7) --------------------------
+  // ---- Tap: selection or delete affordance --------------------------
+
+  bool get _shiftPressed =>
+      HardwareKeyboard.instance.logicalKeysPressed
+          .contains(LogicalKeyboardKey.shiftLeft) ||
+      HardwareKeyboard.instance.logicalKeysPressed
+          .contains(LogicalKeyboardKey.shiftRight);
 
   void _onTapUp(TapUpDetails details) {
     final ReviewCanvasController c = widget.controller;
-    if (!c.isEditing) return;
-    final int editIdx = c.editingIndex;
-    if (editIdx < 0 || editIdx >= c.items.length) return;
-    final AnalyzedItem item = c.items[editIdx];
-    final int pageNo = c.currentPageNumber;
     final Offset pos = details.localPosition;
 
-    for (int s = item.segments.length - 1; s >= 0; s--) {
-      final QuestionSegment seg = item.segments[s];
-      if (seg.page != pageNo) continue;
-      final Rect rect = _geometry.segToScreenRect(seg);
-      final hitRect = ReviewPainter.deleteAffordanceHitRect(rect);
-      if (hitRect.contains(pos)) {
-        c.deleteSegment(editIdx, s);
-        return;
+    if (c.isEditing) {
+      final int editIdx = c.editingIndex;
+      if (editIdx < 0 || editIdx >= c.items.length) return;
+      final AnalyzedItem item = c.items[editIdx];
+      final int pageNo = c.currentPageNumber;
+
+      for (int s = item.segments.length - 1; s >= 0; s--) {
+        final QuestionSegment seg = item.segments[s];
+        if (seg.page != pageNo) continue;
+        final Rect rect = _geometry.segToScreenRect(seg);
+        final hitRect = ReviewPainter.deleteAffordanceHitRect(rect);
+        if (hitRect.contains(pos)) {
+          c.deleteSegment(editIdx, s);
+          return;
+        }
+      }
+    } else {
+      final BoxHit? hit = c.hitTest(pos, _geometry);
+      if (hit != null) {
+        if (_shiftPressed) {
+          c.toggleSelection(hit.itemIndex);
+        } else {
+          c.selectExclusive(hit.itemIndex);
+        }
+      } else {
+        if (!_shiftPressed) {
+          c.clearSelection();
+        }
       }
     }
   }
@@ -570,8 +591,8 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
   @override
   Widget build(BuildContext context) {
     final ReviewCanvasController c = widget.controller;
-    final QpicPalette palette = Theme.of(context).extension<QpicPalette>() ??
-        QpicPalette.dark;
+    final QpicPalette palette =
+        Theme.of(context).extension<QpicPalette>() ?? QpicPalette.dark;
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
@@ -618,6 +639,7 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
                     items: c.items,
                     pageNumber: c.currentPageNumber,
                     revision: c.revision,
+                    selectedIndices: c.selectedItemIndices,
                     pageImage: _pageImage,
                     editingIndex: c.editingIndex,
                     hoveredIndex: c.hoveredItemIndex,

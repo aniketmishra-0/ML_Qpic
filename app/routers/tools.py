@@ -75,28 +75,27 @@ def _get_temp_root(request: Request, settings: Settings) -> str:
     return str(getattr(request.app.state, "temp_root", settings.TEMP_DIR))
 
 
-async def _read_pdf_upload(file: UploadFile, settings: Settings) -> bytes:
-    """Validate the upload is a PDF within limits and return its bytes."""
-
+async def stream_and_validate_pdf_upload(
+    file: UploadFile,
+    dest_path: Path,
+    settings: Settings,
+) -> int:
+    """Stream upload to a file path and validate it is a valid PDF within tools limits."""
     if file.content_type not in ("application/pdf", "application/octet-stream"):
-        # Some browsers send octet-stream for .pdf; fall through to the magic check.
         if file.content_type != "application/pdf":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_FILE_TYPE)
 
-    file_bytes = await file.read()
-    if not file_bytes.startswith(b"%PDF"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF)
+    max_bytes = settings.MAX_TOOLS_PDF_SIZE_MB * 1024 * 1024
+    from ..utils.file_utils import stream_upload_to_file
+    written = await stream_upload_to_file(file, dest_path, max_bytes)
 
-    # The standalone tools (Compress/Edit/Preflight) do cheap PyMuPDF work with
-    # no per-page AI/OCR, so they get the much larger tool ceilings rather than
-    # the cropper's 50MB / 100-page limits.
     validate_pdf(
-        file_bytes=file_bytes,
+        pdf_source=dest_path,
         settings=settings,
         max_size_mb=settings.MAX_TOOLS_PDF_SIZE_MB,
         max_pages=settings.MAX_TOOLS_PAGES,
     )
-    return file_bytes
+    return written
 
 
 # ============================================================================
@@ -138,14 +137,19 @@ async def compress_endpoint(
             detail="target_mb must be greater than 0.",
         )
 
-    file_bytes = await _read_pdf_upload(file, settings)
-
     job_id = generate_job_id()
     temp_root = _get_temp_root(request, settings)
     request_id = getattr(request.state, "request_id", None)
     job_dir: Optional[Path] = None
     try:
         job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
+        source_path = job_dir / _SOURCE_PDF
+
+        # Stream upload directly to disk
+        await stream_and_validate_pdf_upload(file, source_path, settings)
+
+        # Read the file bytes only for CPU-bound compression
+        file_bytes = await asyncio.to_thread(source_path.read_bytes)
         result = await asyncio.to_thread(
             compress_pdf, file_bytes, level=lvl, target_mb=target_mb
         )
@@ -153,8 +157,7 @@ async def compress_endpoint(
         out_path = job_dir / _COMPRESSED_PDF
         await asyncio.to_thread(out_path.write_bytes, result.data)
 
-        # Write to source.pdf to support lazy page previews
-        source_path = job_dir / _SOURCE_PDF
+        # Overwrite source.pdf with compressed PDF to support previews of the optimized doc
         await asyncio.to_thread(source_path.write_bytes, result.data)
 
         geometry = await asyncio.to_thread(_page_geometry, result.data)
@@ -227,16 +230,16 @@ async def preflight_endpoint(
 ) -> PreflightResponse:
     """Run a read-only print/production-readiness inspection of a PDF."""
 
-    file_bytes = await _read_pdf_upload(file, settings)
-    report = await asyncio.to_thread(preflight_pdf, file_bytes)
-
     job_id = generate_job_id()
     temp_root = _get_temp_root(request, settings)
     job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
     source_path = job_dir / _SOURCE_PDF
-    await asyncio.to_thread(source_path.write_bytes, file_bytes)
 
-    geometry = await asyncio.to_thread(_page_geometry, file_bytes)
+    # Stream upload directly to disk
+    await stream_and_validate_pdf_upload(file, source_path, settings)
+
+    report = await asyncio.to_thread(preflight_pdf, source_path)
+    geometry = await asyncio.to_thread(_page_geometry, source_path)
     page_models = [
         EditPageModel(
             page=p,
@@ -295,8 +298,6 @@ async def preflight_fix_page_sizes(
     crisp. The normalized PDF is stored for download.
     """
 
-    file_bytes = await _read_pdf_upload(file, settings)
-
     # Parse skip_pages string into a list of 1-indexed page numbers.
     skip_list: list[int] = []
     if skip_pages and skip_pages.strip():
@@ -325,9 +326,14 @@ async def preflight_fix_page_sizes(
     job_dir: Optional[Path] = None
     try:
         job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
+        source_path = job_dir / _SOURCE_PDF
+
+        # Stream upload directly to disk
+        await stream_and_validate_pdf_upload(file, source_path, settings)
+
         result = await asyncio.to_thread(
             normalize_page_sizes,
-            file_bytes,
+            source_path,
             target=target,
             fill_mode=fm,
             skip_pages=skip_list or None,
@@ -336,8 +342,7 @@ async def preflight_fix_page_sizes(
         out_path = job_dir / _NORMALIZED_PDF
         await asyncio.to_thread(out_path.write_bytes, result.data)
 
-        # Write to source.pdf to support lazy page previews
-        source_path = job_dir / _SOURCE_PDF
+        # Overwrite source.pdf with normalized PDF to support previews of the fixed doc
         await asyncio.to_thread(source_path.write_bytes, result.data)
 
         geometry = await asyncio.to_thread(_page_geometry, result.data)
@@ -401,13 +406,17 @@ async def preflight_download(
 # ============================================================================
 
 
-def _page_geometry(file_bytes: bytes) -> list[tuple[int, float, float]]:
+def _page_geometry(pdf_source: bytes | str | Path) -> list[tuple[int, float, float]]:
     """Return (page_number, width_pt, height_pt) for each page — no rendering."""
 
     import fitz
 
     out: list[tuple[int, float, float]] = []
-    with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+    if isinstance(pdf_source, bytes):
+        doc = fitz.open(stream=pdf_source, filetype="pdf")
+    else:
+        doc = fitz.open(str(pdf_source))
+    with doc:
         for pno in range(doc.page_count):
             rect = doc.load_page(pno).rect
             out.append((pno + 1, rect.width, rect.height))
@@ -429,17 +438,18 @@ async def edit_open(
     opening is fast even on a big document instead of base64-ing every page.
     """
 
-    file_bytes = await _read_pdf_upload(file, settings)
-
     job_id = generate_job_id()
     temp_root = _get_temp_root(request, settings)
     job_dir: Optional[Path] = None
     try:
         job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
-        await asyncio.to_thread((job_dir / _SOURCE_PDF).write_bytes, file_bytes)
+        source_path = job_dir / _SOURCE_PDF
 
-        extracted = await asyncio.to_thread(extract_text_spans, file_bytes)
-        geometry = await asyncio.to_thread(_page_geometry, file_bytes)
+        # Stream upload directly to disk
+        await stream_and_validate_pdf_upload(file, source_path, settings)
+
+        extracted = await asyncio.to_thread(extract_text_spans, source_path)
+        geometry = await asyncio.to_thread(_page_geometry, source_path)
 
         page_models = [
             EditPageModel(
@@ -703,18 +713,19 @@ async def edit_ocr(
     result is a searchable PDF whose text can then be opened in the Edit tool.
     """
 
-    file_bytes = await _read_pdf_upload(file, settings)
-    lang = (languages or getattr(settings, "OCR_LANGUAGES", "eng") or "eng").strip()
-
     job_id = generate_job_id()
     temp_root = _get_temp_root(request, settings)
     job_dir: Optional[Path] = None
     try:
         job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
-        # Keep the source so the OCR'd file can be opened in Edit afterwards.
-        await asyncio.to_thread((job_dir / _SOURCE_PDF).write_bytes, file_bytes)
+        source_path = job_dir / _SOURCE_PDF
 
-        result = await asyncio.to_thread(ocr_pdf, file_bytes, languages=lang, dpi=dpi)
+        # Stream upload directly to disk
+        await stream_and_validate_pdf_upload(file, source_path, settings)
+
+        lang = (languages or getattr(settings, "OCR_LANGUAGES", "eng") or "eng").strip()
+
+        result = await asyncio.to_thread(ocr_pdf, source_path, languages=lang, dpi=dpi)
         out_path = job_dir / _OCR_PDF
         await asyncio.to_thread(out_path.write_bytes, result.data)
         # Make the searchable file the new editable source too.
@@ -754,11 +765,10 @@ async def enhance_endpoint(
     brightness: float = Form(1.0, description="Brightness factor."),
     watermark_threshold: int = Form(255, ge=0, le=255, description="RGB threshold below which pixels become white."),
     dpi: int = Form(200, ge=72, le=300, description="DPI for rendering/processing."),
+    deskew: bool = Form(False, description="Straighten skew scan tilt."),
     settings: Settings = Depends(get_settings),
 ) -> EnhanceResponse:
     """Enhance a PDF page-by-page by removing watermark background text and boosting text contrast."""
-    
-    file_bytes = await _read_pdf_upload(file, settings)
     
     job_id = generate_job_id()
     temp_root = _get_temp_root(request, settings)
@@ -766,26 +776,28 @@ async def enhance_endpoint(
     job_dir: Optional[Path] = None
     try:
         job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
+        source_path = job_dir / _SOURCE_PDF
         
-        # Save original PDF so we can render live page previews using it
-        await asyncio.to_thread((job_dir / _SOURCE_PDF).write_bytes, file_bytes)
+        # Stream upload directly to disk
+        await stream_and_validate_pdf_upload(file, source_path, settings)
         
-        # Enhance PDF
+        # Enhance PDF using the file path to avoid memory overhead
         result_bytes = await asyncio.to_thread(
             enhance_pdf,
-            file_bytes,
+            source_path,
             binarize=binarize,
             contrast=contrast,
             brightness=brightness,
             watermark_threshold=watermark_threshold,
-            dpi=dpi
+            dpi=dpi,
+            deskew=deskew,
         )
         
         out_path = job_dir / _ENHANCED_PDF
         await asyncio.to_thread(out_path.write_bytes, result_bytes)
         
         import fitz
-        with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+        with fitz.open(str(source_path)) as doc:
             pages_total = doc.page_count
             
         logger.info(
@@ -838,6 +850,7 @@ async def enhance_page_preview(
     brightness: float = 1.0,
     watermark_threshold: int = 255,
     dpi: int = 150,
+    deskew: bool = False,
     settings: Settings = Depends(get_settings),
 ):
     """Render a single page of a staged enhance job as an enhanced PNG (live preview)."""
@@ -849,17 +862,17 @@ async def enhance_page_preview(
     if not source.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found or expired.")
         
-    file_bytes = await asyncio.to_thread(source.read_bytes)
     try:
         png = await asyncio.to_thread(
             enhance_page_to_png,
-            file_bytes,
+            source,
             page_no,
             binarize=binarize,
             contrast=contrast,
             brightness=brightness,
             watermark_threshold=watermark_threshold,
-            dpi=dpi
+            dpi=dpi,
+            deskew=deskew,
         )
     except IndexError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Page out of range.")

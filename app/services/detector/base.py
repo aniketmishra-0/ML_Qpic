@@ -232,7 +232,7 @@ def match_question_start(text: str) -> Optional[str]:
 
 
 def match_question_start_ex(
-    text: str, style: str = MARKER_STYLE_AUTO
+    text: str, style: str = MARKER_STYLE_AUTO, custom_regex: Optional[str] = None
 ) -> Optional[tuple[str, bool]]:
     """Return ``(q_num, is_strong)`` for a question marker, or None.
 
@@ -248,6 +248,20 @@ def match_question_start_ex(
     candidate = (text or "").strip()
     if not candidate:
         return None
+
+    if custom_regex:
+        try:
+            import re
+            pat = re.compile(custom_regex, re.IGNORECASE)
+            match = pat.match(candidate)
+            if match:
+                if pat.groups >= 1:
+                    q_num = match.group(1).lstrip("0") or "0"
+                else:
+                    q_num = match.group(0).strip().lstrip("0") or "0"
+                return (q_num, True)
+        except Exception:
+            pass
 
     if style != MARKER_STYLE_NUMBERED:
         strong = STRONG_QUESTION_PATTERN.match(candidate)

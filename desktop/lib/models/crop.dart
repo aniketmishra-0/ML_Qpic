@@ -45,7 +45,8 @@ class QuestionSegment {
   final double yOffsetPct;
 
   /// Returns a copy with [xOffsetPct] and [yOffsetPct] replaced, preserving the region.
-  QuestionSegment copyWithOffset({double? xOffsetPct, double? yOffsetPct}) => QuestionSegment(
+  QuestionSegment copyWithOffset({double? xOffsetPct, double? yOffsetPct}) =>
+      QuestionSegment(
         page: page,
         yStartPct: yStartPct,
         yEndPct: yEndPct,
@@ -296,6 +297,7 @@ class ReviewNote {
     this.qNum,
     this.page,
     this.isSolution = false,
+    this.suggestedSegments,
   });
 
   /// One of "duplicate", "gap", "tiny", "incomplete", "low_confidence".
@@ -304,6 +306,7 @@ class ReviewNote {
   final String? qNum;
   final int? page;
   final bool isSolution;
+  final List<QuestionSegment>? suggestedSegments;
 
   factory ReviewNote.fromJson(Map<String, dynamic> json) {
     return ReviewNote(
@@ -312,6 +315,11 @@ class ReviewNote {
       qNum: json['q_num'] as String?,
       page: (json['page'] as num?)?.toInt(),
       isSolution: json['is_solution'] as bool? ?? false,
+      suggestedSegments: json['suggested_segments'] != null
+          ? (json['suggested_segments'] as List<dynamic>)
+              .map((e) => QuestionSegment.fromJson(e as Map<String, dynamic>))
+              .toList()
+          : null,
     );
   }
 
@@ -322,6 +330,7 @@ class ReviewNote {
       'q_num': qNum,
       'page': page,
       'is_solution': isSolution,
+      'suggested_segments': suggestedSegments?.map((e) => e.toJson()).toList(),
     };
   }
 }
@@ -335,6 +344,7 @@ class SnapRequest {
     required this.xEndPct,
     required this.yStartPct,
     required this.yEndPct,
+    this.marginPct = 0.8,
   });
 
   final String jobId;
@@ -343,6 +353,7 @@ class SnapRequest {
   final double xEndPct;
   final double yStartPct;
   final double yEndPct;
+  final double marginPct;
 
   factory SnapRequest.fromJson(Map<String, dynamic> json) {
     return SnapRequest(
@@ -352,6 +363,7 @@ class SnapRequest {
       xEndPct: (json['x_end_pct'] as num).toDouble(),
       yStartPct: (json['y_start_pct'] as num).toDouble(),
       yEndPct: (json['y_end_pct'] as num).toDouble(),
+      marginPct: (json['margin_pct'] as num?)?.toDouble() ?? 0.8,
     );
   }
 
@@ -363,6 +375,7 @@ class SnapRequest {
       'x_end_pct': xEndPct,
       'y_start_pct': yStartPct,
       'y_end_pct': yEndPct,
+      'margin_pct': marginPct,
     };
   }
 }
@@ -461,6 +474,8 @@ class CropPreviewRequest {
     this.padding = 20,
     this.imageFormat = 'png',
     this.jpgQuality = 90,
+    this.bilingualMode,
+    this.otherSegments,
   });
 
   final String jobId;
@@ -475,6 +490,8 @@ class CropPreviewRequest {
   /// One of "png", "jpg", "jpeg".
   final String imageFormat;
   final int jpgQuality;
+  final String? bilingualMode;
+  final List<QuestionSegment>? otherSegments;
 
   factory CropPreviewRequest.fromJson(Map<String, dynamic> json) {
     return CropPreviewRequest(
@@ -490,6 +507,12 @@ class CropPreviewRequest {
       padding: (json['padding'] as num?)?.toInt() ?? 20,
       imageFormat: json['image_format'] as String? ?? 'png',
       jpgQuality: (json['jpg_quality'] as num?)?.toInt() ?? 90,
+      bilingualMode: json['bilingual_mode'] as String?,
+      otherSegments: json['other_segments'] != null
+          ? (json['other_segments'] as List<dynamic>)
+              .map((e) => QuestionSegment.fromJson(e as Map<String, dynamic>))
+              .toList()
+          : null,
     );
   }
 
@@ -505,6 +528,8 @@ class CropPreviewRequest {
       'padding': padding,
       'image_format': imageFormat,
       'jpg_quality': jpgQuality,
+      'bilingual_mode': bilingualMode,
+      'other_segments': otherSegments?.map((e) => e.toJson()).toList(),
     };
   }
 }
@@ -522,6 +547,7 @@ class FinalizeRequest {
     this.imageFormat = 'png',
     this.jpgQuality = 90,
     this.answerSheet = true,
+    this.bilingualMode,
   });
 
   final String jobId;
@@ -536,6 +562,7 @@ class FinalizeRequest {
   final String imageFormat;
   final int jpgQuality;
   final bool answerSheet;
+  final String? bilingualMode;
 
   factory FinalizeRequest.fromJson(Map<String, dynamic> json) {
     return FinalizeRequest(
@@ -551,6 +578,7 @@ class FinalizeRequest {
       imageFormat: json['image_format'] as String? ?? 'png',
       jpgQuality: (json['jpg_quality'] as num?)?.toInt() ?? 90,
       answerSheet: json['answer_sheet'] as bool? ?? true,
+      bilingualMode: json['bilingual_mode'] as String?,
     );
   }
 
@@ -566,6 +594,7 @@ class FinalizeRequest {
       'image_format': imageFormat,
       'jpg_quality': jpgQuality,
       'answer_sheet': answerSheet,
+      'bilingual_mode': bilingualMode,
     };
   }
 }
@@ -615,6 +644,47 @@ class HealthResponse {
       'ai_model': aiModel,
       'local_ml_available': localMlAvailable,
       'local_ml_model': localMlModel,
+    };
+  }
+}
+
+/// DTO for runtime ML model configuration status (Feature 1).
+class MLConfigResponse {
+  const MLConfigResponse({
+    this.modelPath,
+    this.labelsPath,
+    required this.modelName,
+    required this.confidence,
+    required this.inputSize,
+    required this.localMlAvailable,
+  });
+
+  final String? modelPath;
+  final String? labelsPath;
+  final String modelName;
+  final double confidence;
+  final int inputSize;
+  final bool localMlAvailable;
+
+  factory MLConfigResponse.fromJson(Map<String, dynamic> json) {
+    return MLConfigResponse(
+      modelPath: json['model_path'] as String?,
+      labelsPath: json['labels_path'] as String?,
+      modelName: json['model_name'] as String? ?? '',
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.35,
+      inputSize: (json['input_size'] as num?)?.toInt() ?? 640,
+      localMlAvailable: json['local_ml_available'] as bool? ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'model_path': modelPath,
+      'labels_path': labelsPath,
+      'model_name': modelName,
+      'confidence': confidence,
+      'input_size': inputSize,
+      'local_ml_available': localMlAvailable,
     };
   }
 }

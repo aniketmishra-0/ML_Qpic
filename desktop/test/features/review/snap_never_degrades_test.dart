@@ -204,6 +204,7 @@ Future<QuestionSegment> _run(QuestionSegment drawn, _Scenario scenario) {
     apiClient: client,
     jobId: () => 'job-snap',
     enabled: () => true,
+    marginPct: () => 0.8,
   );
   return intercept(drawn);
 }

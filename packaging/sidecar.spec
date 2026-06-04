@@ -45,10 +45,9 @@ def _root(*parts):
 # Headless launcher entry point (no pywebview/Qt). Req 2.1.
 ENTRY = _root("packaging", "sidecar.py")
 
-# Ship the web UI and the app package source alongside the binary so the engine
-# and static assets resolve from the bundle's own location (Req 2.2, 2.5).
+# Ship the app package source alongside the binary so the engine
+# resolves from the bundle's own location.
 datas = [
-    (_root("static"), "static"),
     (_root("app"), "app"),
 ]
 

@@ -19,7 +19,12 @@ import 'package:flutter/services.dart';
 
 import '../../core/theme_controller.dart';
 import '../../models/crop.dart';
+import '../../models/tools.dart';
+import '../../widgets/drop_target.dart';
+import '../../widgets/enhancement_preview_dialog.dart';
+import '../../widgets/qpic_dropdown.dart';
 import 'auto_crop_controller.dart';
+import 'batch_queue_controller.dart';
 
 /// Stateless form surface for the Auto Crop tool.
 ///
@@ -80,8 +85,12 @@ class AutoCropView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final listenables = <Listenable>[controller];
+    if (controller.batchQueue != null) {
+      listenables.add(controller.batchQueue!);
+    }
     return AnimatedBuilder(
-      animation: controller,
+      animation: Listenable.merge(listenables),
       builder: (context, _) => _buildForm(context),
     );
   }
@@ -110,23 +119,71 @@ class AutoCropView extends StatelessWidget {
                 palette: palette,
                 onClear: onClear,
                 busy: isBusy,
+                controller: controller,
               ),
               const SizedBox(height: 16),
-              _FilePickerRow(
-                fileName: shownFileName,
-                onPickFile: onPickFile,
-                onView: onView,
-                previewLoading: controller.previewLoading,
-              ),
-              if (shownError != null) ...<Widget>[
-                const SizedBox(height: 14),
-                _ErrorBanner(message: shownError, palette: palette),
-              ],
-              const SizedBox(height: 18),
               Expanded(
-                child: wide
-                    ? _buildWideBody(context, palette, isBusy)
-                    : _buildNarrowBody(context, palette, isBusy),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 350),
+                  switchInCurve: Curves.easeInOutCubic,
+                  switchOutCurve: Curves.easeInOutCubic,
+                  transitionBuilder:
+                      (Widget child, Animation<double> animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0.0, 0.03),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: controller.batchMode
+                      ? Column(
+                          key: const ValueKey<String>('batch-mode-layout'),
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (shownError != null) ...<Widget>[
+                              _ErrorBanner(
+                                  message: shownError, palette: palette),
+                              const SizedBox(height: 14),
+                            ],
+                            Expanded(
+                              child: wide
+                                  ? _buildWideBatchBody(
+                                      context, palette, isBusy)
+                                  : _buildNarrowBatchBody(
+                                      context, palette, isBusy),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          key: const ValueKey<String>('single-mode-layout'),
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _FilePickerRow(
+                              controller: controller,
+                              fileName: shownFileName,
+                              onPickFile: onPickFile,
+                              onView: onView,
+                              previewLoading: controller.previewLoading,
+                            ),
+                            if (shownError != null) ...<Widget>[
+                              const SizedBox(height: 14),
+                              _ErrorBanner(
+                                  message: shownError, palette: palette),
+                            ],
+                            const SizedBox(height: 18),
+                            Expanded(
+                              child: wide
+                                  ? _buildWideBody(context, palette, isBusy)
+                                  : _buildNarrowBody(context, palette, isBusy),
+                            ),
+                          ],
+                        ),
+                ),
               ),
             ],
           ),
@@ -172,6 +229,8 @@ class AutoCropView extends StatelessWidget {
                     _NumberingSelector(controller: controller),
                     const SizedBox(height: 16),
                     _LayoutColumnsSelector(controller: controller),
+                    const SizedBox(height: 16),
+                    _AccuracySettingsPanel(controller: controller),
                   ],
                 ),
               ],
@@ -249,6 +308,8 @@ class AutoCropView extends StatelessWidget {
               _NumberingSelector(controller: controller),
               const SizedBox(height: 16),
               _LayoutColumnsSelector(controller: controller),
+              const SizedBox(height: 16),
+              _AccuracySettingsPanel(controller: controller),
             ],
           ),
           const SizedBox(height: 16),
@@ -281,6 +342,145 @@ class AutoCropView extends StatelessWidget {
       ),
     );
   }
+
+  Widget _buildWideBatchBody(
+    BuildContext context,
+    QpicPalette? palette,
+    bool isBusy,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                _SectionCard(
+                  title: 'Pages',
+                  palette: palette,
+                  children: <Widget>[
+                    _QuestionsSection(controller: controller),
+                    const SizedBox(height: 16),
+                    _SolutionsSection(controller: controller),
+                    const SizedBox(height: 16),
+                    _SkipPagesSection(controller: controller),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _SectionCard(
+                  title: 'Detection',
+                  palette: palette,
+                  children: <Widget>[
+                    _ModeToggles(controller: controller),
+                    const SizedBox(height: 16),
+                    _NumberingSelector(controller: controller),
+                    const SizedBox(height: 16),
+                    _LayoutColumnsSelector(controller: controller),
+                    const SizedBox(height: 16),
+                    _AccuracySettingsPanel(controller: controller),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _SectionCard(
+                  title: 'Output',
+                  palette: palette,
+                  children: <Widget>[
+                    _OutputConfig(controller: controller),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _SectionCard(
+                  title: 'Render',
+                  palette: palette,
+                  children: <Widget>[
+                    _RenderConfig(controller: controller),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 20),
+        Expanded(
+          child: _BatchQueuePanel(
+            controller: controller,
+            palette: palette,
+            onPickFile: onPickFile,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNarrowBatchBody(
+    BuildContext context,
+    QpicPalette? palette,
+    bool isBusy,
+  ) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _BatchDropZone(
+            onPickFiles: onPickFile,
+            queue: controller.batchQueue,
+            palette: palette,
+          ),
+          const SizedBox(height: 16),
+          if (controller.batchQueue != null &&
+              controller.batchQueue!.items.isNotEmpty) ...[
+            _BatchQueueList(
+              controller: controller,
+              palette: palette,
+            ),
+            const SizedBox(height: 16),
+          ],
+          _SectionCard(
+            title: 'Pages',
+            palette: palette,
+            children: <Widget>[
+              _QuestionsSection(controller: controller),
+              const SizedBox(height: 16),
+              _SolutionsSection(controller: controller),
+              const SizedBox(height: 16),
+              _SkipPagesSection(controller: controller),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Detection',
+            palette: palette,
+            children: <Widget>[
+              _ModeToggles(controller: controller),
+              const SizedBox(height: 16),
+              _NumberingSelector(controller: controller),
+              const SizedBox(height: 16),
+              _LayoutColumnsSelector(controller: controller),
+              const SizedBox(height: 16),
+              _AccuracySettingsPanel(controller: controller),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Output',
+            palette: palette,
+            children: <Widget>[
+              _OutputConfig(controller: controller),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Render',
+            palette: palette,
+            children: <Widget>[
+              _RenderConfig(controller: controller),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _HeaderBar extends StatelessWidget {
@@ -288,17 +488,20 @@ class _HeaderBar extends StatelessWidget {
     required this.palette,
     required this.onClear,
     required this.busy,
+    required this.controller,
   });
 
   final QpicPalette? palette;
   final VoidCallback? onClear;
   final bool busy;
+  final AutoCropController controller;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final brand = palette?.brand ?? theme.colorScheme.primary;
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: <Widget>[
         Expanded(
           child: Column(
@@ -326,6 +529,33 @@ class _HeaderBar extends StatelessWidget {
             ],
           ),
         ),
+        // Batch Mode toggle
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Batch Mode',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: controller.batchMode
+                    ? brand
+                    : (palette?.muted ?? theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Switch(
+              key: const ValueKey<String>('auto-crop-batch-mode-toggle'),
+              value: controller.batchMode,
+              onChanged: busy
+                  ? null
+                  : (val) {
+                      controller.batchMode = val;
+                    },
+              activeColor: brand,
+            ),
+          ],
+        ),
         if (onClear != null) ...<Widget>[
           const SizedBox(width: 16),
           TextButton.icon(
@@ -346,12 +576,14 @@ class _HeaderBar extends StatelessWidget {
 
 class _FilePickerRow extends StatelessWidget {
   const _FilePickerRow({
+    required this.controller,
     required this.fileName,
     required this.onPickFile,
     this.onView,
     this.previewLoading = false,
   });
 
+  final AutoCropController controller;
   final String? fileName;
   final VoidCallback? onPickFile;
   final VoidCallback? onView;
@@ -365,121 +597,130 @@ class _FilePickerRow extends StatelessWidget {
     final successColor = palette?.success ?? theme.colorScheme.primary;
     final bool hasFile = fileName != null;
 
-    final dropZone = _HoverDropZone(
-      key: const ValueKey<String>('auto-crop-pick-file'),
-      enabled: onPickFile != null,
-      onTap: onPickFile,
-      builder: (context, hovered) {
-        final bool active = hovered && onPickFile != null;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          decoration: BoxDecoration(
-            color: active
-                ? brand.withValues(alpha: 0.08)
-                : (hasFile 
-                    ? (palette?.panelAlt ?? theme.colorScheme.surface)
-                    : (palette?.field ?? theme.colorScheme.surfaceContainerHighest)),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: active 
-                  ? brand 
-                  : (hasFile 
-                      ? successColor.withValues(alpha: 0.5) 
-                      : (palette?.border ?? theme.dividerColor)),
-              width: 1.5,
+    final dropZone = DropFileTarget.pdfOnly(
+      enabled: onPickFile != null && !controller.busy,
+      onAccepted: (files) async {
+        if (files.isEmpty) return;
+        final file = files.first;
+        final bytes = await file.readAsBytes();
+        controller.setFile(bytes: bytes, filename: file.name);
+      },
+      onRejected: (msg) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      },
+      child: _HoverDropZone(
+        key: const ValueKey<String>('auto-crop-pick-file'),
+        enabled: onPickFile != null,
+        onTap: onPickFile,
+        builder: (context, hovered) {
+          final bool active = hovered && onPickFile != null;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+            decoration: BoxDecoration(
+              color: active
+                  ? brand.withValues(alpha: 0.08)
+                  : (hasFile
+                      ? (palette?.panelAlt ?? theme.colorScheme.surface)
+                      : (palette?.field ??
+                          theme.colorScheme.surfaceContainerHighest)),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: active
+                    ? brand
+                    : (hasFile
+                        ? successColor.withValues(alpha: 0.3)
+                        : (palette?.borderSoft ?? theme.dividerColor).withValues(alpha: 0.5)),
+                width: 1.0,
+              ),
             ),
-            boxShadow: active
-                ? [
-                    BoxShadow(
-                      color: brand.withValues(alpha: 0.15),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    )
-                  ]
-                : [],
-          ),
-          child: Row(
-            children: <Widget>[
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: hasFile 
-                      ? successColor.withValues(alpha: 0.12)
-                      : brand.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  hasFile
-                      ? Icons.picture_as_pdf_rounded
-                      : Icons.cloud_upload_outlined,
-                  color: hasFile ? successColor : brand,
-                  size: 22,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    Text(
-                      hasFile ? fileName! : 'Drop your PDF here',
-                      key: const ValueKey<String>('auto-crop-file-name'),
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: palette?.text ?? theme.colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      hasFile ? 'Tap to choose a different PDF' : 'or click to browse',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: palette?.mutedAlt ??
-                            theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (hasFile) ...[
-                const SizedBox(width: 12),
+            child: Row(
+              children: <Widget>[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  width: 44,
+                  height: 44,
                   decoration: BoxDecoration(
-                    color: successColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
+                    color: hasFile
+                        ? successColor.withValues(alpha: 0.12)
+                        : brand.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Row(
+                  child: Icon(
+                    hasFile
+                        ? Icons.picture_as_pdf_rounded
+                        : Icons.cloud_upload_outlined,
+                    color: hasFile ? successColor : brand,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.check_circle_rounded,
-                        size: 14,
-                        color: successColor,
-                      ),
-                      const SizedBox(width: 4),
+                    children: <Widget>[
                       Text(
-                        'LOADED',
+                        hasFile ? fileName! : 'Drop your PDF here',
+                        key: const ValueKey<String>('auto-crop-file-name'),
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 14,
                           fontWeight: FontWeight.w800,
-                          color: successColor,
-                          letterSpacing: 0.5,
+                          color: palette?.text ?? theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        hasFile
+                            ? 'Tap to choose a different PDF'
+                            : 'or click to browse',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: palette?.mutedAlt ??
+                              theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
                   ),
                 ),
+                if (hasFile) ...[
+                  const SizedBox(width: 12),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: successColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_circle_rounded,
+                          size: 14,
+                          color: successColor,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'LOADED',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: successColor,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
-            ],
-          ),
-        );
-      },
+            ),
+          );
+        },
+      ),
     );
 
     // The View affordance only appears once a PDF is loaded. It sits outside
@@ -567,7 +808,8 @@ class _HoverDropZoneState extends State<_HoverDropZone> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor:
+          widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: GestureDetector(
@@ -628,58 +870,26 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final accentColor = _getAccentColor(palette);
-    final sectionIcon = _getIcon();
 
-    // Use a Material (not a colored Container) as the card surface so the
-    // SwitchListTiles inside paint their background/ink on it directly.
+    // Borderless, clean card — no visible box, just spacing and subtle divider.
     return Material(
-      color: palette?.panel ?? theme.colorScheme.surface,
-      elevation: 2,
-      shadowColor: (palette?.border ?? theme.dividerColor).withValues(alpha: 0.08),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: palette?.borderSoft ?? theme.dividerColor, width: 1.5),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: <Widget>[
-              Row(
-                children: [
-                  Container(
-                    width: 4,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color: accentColor,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    sectionIcon,
-                    size: 18,
-                    color: accentColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    title.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: palette?.text ?? theme.colorScheme.onSurface,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ],
+      color: Colors.transparent,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
               ),
-              const SizedBox(height: 16),
-              ...children,
-            ],
-          ),
+            ),
+            const SizedBox(height: 12),
+            ...children,
+          ],
         ),
       ),
     );
@@ -728,17 +938,12 @@ class _QuestionsSection extends StatelessWidget {
     final brand = palette?.brand ?? theme.colorScheme.primary;
 
     return Material(
-      color: controller.hasQuestions 
-          ? brand.withValues(alpha: 0.03) 
-          : Colors.transparent,
+      color: controller.hasQuestions
+          ? brand.withValues(alpha: 0.03)
+          : (palette?.panel ?? theme.colorScheme.surface),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: controller.hasQuestions 
-              ? brand.withValues(alpha: 0.3) 
-              : (palette?.borderSoft ?? theme.dividerColor),
-          width: 1.2,
-        ),
+        side: BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -746,7 +951,8 @@ class _QuestionsSection extends StatelessWidget {
         children: <Widget>[
           SwitchListTile(
             key: const ValueKey<String>('auto-crop-has-questions'),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             title: Row(
               children: [
                 Icon(
@@ -759,7 +965,9 @@ class _QuestionsSection extends StatelessWidget {
                   'Questions',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: controller.hasQuestions ? palette?.text : palette?.muted,
+                    color: controller.hasQuestions
+                        ? palette?.text
+                        : palette?.muted,
                   ),
                 ),
               ],
@@ -805,17 +1013,12 @@ class _SolutionsSection extends StatelessWidget {
     final brand = palette?.brand ?? theme.colorScheme.primary;
 
     return Material(
-      color: controller.hasAnswers 
-          ? brand.withValues(alpha: 0.03) 
-          : Colors.transparent,
+      color: controller.hasAnswers
+          ? brand.withValues(alpha: 0.03)
+          : (palette?.panel ?? theme.colorScheme.surface),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: controller.hasAnswers 
-              ? brand.withValues(alpha: 0.3) 
-              : (palette?.borderSoft ?? theme.dividerColor),
-          width: 1.2,
-        ),
+        side: BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -823,7 +1026,8 @@ class _SolutionsSection extends StatelessWidget {
         children: <Widget>[
           SwitchListTile(
             key: const ValueKey<String>('auto-crop-has-answers'),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             title: Row(
               children: [
                 Icon(
@@ -836,7 +1040,8 @@ class _SolutionsSection extends StatelessWidget {
                   'Solutions',
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
-                    color: controller.hasAnswers ? palette?.text : palette?.muted,
+                    color:
+                        controller.hasAnswers ? palette?.text : palette?.muted,
                   ),
                 ),
               ],
@@ -883,16 +1088,10 @@ class _SkipPagesSection extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: controller.skipPages.isNotEmpty 
-            ? danger.withValues(alpha: 0.02) 
+        color: controller.skipPages.isNotEmpty
+            ? danger.withValues(alpha: 0.02)
             : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: controller.skipPages.isNotEmpty 
-              ? danger.withValues(alpha: 0.25) 
-              : (palette?.borderSoft ?? theme.dividerColor),
-          width: 1.2,
-        ),
       ),
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -903,14 +1102,17 @@ class _SkipPagesSection extends StatelessWidget {
               Icon(
                 Icons.block_rounded,
                 size: 18,
-                color: controller.skipPages.isNotEmpty ? danger : palette?.muted,
+                color:
+                    controller.skipPages.isNotEmpty ? danger : palette?.muted,
               ),
               const SizedBox(width: 10),
               Text(
                 'Skip Pages (Optional)',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
-                  color: controller.skipPages.isNotEmpty ? palette?.text : palette?.muted,
+                  color: controller.skipPages.isNotEmpty
+                      ? palette?.text
+                      : palette?.muted,
                   fontSize: 14,
                 ),
               ),
@@ -1062,6 +1264,19 @@ class _ModeToggles extends StatelessWidget {
           palette: palette,
           theme: theme,
         ),
+        const SizedBox(height: 12),
+        _buildToggleItem(
+          key: const ValueKey<String>('auto-crop-bilingual-mode'),
+          icon: Icons.g_translate_rounded,
+          title: 'Bilingual Mode (द्विभाषी)',
+          subtitle:
+              'Enable side-by-side bilingual question stitching and download options.',
+          value: controller.bilingualModeActive,
+          onChanged: (value) => controller.bilingualModeActive = value,
+          brandColor: brand,
+          palette: palette,
+          theme: theme,
+        ),
       ],
     );
   }
@@ -1079,15 +1294,10 @@ class _ModeToggles extends StatelessWidget {
   }) {
     final active = value && onChanged != null;
     return Material(
-      color: active ? brandColor.withValues(alpha: 0.03) : Colors.transparent,
+      color: active ? brandColor.withValues(alpha: 0.03) : (palette?.panel ?? theme.colorScheme.surface),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(
-          color: active 
-              ? brandColor.withValues(alpha: 0.3) 
-              : (palette?.borderSoft ?? theme.dividerColor),
-          width: 1.2,
-        ),
+        side: BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
       child: SwitchListTile(
@@ -1148,31 +1358,22 @@ class _NumberingSelector extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<NumberingMode>(
+        QpicDropdownField<NumberingMode>(
           key: const ValueKey<String>('auto-crop-numbering'),
-          initialValue: controller.numbering,
-          style: TextStyle(
-            fontSize: 14,
-            color: palette?.text ?? theme.colorScheme.onSurface,
+          value: controller.numbering,
+          prefixIcon: Icon(
+            Icons.format_list_numbered_rounded,
+            size: 18,
+            color: palette?.muted,
           ),
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(
-              Icons.format_list_numbered_rounded,
-              size: 18,
-              color: palette?.muted,
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          ),
-          items: <DropdownMenuItem<NumberingMode>>[
-            for (final mode in NumberingMode.values)
-              DropdownMenuItem<NumberingMode>(
-                value: mode,
-                child: Text(mode.label),
-              ),
-          ],
+          items: NumberingMode.values.map((mode) {
+            return QpicDropdownItem<NumberingMode>(
+              value: mode,
+              label: mode.label,
+            );
+          }).toList(),
           onChanged: (mode) {
-            if (mode != null) controller.numbering = mode;
+            controller.numbering = mode;
           },
         ),
       ],
@@ -1204,31 +1405,22 @@ class _LayoutColumnsSelector extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        DropdownButtonFormField<LayoutColumnsMode>(
+        QpicDropdownField<LayoutColumnsMode>(
           key: const ValueKey<String>('auto-crop-layout-columns'),
-          initialValue: controller.layoutColumns,
-          style: TextStyle(
-            fontSize: 14,
-            color: palette?.text ?? theme.colorScheme.onSurface,
+          value: controller.layoutColumns,
+          prefixIcon: Icon(
+            Icons.view_column_rounded,
+            size: 18,
+            color: palette?.muted,
           ),
-          decoration: InputDecoration(
-            isDense: true,
-            prefixIcon: Icon(
-              Icons.view_column_rounded,
-              size: 18,
-              color: palette?.muted,
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          ),
-          items: <DropdownMenuItem<LayoutColumnsMode>>[
-            for (final mode in LayoutColumnsMode.values)
-              DropdownMenuItem<LayoutColumnsMode>(
-                value: mode,
-                child: Text(mode.label),
-              ),
-          ],
+          items: LayoutColumnsMode.values.map((mode) {
+            return QpicDropdownItem<LayoutColumnsMode>(
+              value: mode,
+              label: mode.label,
+            );
+          }).toList(),
           onChanged: (mode) {
-            if (mode != null) controller.layoutColumns = mode;
+            controller.layoutColumns = mode;
           },
         ),
       ],
@@ -1656,53 +1848,29 @@ class _SubmitButton extends StatelessWidget {
     final label = smartMode ? 'Analyze & Review' : 'Crop';
     final disabled = onSubmit == null || busy;
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: disabled
-            ? null
-            : LinearGradient(
-                colors: [
-                  palette?.brand ?? const Color(0xFF7C6CFF),
-                  palette?.brandMagenta ?? const Color(0xFFB14EFF),
-                ],
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
+    return FilledButton.icon(
+      key: const ValueKey<String>('auto-crop-submit'),
+      onPressed: busy ? null : onSubmit,
+      icon: busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
               ),
-        color: disabled ? (palette?.border ?? theme.dividerColor) : null,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: disabled
-            ? null
-            : [
-                BoxShadow(
-                  color: (palette?.brand ?? const Color(0xFF7C6CFF)).withValues(alpha: 0.25),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-      ),
-      child: FilledButton.icon(
-        key: const ValueKey<String>('auto-crop-submit'),
-        onPressed: busy ? null : onSubmit,
-        icon: busy
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-              )
-            : Icon(smartMode ? Icons.travel_explore_rounded : Icons.crop_rounded),
-        label: Text(label),
-        style: FilledButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          disabledBackgroundColor: Colors.transparent,
-          disabledForegroundColor: palette?.mutedAlt,
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+            )
+          : Icon(
+              smartMode ? Icons.travel_explore_rounded : Icons.crop_rounded),
+      label: Text(label),
+      style: FilledButton.styleFrom(
+        backgroundColor: palette?.brand ?? const Color(0xFF7C6CFF),
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: palette?.border ?? theme.dividerColor,
+        disabledForegroundColor: palette?.mutedAlt,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
         ),
       ),
     );
@@ -1730,7 +1898,7 @@ class _DownloadCard extends StatelessWidget {
       color: palette?.panel ?? theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: palette?.border ?? theme.dividerColor),
+        side: BorderSide.none,
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1803,5 +1971,1019 @@ class _DownloadCard extends StatelessWidget {
     final counts = parts.isEmpty ? 'No items' : parts.join(' · ');
     final sheet = result.answerSheetIncluded ? ' · answer sheet included' : '';
     return '$counts$sheet';
+  }
+}
+
+class _AccuracySettingsPanel extends StatefulWidget {
+  const _AccuracySettingsPanel({required this.controller});
+
+  final AutoCropController controller;
+
+  @override
+  State<_AccuracySettingsPanel> createState() => _AccuracySettingsPanelState();
+}
+
+class _AccuracySettingsPanelState extends State<_AccuracySettingsPanel> {
+  bool _testerOpen = false;
+  bool _testing = false;
+  String? _error;
+  final _sampleController = TextEditingController(
+    text:
+        "1. Sample Question\nQuestion text...\n2. Another Question\na) Option A\n3) Third Question",
+  );
+  List<RegexMatchResult> _results = [];
+
+  @override
+  void dispose() {
+    _sampleController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _runRegexTest() async {
+    final client = widget.controller.apiClient;
+    if (client == null) {
+      setState(() {
+        _error = "Engine not connected. Cannot run test.";
+      });
+      return;
+    }
+
+    final pattern = widget.controller.customRegex;
+    if (pattern.isEmpty) {
+      setState(() {
+        _error = "Please enter a custom regex pattern first.";
+      });
+      return;
+    }
+
+    setState(() {
+      _testing = true;
+      _error = null;
+      _results = [];
+    });
+
+    try {
+      final lines = _sampleController.text.split('\n');
+      final response = await client.testRegex(
+        pattern: pattern,
+        sampleLines: lines,
+      );
+      setState(() {
+        _results = response.results;
+        _testing = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _testing = false;
+      });
+    }
+  }
+
+  Future<void> _openEnhancementPreview(BuildContext context) async {
+    final client = widget.controller.apiClient;
+    if (client == null) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final jobId = await widget.controller.stashForPreview();
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Dismiss spinner
+
+      if (jobId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to stash PDF for preview.')),
+        );
+        return;
+      }
+
+      // Open the preview dialog
+      await showDialog(
+        context: context,
+        builder: (context) => EnhancementPreviewDialog(
+          apiClient: client,
+          jobId: jobId,
+          totalPages: widget.controller.previewPages?.length ??
+              widget.controller.analyzeResult?.totalPages ??
+              1,
+          initialContrast: widget.controller.contrast,
+          initialBrightness: widget.controller.brightness,
+          initialWatermarkThreshold: widget.controller.watermarkThreshold,
+          initialBinarize: widget.controller.binarize,
+          initialDeskew: widget.controller.deskew,
+          onApply: (contrast, brightness, watermark, binarize, deskew) {
+            widget.controller.contrast = contrast;
+            widget.controller.brightness = brightness;
+            widget.controller.watermarkThreshold = watermark;
+            widget.controller.binarize = binarize;
+            widget.controller.deskew = deskew;
+          },
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // Dismiss spinner
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error stashing PDF: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+
+    return Theme(
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: const ValueKey<String>('auto-crop-accuracy-settings-tile'),
+        title: Text(
+          'Enhancement / Accuracy Settings',
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700,
+            color: palette?.text ?? theme.colorScheme.onSurface,
+          ),
+        ),
+        leading: Icon(Icons.tune_rounded, color: brand, size: 20),
+        childrenPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: <Widget>[
+          if (widget.controller.hasFile)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.preview_rounded, size: 16),
+                  label: const Text('Live Enhancement Preview'),
+                  onPressed: () => _openEnhancementPreview(context),
+                ),
+              ),
+            ),
+          _SliderField(
+            label: 'Contrast Scale',
+            subtitle: 'Scale text contrast to improve OCR detection.',
+            value: widget.controller.contrast,
+            min: 0.5,
+            max: 3.0,
+            divisions: 25,
+            displayValue: widget.controller.contrast.toStringAsFixed(2),
+            onChanged: (val) => widget.controller.contrast = val,
+          ),
+          const SizedBox(height: 16),
+          _SliderField(
+            label: 'Brightness Scale',
+            subtitle: 'Scale brightness to correct over/under-exposed scans.',
+            value: widget.controller.brightness,
+            min: 0.5,
+            max: 2.0,
+            divisions: 15,
+            displayValue: widget.controller.brightness.toStringAsFixed(2),
+            onChanged: (val) => widget.controller.brightness = val,
+          ),
+          const SizedBox(height: 16),
+          _SliderField(
+            label: 'Watermark Filter',
+            subtitle: 'Filter light gray backgrounds / watermark artifacts.',
+            value: widget.controller.watermarkThreshold.toDouble(),
+            min: 0,
+            max: 255,
+            divisions: 255,
+            displayValue: widget.controller.watermarkThreshold == 255
+                ? 'Off'
+                : '${widget.controller.watermarkThreshold}',
+            onChanged: (val) =>
+                widget.controller.watermarkThreshold = val.round(),
+          ),
+          const SizedBox(height: 16),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Binarize (Pure B&W)',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            subtitle: const Text('Render page to high-contrast monochrome',
+                style: TextStyle(fontSize: 11.5)),
+            value: widget.controller.binarize,
+            onChanged: (val) => widget.controller.binarize = val,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Deskew Pages',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            subtitle: const Text('Detect and straighten scan skew tilt',
+                style: TextStyle(fontSize: 11.5)),
+            value: widget.controller.deskew,
+            onChanged: (val) => widget.controller.deskew = val,
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            key: const ValueKey<String>('auto-crop-custom-regex'),
+            controller: TextEditingController(
+                text: widget.controller.customRegex)
+              ..selection = TextSelection.fromPosition(
+                  TextPosition(offset: widget.controller.customRegex.length)),
+            decoration: InputDecoration(
+              labelText: 'Custom Question Regex',
+              hintText: r'e.g. ^\s*(\d{1,3})\s*-\s*',
+              helperText:
+                  'Custom expression to match question numbering starts',
+              helperMaxLines: 2,
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              suffixIcon: widget.controller.apiClient != null
+                  ? IconButton(
+                      icon: const Icon(Icons.bug_report_outlined),
+                      tooltip: 'Test Regex Pattern',
+                      onPressed: () =>
+                          setState(() => _testerOpen = !_testerOpen),
+                    )
+                  : null,
+            ),
+            style: const TextStyle(fontSize: 13),
+            onChanged: (val) => widget.controller.customRegex = val,
+          ),
+          if (_testerOpen) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color:
+                    palette?.panelAlt ?? theme.colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: palette?.borderSoft ?? theme.dividerColor),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Interactive Regex Tester',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: palette?.text ?? theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded, size: 16),
+                        onPressed: () => setState(() => _testerOpen = false),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _sampleController,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Sample Text Lines',
+                      hintText: 'Enter test lines here...',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      if (_testing)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      else
+                        FilledButton.icon(
+                          icon: const Icon(Icons.play_arrow_rounded, size: 16),
+                          label: const Text('Run Test'),
+                          onPressed: _runRegexTest,
+                        ),
+                      if (_error != null)
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 8.0),
+                            child: Text(
+                              _error!,
+                              style: TextStyle(
+                                color:
+                                    palette?.danger ?? theme.colorScheme.error,
+                                fontSize: 11,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (_results.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Results:',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: palette?.text ?? theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 180),
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _results.length,
+                        itemBuilder: (context, index) {
+                          final res = _results[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  res.matched
+                                      ? Icons.check_circle_outline
+                                      : Icons.cancel_outlined,
+                                  color:
+                                      res.matched ? Colors.green : Colors.red,
+                                  size: 16,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    res.line,
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      color: palette?.text ??
+                                          theme.colorScheme.onSurface,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (res.matched)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: brand.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      'Q: ${res.qNum}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: brand,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          _SliderField(
+            label: 'ML Confidence Threshold',
+            subtitle: 'Filter local ML model box detection score.',
+            value: widget.controller.mlConfidence,
+            min: 0.1,
+            max: 1.0,
+            divisions: 18,
+            displayValue: '${(widget.controller.mlConfidence * 100).round()}%',
+            onChanged: (val) => widget.controller.mlConfidence = val,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SliderField extends StatelessWidget {
+  const _SliderField({
+    required this.label,
+    required this.subtitle,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.displayValue,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String subtitle;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final String displayValue;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w700)),
+                Text(subtitle,
+                    style: TextStyle(fontSize: 11, color: palette?.muted)),
+              ],
+            ),
+            Text(
+              displayValue,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: palette?.brand ?? theme.colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: value,
+          min: min,
+          max: max,
+          divisions: divisions,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+class _BatchDropZone extends StatelessWidget {
+  const _BatchDropZone({
+    required this.onPickFiles,
+    required this.queue,
+    required this.palette,
+    this.isExpanded = false,
+  });
+
+  final VoidCallback? onPickFiles;
+  final BatchQueueController? queue;
+  final QpicPalette? palette;
+  final bool isExpanded;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+
+    return DropFileTarget(
+      acceptedExtensions: const ['pdf'],
+      allowMultiple: true,
+      enabled: onPickFiles != null && queue != null && !queue!.isProcessing,
+      onAccepted: (files) {
+        if (queue != null && !queue!.isProcessing) {
+          queue!.addFiles(files);
+        }
+      },
+      onRejected: (msg) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg)),
+        );
+      },
+      child: _HoverDropZone(
+        key: const ValueKey<String>('auto-crop-batch-dropzone'),
+        enabled: onPickFiles != null && queue != null && !queue!.isProcessing,
+        onTap: onPickFiles,
+        builder: (context, hovered) {
+          final bool active = hovered &&
+              onPickFiles != null &&
+              queue != null &&
+              !queue!.isProcessing;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            padding: EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: isExpanded ? 64 : 24,
+            ),
+            decoration: BoxDecoration(
+              color: active
+                  ? brand.withValues(alpha: 0.08)
+                  : (palette?.field ??
+                      theme.colorScheme.surfaceContainerHighest),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: active ? brand : (palette?.border ?? theme.dividerColor),
+                width: 1.5,
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: isExpanded ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.cloud_upload_outlined,
+                  color: brand,
+                  size: isExpanded ? 48 : 32,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Drop multiple PDFs here or click to browse',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: isExpanded ? 15 : 14,
+                    fontWeight: FontWeight.w700,
+                    color: palette?.text ?? theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Supports sequential batch processing of multiple files',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color:
+                        palette?.mutedAlt ?? theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                if (isExpanded) ...[
+                  const SizedBox(height: 24),
+                  Divider(
+                      color: (palette?.borderSoft ?? theme.dividerColor)
+                          .withValues(alpha: 0.5)),
+                  const SizedBox(height: 16),
+                  _buildTipItem(
+                    context,
+                    Icons.settings_suggest_outlined,
+                    'Configure settings on the left panel first.',
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTipItem(
+                    context,
+                    Icons.play_circle_outline_rounded,
+                    'Click "Process All" to start automatic cropping.',
+                  ),
+                  const SizedBox(height: 12),
+                  _buildTipItem(
+                    context,
+                    Icons.download_done_rounded,
+                    'Download final cropped ZIP archives sequentially.',
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildTipItem(BuildContext context, IconData icon, String text) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon,
+            size: 16,
+            color: palette?.mutedAlt ?? theme.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 11.5,
+              color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+            ),
+            textAlign: TextAlign.left,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BatchQueueList extends StatelessWidget {
+  const _BatchQueueList({
+    required this.controller,
+    required this.palette,
+  });
+
+  final AutoCropController controller;
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final queue = controller.batchQueue;
+    if (queue == null || queue.items.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Text(
+            'Queue is empty. Add some PDF files to start.',
+            style: TextStyle(color: palette?.muted),
+          ),
+        ),
+      );
+    }
+
+    final theme = Theme.of(context);
+    final borderSoft = palette?.borderSoft ?? theme.dividerColor;
+
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const ClampingScrollPhysics(),
+      itemCount: queue.items.length,
+      separatorBuilder: (context, index) =>
+          Divider(color: borderSoft, height: 1),
+      itemBuilder: (context, index) {
+        final item = queue.items[index];
+        return _BatchQueueItemTile(
+          item: item,
+          index: index,
+          queue: queue,
+          controller: controller,
+          palette: palette,
+        );
+      },
+    );
+  }
+}
+
+class _BatchQueueItemTile extends StatelessWidget {
+  const _BatchQueueItemTile({
+    required this.item,
+    required this.index,
+    required this.queue,
+    required this.controller,
+    required this.palette,
+  });
+
+  final BatchQueueItem item;
+  final int index;
+  final BatchQueueController queue;
+  final AutoCropController controller;
+  final QpicPalette? palette;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final successColor = palette?.success ?? Colors.green;
+    final errorColor = palette?.danger ?? Colors.red;
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+
+    Widget statusIcon;
+    switch (item.status) {
+      case BatchItemStatus.pending:
+        statusIcon =
+            Icon(Icons.access_time_rounded, color: palette?.muted, size: 18);
+        break;
+      case BatchItemStatus.processing:
+        statusIcon = SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            valueColor: AlwaysStoppedAnimation<Color>(brand),
+          ),
+        );
+        break;
+      case BatchItemStatus.done:
+        statusIcon =
+            Icon(Icons.check_circle_rounded, color: successColor, size: 18);
+        break;
+      case BatchItemStatus.error:
+        statusIcon = Icon(Icons.error_rounded, color: errorColor, size: 18);
+        break;
+    }
+
+    final double kb = item.bytes.length / 1024;
+    final String sizeText = kb > 1024
+        ? '${(kb / 1024).toStringAsFixed(1)} MB'
+        : '${kb.toStringAsFixed(0)} KB';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      child: Row(
+        children: [
+          statusIcon,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.file.name,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: palette?.text ?? theme.colorScheme.onSurface,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (item.errorText != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    item.errorText!,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: errorColor,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ] else ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    sizeText,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: palette?.mutedAlt ??
+                          theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (item.status == BatchItemStatus.done && item.result != null) ...[
+            const SizedBox(width: 8),
+            Text(
+              _formatItemCounts(item.result!),
+              style: TextStyle(
+                fontSize: 11,
+                color: palette?.mutedAlt ?? theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.download_rounded, color: successColor, size: 18),
+              tooltip: 'Download ZIP',
+              onPressed: () async {
+                final ds = controller.downloadService;
+                if (ds != null) {
+                  await queue.downloadItem(
+                    index,
+                    ds,
+                    controller.questionPrefix,
+                    controller.solutionPrefix,
+                  );
+                }
+              },
+            ),
+          ],
+          if (!queue.isProcessing)
+            IconButton(
+              icon: Icon(Icons.delete_outline_rounded,
+                  color: palette?.muted, size: 18),
+              tooltip: 'Remove',
+              onPressed: () => queue.removeFile(index),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _formatItemCounts(CropResponse result) {
+    final parts = <String>[];
+    if (result.questionsCount > 0) {
+      parts.add('${result.questionsCount}Q');
+    }
+    if (result.solutionsCount > 0) {
+      parts.add('${result.solutionsCount}S');
+    }
+    return parts.isEmpty ? '0 items' : parts.join(' · ');
+  }
+}
+
+class _BatchQueuePanel extends StatelessWidget {
+  const _BatchQueuePanel({
+    required this.controller,
+    required this.palette,
+    required this.onPickFile,
+  });
+
+  final AutoCropController controller;
+  final QpicPalette? palette;
+  final VoidCallback? onPickFile;
+
+  @override
+  Widget build(BuildContext context) {
+    final queue = controller.batchQueue;
+    final theme = Theme.of(context);
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+    final borderSoft = palette?.borderSoft ?? theme.dividerColor;
+
+    final bool hasItems = queue != null && queue.items.isNotEmpty;
+    final bool processing = queue?.isProcessing ?? false;
+
+    return Material(
+      color: palette?.panel ?? theme.colorScheme.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide.none,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'Batch Processing Queue',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const Spacer(),
+                if (hasItems && !processing)
+                  TextButton.icon(
+                    icon: const Icon(Icons.clear_all_rounded, size: 16),
+                    label: const Text('Clear Queue'),
+                    onPressed: () => queue.clear(),
+                    style: TextButton.styleFrom(
+                      foregroundColor: palette?.muted,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (hasItems) ...[
+              _BatchDropZone(
+                onPickFiles: onPickFile,
+                queue: queue,
+                palette: palette,
+                isExpanded: false,
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: _BatchQueueList(
+                  controller: controller,
+                  palette: palette,
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (processing) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Processing file ${queue.currentIndex + 1} of ${queue.items.length}...',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: palette?.text ?? theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    Text(
+                      '${(queue.progress * 100).round()}%',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: brand,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: queue.progress,
+                    color: brand,
+                    backgroundColor: brand.withValues(alpha: 0.12),
+                    minHeight: 6,
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      key:
+                          const ValueKey<String>('auto-crop-batch-process-all'),
+                      icon: processing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : const Icon(Icons.play_circle_fill_rounded,
+                              size: 18),
+                      label: Text(processing ? 'Processing...' : 'Process All'),
+                      onPressed: processing || controller.apiClient == null
+                          ? null
+                          : () {
+                              final guard = controller.validateSubmission();
+                              if (guard != null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text(guard)),
+                                );
+                                return;
+                              }
+                              queue.processAll(
+                                client: controller.apiClient!,
+                                dpi: controller.dpi,
+                                padding: controller.padding,
+                                markerStyle: controller.markerStyle,
+                                hasQuestions: controller.hasQuestions,
+                                questionPages: controller.hasQuestions
+                                    ? controller.questionPages
+                                    : null,
+                                hasAnswers: controller.hasAnswers,
+                                answerPages: controller.hasAnswers
+                                    ? controller.answerPages
+                                    : null,
+                                skipPages: controller.skipPages.isNotEmpty
+                                    ? controller.skipPages
+                                    : null,
+                                questionPrefix: controller.questionPrefix,
+                                solutionPrefix: controller.solutionPrefix,
+                                startNumber: controller.startNumber,
+                                imageFormat: controller.imageFormatValue,
+                                jpgQuality: controller.jpgQuality,
+                                useAi: controller.useAi,
+                                answerSheet: controller.answerSheet,
+                                layoutColumns: controller.layoutColumnsValue,
+                                binarize: controller.binarize,
+                                contrast: controller.contrast,
+                                brightness: controller.brightness,
+                                watermarkThreshold:
+                                    controller.watermarkThreshold,
+                                deskew: controller.deskew,
+                                customRegex: controller.customRegex,
+                                confidence: controller.mlConfidence,
+                              );
+                            },
+                    ),
+                  ),
+                  if (queue.hasSuccessfulItems) ...[
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      key: const ValueKey<String>(
+                          'auto-crop-batch-download-all'),
+                      icon: const Icon(Icons.download_for_offline_rounded,
+                          size: 18),
+                      label: const Text('Download All'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: palette?.success ?? Colors.green,
+                        side: BorderSide(
+                            color: (palette?.success ?? Colors.green)
+                                .withValues(alpha: 0.4),
+                            width: 1.5),
+                      ),
+                      onPressed: () async {
+                        final ds = controller.downloadService;
+                        if (ds != null) {
+                          await queue.downloadAll(
+                            ds,
+                            controller.questionPrefix,
+                            controller.solutionPrefix,
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ] else
+              Expanded(
+                child: _BatchDropZone(
+                  onPickFiles: onPickFile,
+                  queue: queue,
+                  palette: palette,
+                  isExpanded: true,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

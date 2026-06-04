@@ -110,6 +110,7 @@ void main() {
         apiClient: h.client,
         jobId: () => 'job-xyz',
         enabled: () => true,
+        marginPct: () => 0.8,
       );
 
       await intercept(_drawn(page: 3, x0: 11, x1: 61, y0: 22, y1: 72));
@@ -136,6 +137,7 @@ void main() {
         apiClient: h.client,
         jobId: () => 'job-1',
         enabled: () => true,
+        marginPct: () => 0.8,
       );
 
       final QuestionSegment out = await intercept(_drawn(page: 4));
@@ -157,6 +159,7 @@ void main() {
         apiClient: h.client,
         jobId: () => 'job-1',
         enabled: () => true,
+        marginPct: () => 0.8,
       );
 
       final QuestionSegment out = await intercept(drawn);
@@ -177,6 +180,7 @@ void main() {
         apiClient: h.client,
         jobId: () => 'job-1',
         enabled: () => true,
+        marginPct: () => 0.8,
       );
 
       final QuestionSegment out = await intercept(drawn);
@@ -196,6 +200,7 @@ void main() {
         apiClient: h.client,
         jobId: () => 'job-1',
         enabled: () => false,
+        marginPct: () => 0.8,
       );
 
       final QuestionSegment drawn = _drawn();
@@ -214,6 +219,7 @@ void main() {
         apiClient: h.client,
         jobId: () => '', // no session loaded
         enabled: () => true,
+        marginPct: () => 0.8,
       );
 
       final QuestionSegment drawn = _drawn();

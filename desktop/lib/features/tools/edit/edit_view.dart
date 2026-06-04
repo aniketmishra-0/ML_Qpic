@@ -225,7 +225,8 @@ class _ReadyState extends StatefulWidget {
 }
 
 class _ReadyStateState extends State<_ReadyState> {
-  final TransformationController _transformController = TransformationController();
+  final TransformationController _transformController =
+      TransformationController();
   final double _baseWidth = 850.0;
 
   @override
@@ -235,18 +236,20 @@ class _ReadyStateState extends State<_ReadyState> {
   }
 
   void _zoomIn() {
-    _transformController.value = _transformController.value.clone()..multiply(Matrix4.diagonal3Values(1.2, 1.2, 1.0));
+    _transformController.value = _transformController.value.clone()
+      ..multiply(Matrix4.diagonal3Values(1.2, 1.2, 1.0));
   }
 
   void _zoomOut() {
-    _transformController.value = _transformController.value.clone()..multiply(Matrix4.diagonal3Values(1 / 1.2, 1 / 1.2, 1.0));
+    _transformController.value = _transformController.value.clone()
+      ..multiply(Matrix4.diagonal3Values(1 / 1.2, 1 / 1.2, 1.0));
   }
 
   void _fitScreen(double viewportHeight) {
     if (widget.controller.pages.isEmpty) return;
     final page = widget.controller.pages.first;
     final double pageHeight = _baseWidth * (page.height / page.width);
-    final double totalHeight = pageHeight + 48.0; 
+    final double totalHeight = pageHeight + 48.0;
     double scale = viewportHeight / totalHeight;
     if (scale < 0.1) scale = 0.1;
     if (scale > 5.0) scale = 5.0;
@@ -277,7 +280,8 @@ class _ReadyStateState extends State<_ReadyState> {
                     children: [
                       const SizedBox(height: 16),
                       _EditToolbar(controller: widget.controller),
-                      if (!widget.controller.hasText) _NoTextBanner(palette: palette),
+                      if (!widget.controller.hasText)
+                        _NoTextBanner(palette: palette),
                       if (widget.controller.actionError != null)
                         _ActionErrorBanner(
                           message: widget.controller.actionError!,
@@ -311,7 +315,8 @@ class _ReadyStateState extends State<_ReadyState> {
                             for (int i = 0; i < pages.length; i++)
                               Container(
                                 width: _baseWidth,
-                                margin: EdgeInsets.only(bottom: i == pages.length - 1 ? 0 : 26),
+                                margin: EdgeInsets.only(
+                                    bottom: i == pages.length - 1 ? 0 : 26),
                                 decoration: const BoxDecoration(
                                   color: Colors.white,
                                   boxShadow: [
@@ -324,18 +329,27 @@ class _ReadyStateState extends State<_ReadyState> {
                                 ),
                                 child: _EditPage(
                                   page: pages[i],
-                                  previewUri: widget.controller.previewUri(pages[i]),
-                                  spans: widget.controller.spansForPage(pages[i].page),
-                                  vectorObjects: widget.controller.vectorObjectsForPage(pages[i].page),
-                                  selectedSpanId: widget.controller.selectedSpanId,
-                                  selectedVectorObjectId: widget.controller.selectedVectorObjectId,
+                                  previewUri:
+                                      widget.controller.previewUri(pages[i]),
+                                  spans: widget.controller
+                                      .spansForPage(pages[i].page),
+                                  vectorObjects: widget.controller
+                                      .vectorObjectsForPage(pages[i].page),
+                                  selectedSpanId:
+                                      widget.controller.selectedSpanId,
+                                  selectedVectorObjectId:
+                                      widget.controller.selectedVectorObjectId,
                                   onSpanTap: widget.controller.selectSpan,
-                                  onVectorObjectTap: widget.controller.selectVectorObject,
-                                  onDeleteVectorObject: widget.controller.deleteVectorObject,
+                                  onVectorObjectTap:
+                                      widget.controller.selectVectorObject,
+                                  onDeleteVectorObject:
+                                      widget.controller.deleteVectorObject,
                                   textForSpan: widget.controller.effectiveText,
                                   isEdited: widget.controller.isSpanEdited,
-                                  isVectorObjectDeleted: widget.controller.isVectorObjectDeleted,
-                                  onCommitSpanText: widget.controller.setSpanText,
+                                  isVectorObjectDeleted:
+                                      widget.controller.isVectorObjectDeleted,
+                                  onCommitSpanText:
+                                      widget.controller.setSpanText,
                                   interactive: widget.controller.hasText,
                                 ),
                               ),
@@ -1101,7 +1115,8 @@ class _VectorObjectBox extends StatelessWidget {
           key: ValueKey<String>('edit-vector-${vec.id}'),
           behavior: HitTestBehavior.opaque,
           onTap: onTap,
-          onDoubleTap: onDelete, // Double click deletes immediately (Acrobat parity)
+          onDoubleTap:
+              onDelete, // Double click deletes immediately (Acrobat parity)
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
             child: Stack(
@@ -1133,7 +1148,8 @@ class _VectorObjectBox extends StatelessWidget {
                         onTap: onDelete,
                         child: CircleAvatar(
                           radius: 12,
-                          backgroundColor: palette?.danger ?? theme.colorScheme.error,
+                          backgroundColor:
+                              palette?.danger ?? theme.colorScheme.error,
                           child: const Icon(
                             Icons.delete,
                             size: 14,

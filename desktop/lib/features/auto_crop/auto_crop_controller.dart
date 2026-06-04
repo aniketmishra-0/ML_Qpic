@@ -25,6 +25,7 @@ import '../../core/download_service.dart';
 import '../../core/theme_controller.dart';
 import '../../models/analyze.dart';
 import '../../models/crop.dart';
+import 'batch_queue_controller.dart';
 
 /// Engine-accepted bounds for the Auto Crop controls (Requirement 5.3).
 ///
@@ -160,11 +161,31 @@ class AutoCropController extends ChangeNotifier {
   AutoCropController({
     ApiClient? apiClient,
     DownloadService? downloadService,
+    BatchQueueController? batchQueue,
   })  : _apiClient = apiClient,
-        _downloadService = downloadService;
+        _downloadService = downloadService,
+        _batchQueue = batchQueue;
 
   ApiClient? _apiClient;
   DownloadService? _downloadService;
+  BatchQueueController? _batchQueue;
+  bool _batchMode = false;
+
+  /// Whether batch mode is currently active.
+  bool get batchMode => _batchMode;
+  set batchMode(bool value) {
+    if (_busy) return;
+    _batchMode = value;
+    notifyListeners();
+  }
+
+  /// Sets the batch queue controller instance.
+  void setBatchQueue(BatchQueueController queue) {
+    _batchQueue = queue;
+    notifyListeners();
+  }
+
+  BatchQueueController? get batchQueue => _batchQueue;
 
   /// The bound API client, or null before the engine is ready.
   ApiClient? get apiClient => _apiClient;
@@ -257,8 +278,17 @@ class AutoCropController extends ChangeNotifier {
   bool _smartMode = true;
   bool _onlineMode = false;
   bool _answerSheet = false;
+  bool _bilingualModeActive = false;
   NumberingMode _numbering = NumberingMode.autoDetect;
   LayoutColumnsMode _layoutColumns = LayoutColumnsMode.auto;
+
+  /// Whether bilingual mode option is turned ON (bilingual options will be visible).
+  bool get bilingualModeActive => _bilingualModeActive;
+  set bilingualModeActive(bool value) {
+    if (_bilingualModeActive == value) return;
+    _bilingualModeActive = value;
+    notifyListeners();
+  }
 
   /// Smart mode: when on, submit calls `POST /api/analyze` and opens the
   /// Review Canvas instead of cropping straight to a ZIP (task 12.5).
@@ -321,6 +351,63 @@ class AutoCropController extends ChangeNotifier {
   int _jpgQuality = AutoCropBounds.jpgQualityDefault;
   int _dpi = AutoCropBounds.dpiDefault;
   int _padding = AutoCropBounds.paddingDefault;
+
+  bool _binarize = false;
+  double _contrast = 1.0;
+  double _brightness = 1.0;
+  int _watermarkThreshold = 255;
+  bool _deskew = false;
+  String _customRegex = '';
+  double _mlConfidence = 0.5;
+
+  bool get binarize => _binarize;
+  set binarize(bool value) {
+    if (_binarize == value) return;
+    _binarize = value;
+    notifyListeners();
+  }
+
+  double get contrast => _contrast;
+  set contrast(double value) {
+    if (_contrast == value) return;
+    _contrast = value;
+    notifyListeners();
+  }
+
+  double get brightness => _brightness;
+  set brightness(double value) {
+    if (_brightness == value) return;
+    _brightness = value;
+    notifyListeners();
+  }
+
+  int get watermarkThreshold => _watermarkThreshold;
+  set watermarkThreshold(int value) {
+    if (_watermarkThreshold == value) return;
+    _watermarkThreshold = value;
+    notifyListeners();
+  }
+
+  bool get deskew => _deskew;
+  set deskew(bool value) {
+    if (_deskew == value) return;
+    _deskew = value;
+    notifyListeners();
+  }
+
+  String get customRegex => _customRegex;
+  set customRegex(String value) {
+    if (_customRegex == value) return;
+    _customRegex = value;
+    notifyListeners();
+  }
+
+  double get mlConfidence => _mlConfidence;
+  set mlConfidence(double value) {
+    if (_mlConfidence == value) return;
+    _mlConfidence = value;
+    notifyListeners();
+  }
 
   /// Filename prefix for question crops (`question_prefix`). Truncated to
   /// [AutoCropBounds.prefixMaxLength] characters.
@@ -428,6 +515,7 @@ class AutoCropController extends ChangeNotifier {
   AnalyzeResponse? _analyzeResult;
   List<PageInfo>? _previewPages;
   bool _previewLoading = false;
+  String? _enhancePreviewJobId;
 
   /// Name of the currently selected PDF, or null when none is loaded.
   String? get fileName => _fileName;
@@ -471,6 +559,7 @@ class AutoCropController extends ChangeNotifier {
     _analyzeResult = null;
     _errorText = null;
     _previewPages = null;
+    _enhancePreviewJobId = null;
     notifyListeners();
   }
 
@@ -501,6 +590,11 @@ class AutoCropController extends ChangeNotifier {
         fileBytes: bytes,
         filename: name,
         dpi: _dpi,
+        binarize: _binarize,
+        contrast: _contrast,
+        brightness: _brightness,
+        watermarkThreshold: _watermarkThreshold,
+        deskew: _deskew,
       );
       _previewPages = response.pages;
       return true;
@@ -513,11 +607,28 @@ class AutoCropController extends ChangeNotifier {
     }
   }
 
-  /// Clears the form back to its initial state: drops the selected PDF, any
-  /// crop / analyze result and error, and resets every option (toggles, page
-  /// ranges, numbering, and output / render config) to its default. The engine
-  /// binding is preserved so the form stays usable. A no-op while a request is
-  /// in flight so a half-finished run isn't torn out from under the engine.
+  /// Stashes the currently open PDF on the backend (calls `editOpen`) so it is
+  /// staged for enhancement previewing. Returns the jobId.
+  Future<String?> stashForPreview() async {
+    final client = _apiClient;
+    final bytes = _fileBytes;
+    final name = _fileName;
+    if (client == null || bytes == null || name == null) return null;
+
+    if (_enhancePreviewJobId != null) return _enhancePreviewJobId;
+
+    try {
+      final res = await client.editOpen(
+        fileBytes: bytes,
+        filename: name,
+      );
+      _enhancePreviewJobId = res.jobId;
+      return res.jobId;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Clears the form back to its initial state: drops the selected PDF, any
   /// crop / analyze result and error, and resets every option (toggles, page
   /// ranges, numbering, and output / render config) to its default. The engine
@@ -536,6 +647,7 @@ class AutoCropController extends ChangeNotifier {
     _analyzeResult = null;
     _errorText = null;
     _previewPages = null;
+    _enhancePreviewJobId = null;
 
     // Questions / Solutions selection.
     _hasQuestions = true;
@@ -548,6 +660,7 @@ class AutoCropController extends ChangeNotifier {
     _smartMode = defaults?.defaultSmartMode ?? true;
     _onlineMode = false;
     _answerSheet = false;
+    _bilingualModeActive = false;
     _numbering = NumberingMode.autoDetect;
     _layoutColumns = LayoutColumnsMode.auto;
 
@@ -561,11 +674,19 @@ class AutoCropController extends ChangeNotifier {
     _jpgQuality = AutoCropBounds.jpgQualityDefault;
     _dpi = defaults?.defaultDpi ?? AutoCropBounds.dpiDefault;
     _padding = defaults?.defaultPadding ?? AutoCropBounds.paddingDefault;
+    _binarize = false;
+    _contrast = 1.0;
+    _brightness = 1.0;
+    _watermarkThreshold = 255;
+    _deskew = false;
+    _customRegex = '';
+    _mlConfidence = 0.5;
+
+    _batchQueue?.clear();
 
     notifyListeners();
   }
 
-  /// Applies default settings loaded from [ThemeController].
   void applyDefaults(ThemeController controller) {
     _questionPrefix = controller.defaultQuestionPrefix;
     _solutionPrefix = controller.defaultSolutionPrefix;
@@ -694,6 +815,13 @@ class AutoCropController extends ChangeNotifier {
         useAi: useAi,
         answerSheet: _answerSheet,
         layoutColumns: layoutColumnsValue,
+        binarize: _binarize,
+        contrast: _contrast,
+        brightness: _brightness,
+        watermarkThreshold: _watermarkThreshold,
+        deskew: _deskew,
+        customRegex: _customRegex,
+        confidence: _mlConfidence,
       );
       _result = response;
       return true;
@@ -755,6 +883,13 @@ class AutoCropController extends ChangeNotifier {
         useAi: useAi,
         answerSheet: _answerSheet,
         layoutColumns: layoutColumnsValue,
+        binarize: _binarize,
+        contrast: _contrast,
+        brightness: _brightness,
+        watermarkThreshold: _watermarkThreshold,
+        deskew: _deskew,
+        customRegex: _customRegex,
+        confidence: _mlConfidence,
       );
       _analyzeResult = response;
       return true;

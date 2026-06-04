@@ -103,6 +103,7 @@ class ReviewState {
     required this.source,
     this.answerKeyCount,
     this.methodUsed,
+    this.bilingualMode,
   });
 
   /// The empty/initial state before any session is loaded.
@@ -118,6 +119,7 @@ class ReviewState {
     source: ReviewSource.smartAutoCrop,
     answerKeyCount: null,
     methodUsed: null,
+    bilingualMode: null,
   );
 
   /// Engine crop/analyze job id used by snap (12.2) and finalize (12.6).
@@ -158,6 +160,9 @@ class ReviewState {
   /// The method used for detection (e.g. 'local_ml', 'ocr').
   final String? methodUsed;
 
+  /// The selected bilingual mode.
+  final String? bilingualMode;
+
   /// Whether a re-select session is active.
   bool get isEditing => editingIndex >= 0;
 
@@ -185,7 +190,8 @@ class ReviewState {
       other.pan == pan &&
       other.source == source &&
       other.answerKeyCount == answerKeyCount &&
-      other.methodUsed == methodUsed;
+      other.methodUsed == methodUsed &&
+      other.bilingualMode == bilingualMode;
 
   @override
   int get hashCode => Object.hash(
@@ -200,6 +206,7 @@ class ReviewState {
         source,
         answerKeyCount,
         methodUsed,
+        bilingualMode,
       );
 
   @override
@@ -207,7 +214,7 @@ class ReviewState {
       'ReviewState(jobId: $jobId, source: $source, pages: ${pages.length}, '
       'items: ${items.length}, notes: ${notes.length}, '
       'currentPageIndex: $currentPageIndex, editingIndex: $editingIndex, '
-      'zoom: $zoom, pan: $pan, answerKeyCount: $answerKeyCount, methodUsed: $methodUsed)';
+      'zoom: $zoom, pan: $pan, answerKeyCount: $answerKeyCount, methodUsed: $methodUsed, bilingualMode: $bilingualMode)';
 }
 
 /// Session-level controller for the Review Canvas, reused by Smart Auto Crop
@@ -258,6 +265,16 @@ class ReviewController extends ChangeNotifier {
   String? _methodUsed;
   ReviewSource _source = ReviewSource.smartAutoCrop;
   bool _snapEnabled = true;
+  double _snappingMargin = 0.8;
+  String? _bilingualMode;
+
+  /// The active bilingual mode (null, 'english', 'hindi', 'bilingual_horizontal', 'bilingual_vertical')
+  String? get bilingualMode => _bilingualMode;
+  set bilingualMode(String? val) {
+    if (_bilingualMode == val) return;
+    _bilingualMode = val;
+    notifyListeners();
+  }
 
   // Finalize run state (task 12.6).
   bool _finalizing = false;
@@ -266,6 +283,27 @@ class ReviewController extends ChangeNotifier {
   String _finalizeQuestionPrefix = 'Q';
   String _finalizeSolutionPrefix = 'S';
   bool _autoDetecting = false;
+
+  bool _bilingualModeActive = false;
+  bool get bilingualModeActive => _bilingualModeActive;
+  set bilingualModeActive(bool value) {
+    if (_bilingualModeActive == value) return;
+    _bilingualModeActive = value;
+    notifyListeners();
+  }
+
+  String? _activeFinalizeBilingualMode;
+  String? get activeFinalizeBilingualMode => _activeFinalizeBilingualMode;
+
+  bool _refinalizing = false;
+  bool get refinalizing => _refinalizing;
+
+  int _lastFinalizeDpi = 200;
+  int _lastFinalizePadding = 20;
+  int _lastFinalizeStartNumber = 1;
+  String _lastFinalizeImageFormat = 'png';
+  int _lastFinalizeJpgQuality = 90;
+  bool? _lastFinalizeAnswerSheet;
 
   /// Whether an auto-detection request is in flight.
   bool get autoDetecting => _autoDetecting;
@@ -382,6 +420,7 @@ class ReviewController extends ChangeNotifier {
         source: _source,
         answerKeyCount: _answerKeyCount,
         methodUsed: _methodUsed,
+        bilingualMode: _bilingualMode,
       );
 
   // ---- Loading a session (reused by both tools, Req 6.2) -----------------
@@ -429,6 +468,8 @@ class ReviewController extends ChangeNotifier {
     _jobId = '';
     _answerKeyCount = null;
     _methodUsed = null;
+    _snappingMargin = 0.8;
+    _bilingualMode = null;
     _clearFinalizeState();
     _canvas.load(pages: const <PageInfo>[]);
     notifyListeners();
@@ -441,6 +482,9 @@ class ReviewController extends ChangeNotifier {
     _finalizing = false;
     _finalizeError = null;
     _finalizeResult = null;
+    _activeFinalizeBilingualMode = null;
+    _refinalizing = false;
+    _bilingualModeActive = false;
   }
 
   // ---- Canvas operation forwarding (page nav / zoom / draw kind) ---------
@@ -508,12 +552,66 @@ class ReviewController extends ChangeNotifier {
   /// [itemIndex] (the review "Manual align" controls). Carried into the preview
   /// and the finalize payload so the downloaded crop lines up exactly like the
   /// approved preview.
-  void setSegmentOffset(int itemIndex, int segmentIndex, {double? xOffsetPct, double? yOffsetPct}) =>
-      _canvas.setSegmentOffset(itemIndex, segmentIndex, xOffsetPct: xOffsetPct, yOffsetPct: yOffsetPct);
+  void setSegmentOffset(int itemIndex, int segmentIndex,
+          {double? xOffsetPct, double? yOffsetPct}) =>
+      _canvas.setSegmentOffset(itemIndex, segmentIndex,
+          xOffsetPct: xOffsetPct, yOffsetPct: yOffsetPct);
 
   /// Clears every manual nudge on item [itemIndex] back to 0.
   void resetSegmentOffsets(int itemIndex) =>
       _canvas.resetSegmentOffsets(itemIndex);
+
+  /// Computes recommended horizontal offsets to align the text columns,
+  /// and applies them to the item's segments.
+  Future<void> autoAlignText(int itemIndex) async {
+    final List<AnalyzedItem> current = _canvas.items;
+    if (itemIndex < 0 || itemIndex >= current.length) return;
+    final AnalyzedItem item = current[itemIndex];
+    if (item.segments.isEmpty) return;
+    final client = _apiClient;
+    if (client == null) return;
+
+    try {
+      final List<double> recommendedOffsets = await client.alignOffsets(
+        jobId: _jobId,
+        segments: item.segments,
+      );
+      if (recommendedOffsets.length == item.segments.length) {
+        for (int i = 0; i < recommendedOffsets.length; i++) {
+          _canvas.setSegmentOffset(
+            itemIndex,
+            i,
+            xOffsetPct: recommendedOffsets[i],
+            yOffsetPct: 0.0,
+          );
+        }
+      }
+    } catch (e) {
+      _canvas.resetSegmentOffsets(itemIndex);
+    }
+  }
+
+  /// Reorders the segments of a multi-part item (the stitch sequence editor).
+  void reorderItemSegments(int itemIndex, int oldIndex, int newIndex) =>
+      _canvas.reorderItemSegments(itemIndex, oldIndex, newIndex);
+
+  /// Selected item indices for merging.
+  List<int> get selectedItemIndices => _canvas.selectedItemIndices;
+
+  /// Checks if the item at [index] is selected.
+  bool isSelected(int index) => _canvas.isSelected(index);
+
+  /// Toggles selection of item at [index].
+  void toggleSelection(int index) => _canvas.toggleSelection(index);
+
+  /// Clears selection.
+  void clearSelection() => _canvas.clearSelection();
+
+  /// Exclusively selects the item at [index].
+  void selectExclusive(int index) => _canvas.selectExclusive(index);
+
+  /// Merges all selected items.
+  void mergeSelectedItems() => _canvas.mergeSelectedItems();
 
   /// The manual horizontal nudges (`xOffsetPct` per part) for item [itemIndex], in
   /// segment order. Empty when the index is out of range.
@@ -578,18 +676,68 @@ class ReviewController extends ChangeNotifier {
     final AnalyzedItem it = current[itemIndex];
     if (it.segments.isEmpty) return null;
 
+    List<QuestionSegment> finalSegs = it.segments;
+    List<QuestionSegment>? otherSegs;
+
+    if (_bilingualMode != null && _bilingualMode != 'none') {
+      try {
+        final pairItem = current.firstWhere(
+          (element) =>
+              element.qNum == it.qNum &&
+              element.isSolution == it.isSolution &&
+              element != it,
+        );
+        final s1 = it.segments.isNotEmpty ? it.segments.first : null;
+        final s2 =
+            pairItem.segments.isNotEmpty ? pairItem.segments.first : null;
+        bool isItFirst = true;
+        if (s1 != null && s2 != null) {
+          if (s1.page != s2.page) {
+            isItFirst = s1.page < s2.page;
+          } else {
+            final double c1 = (s1.xStartPct + s1.xEndPct) / 2.0;
+            final double c2 = (s2.xStartPct + s2.xEndPct) / 2.0;
+            final bool isSideBySide =
+                (s1.xStartPct - s2.xStartPct).abs() > 15.0 ||
+                    (c1 - c2).abs() > 15.0;
+            if (isSideBySide) {
+              isItFirst = s1.xStartPct <= s2.xStartPct;
+            } else {
+              isItFirst = s1.yStartPct <= s2.yStartPct;
+            }
+          }
+        }
+        final enItem = isItFirst ? it : pairItem;
+        final hiItem = isItFirst ? pairItem : it;
+
+        if (_bilingualMode == 'english') {
+          finalSegs = enItem.segments;
+        } else if (_bilingualMode == 'hindi') {
+          finalSegs = hiItem.segments;
+        } else if (_bilingualMode == 'bilingual_horizontal' ||
+            _bilingualMode == 'bilingual_vertical') {
+          finalSegs = enItem.segments;
+          otherSegs = hiItem.segments;
+        }
+      } catch (_) {
+        // No pair found, use item's own segments as fallback
+      }
+    }
+
     final List<int> bytes = await client.cropPreview(
       CropPreviewRequest(
         jobId: _jobId,
         qNum: it.qNum,
         isSolution: it.isSolution,
-        segments: it.segments,
+        segments: finalSegs,
         source: it.source,
         align: alignOverride ?? it.align,
         dpi: _previewDpi,
         padding: _previewPadding,
         imageFormat: _previewImageFormat,
         jpgQuality: _previewJpgQuality,
+        bilingualMode: _bilingualMode,
+        otherSegments: otherSegs,
       ),
     );
     return bytes;
@@ -612,6 +760,20 @@ class ReviewController extends ChangeNotifier {
   bool startReselectForNote(ReviewNote note) {
     final String? qNum = note.qNum;
     if (qNum == null) return false;
+
+    // If there are suggested segments, automatically append them and resolve the note (Quick Fix)
+    if (note.suggestedSegments != null && note.suggestedSegments!.isNotEmpty) {
+      final List<AnalyzedItem> current = _canvas.items;
+      final int idx = current.indexWhere(
+        (AnalyzedItem it) =>
+            it.qNum == qNum && it.isSolution == note.isSolution,
+      );
+      if (idx >= 0) {
+        _canvas.appendSegmentsToItem(idx, note.suggestedSegments!);
+        return true;
+      }
+    }
+
     return startReselectByQNum(qNum, isSolution: note.isSolution);
   }
 
@@ -653,6 +815,13 @@ class ReviewController extends ChangeNotifier {
   /// Toggles snap-to-content (convenience for a checkbox/switch).
   void toggleSnap() => snapEnabled = !_snapEnabled;
 
+  double get snappingMargin => _snappingMargin;
+  set snappingMargin(double value) {
+    if (value == _snappingMargin) return;
+    _snappingMargin = value;
+    notifyListeners();
+  }
+
   /// Wires snap-to-content (Req 9) using [apiClient]: installs a
   /// [SegmentInterceptor] on the wrapped canvas that, on box-end and while
   /// [snapEnabled] is true, calls `POST /api/snap` with the current [jobId] and
@@ -667,6 +836,7 @@ class ReviewController extends ChangeNotifier {
       apiClient: apiClient,
       jobId: () => _jobId,
       enabled: () => _snapEnabled,
+      marginPct: () => _snappingMargin,
     );
   }
 
@@ -733,6 +903,7 @@ class ReviewController extends ChangeNotifier {
     String imageFormat = 'png',
     int jpgQuality = 90,
     bool? answerSheet,
+    String? bilingualMode,
   }) {
     return FinalizeRequest(
       jobId: _jobId,
@@ -745,6 +916,7 @@ class ReviewController extends ChangeNotifier {
       imageFormat: imageFormat,
       jpgQuality: jpgQuality,
       answerSheet: answerSheet ?? finalizeWillIncludeAnswerSheet,
+      bilingualMode: bilingualMode ?? _bilingualMode,
     );
   }
 
@@ -773,6 +945,7 @@ class ReviewController extends ChangeNotifier {
     String imageFormat = 'png',
     int jpgQuality = 90,
     bool? answerSheet,
+    String? bilingualMode,
   }) async {
     final ApiClient? client = _apiClient;
     if (client == null || _finalizing) return false;
@@ -791,6 +964,14 @@ class ReviewController extends ChangeNotifier {
     // Retain the prefixes the download endpoint needs (Req 11.4).
     _finalizeQuestionPrefix = questionPrefix;
     _finalizeSolutionPrefix = solutionPrefix;
+
+    _lastFinalizeDpi = dpi;
+    _lastFinalizePadding = padding;
+    _lastFinalizeStartNumber = startNumber;
+    _lastFinalizeImageFormat = imageFormat;
+    _lastFinalizeJpgQuality = jpgQuality;
+    _lastFinalizeAnswerSheet = answerSheet;
+
     notifyListeners();
 
     try {
@@ -804,9 +985,11 @@ class ReviewController extends ChangeNotifier {
           imageFormat: imageFormat,
           jpgQuality: jpgQuality,
           answerSheet: answerSheet,
+          bilingualMode: bilingualMode,
         ),
       );
       _finalizeResult = response;
+      _activeFinalizeBilingualMode = bilingualMode ?? _bilingualMode;
       return true;
     } on ApiException catch (e) {
       // Surface the engine detail; items are untouched so the user can retry
@@ -816,6 +999,33 @@ class ReviewController extends ChangeNotifier {
       return false;
     } finally {
       _finalizing = false;
+      notifyListeners();
+    }
+  }
+
+  /// Re-finalizes the reviewed crops for a different bilingual export mode (e.g. English-only or Hindi-only).
+  Future<bool> refinalizeForMode(String? mode) async {
+    if (_refinalizing) return false;
+    _refinalizing = true;
+    notifyListeners();
+    try {
+      final success = await finalize(
+        dpi: _lastFinalizeDpi,
+        padding: _lastFinalizePadding,
+        questionPrefix: _finalizeQuestionPrefix,
+        solutionPrefix: _finalizeSolutionPrefix,
+        startNumber: _lastFinalizeStartNumber,
+        imageFormat: _lastFinalizeImageFormat,
+        jpgQuality: _lastFinalizeJpgQuality,
+        answerSheet: _lastFinalizeAnswerSheet,
+        bilingualMode: mode,
+      );
+      if (success) {
+        _activeFinalizeBilingualMode = mode;
+      }
+      return success;
+    } finally {
+      _refinalizing = false;
       notifyListeners();
     }
   }

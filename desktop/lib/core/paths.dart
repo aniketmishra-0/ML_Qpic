@@ -113,9 +113,8 @@ String? resolveBaseDataDirPath({
   }
   if (isWindows) {
     // `_writable_data_dir()` uses LOCALAPPDATA, falling back to the home dir.
-    final base = (localAppData != null && localAppData.isNotEmpty)
-        ? localAppData
-        : home;
+    final base =
+        (localAppData != null && localAppData.isNotEmpty) ? localAppData : home;
     if (base == null || base.isEmpty) return null;
     return p.join(base, kAppDataFolderName);
   }

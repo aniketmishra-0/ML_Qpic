@@ -121,6 +121,7 @@ class ReviewNote(BaseModel):
     q_num: Optional[str] = None
     page: Optional[int] = None
     is_solution: bool = False
+    suggested_segments: Optional[list[QuestionSegment]] = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -148,6 +149,7 @@ class SnapRequest(BaseModel):
     x_end_pct: float
     y_start_pct: float
     y_end_pct: float
+    margin_pct: float = 0.8
 
 
 class SnapResponse(BaseModel):
@@ -203,6 +205,8 @@ class CropPreviewRequest(BaseModel):
     padding: int = 20
     image_format: Literal["png", "jpg", "jpeg"] = "png"
     jpg_quality: int = 90
+    bilingual_mode: Optional[Literal["english", "hindi", "bilingual_horizontal", "bilingual_vertical"]] = None
+    other_segments: Optional[list[QuestionSegment]] = None
 
 
 class FinalizeRequest(BaseModel):
@@ -220,6 +224,7 @@ class FinalizeRequest(BaseModel):
     # When False, skip the answer-sheet (answers.csv/json) even if a key was
     # found at analyze time. Defaults True so the sheet ships by default.
     answer_sheet: bool = True
+    bilingual_mode: Optional[Literal["english", "hindi", "bilingual_horizontal", "bilingual_vertical"]] = None
 
 
 class HealthResponse(BaseModel):
@@ -499,3 +504,48 @@ class EnhanceResponse(BaseModel):
     pages_total: int
     note: str = ""
     download_url: str
+
+
+class MLConfigRequest(BaseModel):
+    model_path: Optional[str] = None
+    labels_path: Optional[str] = None
+    model_name: Optional[str] = None
+    confidence: Optional[float] = None
+    input_size: Optional[int] = None
+
+
+class MLConfigResponse(BaseModel):
+    model_path: Optional[str]
+    labels_path: Optional[str]
+    model_name: str
+    confidence: float
+    input_size: int
+    local_ml_available: bool
+
+
+class RegexTestRequest(BaseModel):
+    pattern: str
+    sample_lines: list[str]
+
+
+class RegexMatchResult(BaseModel):
+    line: str
+    matched: bool
+    q_num: Optional[str] = None
+    groups: list[str] = []
+
+
+class RegexTestResponse(BaseModel):
+    pattern: str
+    results: list[RegexMatchResult]
+
+
+class AlignOffsetsRequest(BaseModel):
+    job_id: str
+    segments: list[QuestionSegment]
+
+
+class AlignOffsetsResponse(BaseModel):
+    offsets: list[float]
+
+

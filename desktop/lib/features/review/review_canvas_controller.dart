@@ -71,6 +71,7 @@ class ReviewCanvasController extends ChangeNotifier {
   double _zoom;
   Offset _panOffset = Offset.zero;
   int _revision = 0;
+  final List<int> _selectedItemIndices = <int>[];
 
   // ---- Draw-kind / numbering (web `drawKind` / `drawNum`) ----------------
 
@@ -110,6 +111,13 @@ class ReviewCanvasController extends ChangeNotifier {
 
   /// Whether a re-select session is active.
   bool get isEditing => _editingIndex >= 0;
+
+  /// The indices of all currently selected items for merging.
+  List<int> get selectedItemIndices =>
+      List<int>.unmodifiable(_selectedItemIndices);
+
+  /// Checks if the item at [index] is currently selected.
+  bool isSelected(int index) => _selectedItemIndices.contains(index);
 
   /// Index into [items] of the hovered item, or -1 when nothing is hovered.
   int get hoveredItemIndex => _hoveredItemIndex;
@@ -154,6 +162,7 @@ class ReviewCanvasController extends ChangeNotifier {
     _currentPageIndex = 0;
     _editingIndex = -1;
     _hoveredItemIndex = -1;
+    _selectedItemIndices.clear();
     _bump();
   }
 
@@ -252,8 +261,7 @@ class ReviewCanvasController extends ChangeNotifier {
     }
     if (aspect <= 0) aspect = 1.4142; // A-series fallback (sqrt2)
 
-    final double fitWidth =
-        _viewportSize.width > 0 ? _viewportSize.width : 1.0;
+    final double fitWidth = _viewportSize.width > 0 ? _viewportSize.width : 1.0;
     final double pageW = fitWidth * _zoom;
     final double pageH = fitWidth * aspect * _zoom;
 
@@ -352,18 +360,66 @@ class ReviewCanvasController extends ChangeNotifier {
   /// double-clicking Q19b on page 4 and being taken to Q19a on page 3.
   void startEditing(int index) {
     if (index < 0 || index >= _items.length) return;
+    _selectedItemIndices.clear();
     _editingIndex = index;
     final AnalyzedItem it = _items[index];
     if (it.segments.isNotEmpty) {
       // Only navigate away if the current page has NO segment of this item.
-      final bool currentPageHasSegment = it.segments
-          .any((QuestionSegment s) => s.page == currentPageNumber);
+      final bool currentPageHasSegment =
+          it.segments.any((QuestionSegment s) => s.page == currentPageNumber);
       if (!currentPageHasSegment) {
         final int startPage =
             it.segments.map((QuestionSegment s) => s.page).reduce(math.min);
         gotoPageNumber(startPage);
       }
+
+      // Center the segment on the page in the viewport
+      // Find the first segment of this item that is on the current page
+      final QuestionSegment? targetSeg = it.segments.firstWhere(
+        (QuestionSegment s) => s.page == currentPageNumber,
+        orElse: () => it.segments.first,
+      );
+      if (targetSeg != null) {
+        _centerSegment(targetSeg);
+      }
     }
+    _bump();
+  }
+
+  void _centerSegment(QuestionSegment s) {
+    if (_viewportSize == Size.zero || _pages.isEmpty) return;
+
+    double aspect = 0;
+    if (_currentPageIndex >= 0 && _currentPageIndex < _pages.length) {
+      final PageInfo page = _pages[_currentPageIndex];
+      if (page.widthPt > 0) aspect = page.heightPt / page.widthPt;
+    }
+    if (aspect <= 0) aspect = 1.4142; // A-series fallback (sqrt2)
+
+    final double fitWidth = _viewportSize.width > 0 ? _viewportSize.width : 1.0;
+    final double pageW = fitWidth * _zoom;
+    final double pageH = fitWidth * aspect * _zoom;
+
+    final double centerX = (s.xStartPct + s.xEndPct) / 2.0;
+    final double centerY = (s.yStartPct + s.yEndPct) / 2.0;
+
+    final double contentCenterX = (centerX / 100.0) * pageW;
+    final double contentCenterY = (centerY / 100.0) * pageH;
+
+    final double targetDx = (_viewportSize.width / 2.0) - contentCenterX;
+    final double targetDy = (_viewportSize.height / 2.0) - contentCenterY;
+
+    setPan(Offset(targetDx, targetDy));
+  }
+
+  /// Appends a list of segments to item [index], marks it as manual, and clears the matching note.
+  void appendSegmentsToItem(int index, List<QuestionSegment> newSegs) {
+    if (index < 0 || index >= _items.length) return;
+    final AnalyzedItem it = _items[index];
+    final List<QuestionSegment> nextSegments =
+        List<QuestionSegment>.of(it.segments)..addAll(newSegs);
+    _items[index] = _asManual(it, nextSegments);
+    _clearNoteFor(it.qNum, it.isSolution);
     _bump();
   }
 
@@ -541,16 +597,19 @@ class ReviewCanvasController extends ChangeNotifier {
   /// part is stitched into a multi-part crop, and carried into the preview/finalize
   /// payload so the downloaded crop lines up exactly like the approved preview.
   /// A no-op when the index is out of range or the value is unchanged.
-  void setSegmentOffset(int itemIndex, int segmentIndex, {double? xOffsetPct, double? yOffsetPct}) {
+  void setSegmentOffset(int itemIndex, int segmentIndex,
+      {double? xOffsetPct, double? yOffsetPct}) {
     if (itemIndex < 0 || itemIndex >= _items.length) return;
     final AnalyzedItem it = _items[itemIndex];
     if (segmentIndex < 0 || segmentIndex >= it.segments.length) return;
     final QuestionSegment seg = it.segments[segmentIndex];
     final double nextX = xOffsetPct ?? seg.xOffsetPct;
     final double nextY = yOffsetPct ?? seg.yOffsetPct;
-    if ((seg.xOffsetPct - nextX).abs() < 1e-6 && (seg.yOffsetPct - nextY).abs() < 1e-6) return;
+    if ((seg.xOffsetPct - nextX).abs() < 1e-6 &&
+        (seg.yOffsetPct - nextY).abs() < 1e-6) return;
     final List<QuestionSegment> next = List<QuestionSegment>.of(it.segments);
-    next[segmentIndex] = seg.copyWithOffset(xOffsetPct: nextX, yOffsetPct: nextY);
+    next[segmentIndex] =
+        seg.copyWithOffset(xOffsetPct: nextX, yOffsetPct: nextY);
     _items[itemIndex] = AnalyzedItem(
       qNum: it.qNum,
       isSolution: it.isSolution,
@@ -568,10 +627,12 @@ class ReviewCanvasController extends ChangeNotifier {
   void resetSegmentOffsets(int itemIndex) {
     if (itemIndex < 0 || itemIndex >= _items.length) return;
     final AnalyzedItem it = _items[itemIndex];
-    final bool any = it.segments.any((QuestionSegment s) => s.xOffsetPct != 0.0 || s.yOffsetPct != 0.0);
+    final bool any = it.segments
+        .any((QuestionSegment s) => s.xOffsetPct != 0.0 || s.yOffsetPct != 0.0);
     if (!any) return;
     final List<QuestionSegment> next = <QuestionSegment>[
-      for (final QuestionSegment s in it.segments) s.copyWithOffset(xOffsetPct: 0.0, yOffsetPct: 0.0),
+      for (final QuestionSegment s in it.segments)
+        s.copyWithOffset(xOffsetPct: 0.0, yOffsetPct: 0.0),
     ];
     _items[itemIndex] = AnalyzedItem(
       qNum: it.qNum,
@@ -590,6 +651,7 @@ class ReviewCanvasController extends ChangeNotifier {
   void deleteItem(int itemIndex) {
     if (itemIndex < 0 || itemIndex >= _items.length) return;
     _items.removeAt(itemIndex);
+    _selectedItemIndices.clear();
     if (_editingIndex == itemIndex) {
       _editingIndex = -1;
     } else if (_editingIndex > itemIndex) {
@@ -641,11 +703,11 @@ class ReviewCanvasController extends ChangeNotifier {
   /// If an item already has segments on other pages, it keeps them and merges
   /// the new page segments into it.
   void replaceItemsForPage(int page, List<AnalyzedItem> newPageItems) {
+    _selectedItemIndices.clear();
     final List<AnalyzedItem> nextItems = <AnalyzedItem>[];
     for (final AnalyzedItem item in _items) {
-      final List<QuestionSegment> keptSegs = item.segments
-          .where((QuestionSegment s) => s.page != page)
-          .toList();
+      final List<QuestionSegment> keptSegs =
+          item.segments.where((QuestionSegment s) => s.page != page).toList();
       if (keptSegs.isNotEmpty) {
         nextItems.add(AnalyzedItem(
           qNum: item.qNum,
@@ -661,20 +723,25 @@ class ReviewCanvasController extends ChangeNotifier {
 
     for (final AnalyzedItem newItem in newPageItems) {
       final int existingIdx = nextItems.indexWhere(
-        (AnalyzedItem it) => it.qNum == newItem.qNum && it.isSolution == newItem.isSolution,
+        (AnalyzedItem it) =>
+            it.qNum == newItem.qNum && it.isSolution == newItem.isSolution,
       );
       if (existingIdx >= 0) {
         final AnalyzedItem existing = nextItems[existingIdx];
-        final List<QuestionSegment> mergedSegs = List<QuestionSegment>.of(existing.segments)
-          ..addAll(newItem.segments);
-        mergedSegs.sort((QuestionSegment a, QuestionSegment b) => a.page != b.page
-            ? a.page.compareTo(b.page)
-            : a.yStartPct.compareTo(b.yStartPct));
+        final List<QuestionSegment> mergedSegs =
+            List<QuestionSegment>.of(existing.segments)
+              ..addAll(newItem.segments);
+        mergedSegs.sort((QuestionSegment a, QuestionSegment b) =>
+            a.page != b.page
+                ? a.page.compareTo(b.page)
+                : a.yStartPct.compareTo(b.yStartPct));
         nextItems[existingIdx] = AnalyzedItem(
           qNum: existing.qNum,
           isSolution: existing.isSolution,
           segments: mergedSegs,
-          source: newItem.source == 'manual' || existing.source == 'manual' ? 'manual' : 'auto',
+          source: newItem.source == 'manual' || existing.source == 'manual'
+              ? 'manual'
+              : 'auto',
           align: existing.align,
           flagged: existing.flagged,
           flagReason: existing.flagReason,
@@ -692,7 +759,30 @@ class ReviewCanvasController extends ChangeNotifier {
     _bump();
   }
 
-  // ---- Internal helpers ---------------------------------------------------
+  /// Reorders the segments of a multi-part item (the stitch sequence editor).
+  /// A no-op when index values are out of bounds or unchanged.
+  void reorderItemSegments(int itemIndex, int oldIndex, int newIndex) {
+    if (itemIndex < 0 || itemIndex >= _items.length) return;
+    final AnalyzedItem it = _items[itemIndex];
+    if (oldIndex < 0 || oldIndex >= it.segments.length) return;
+    if (newIndex < 0 || newIndex >= it.segments.length) return;
+    if (oldIndex == newIndex) return;
+
+    final List<QuestionSegment> next = List<QuestionSegment>.of(it.segments);
+    final QuestionSegment removed = next.removeAt(oldIndex);
+    next.insert(newIndex, removed);
+
+    _items[itemIndex] = AnalyzedItem(
+      qNum: it.qNum,
+      isSolution: it.isSolution,
+      segments: next,
+      source: it.source,
+      flagged: it.flagged,
+      flagReason: it.flagReason,
+      align: it.align,
+    );
+    _bump();
+  }
 
   /// Returns a copy of [it] marked as a manual fix with [segments].
   AnalyzedItem _asManual(AnalyzedItem it, List<QuestionSegment> segments) {
@@ -713,6 +803,84 @@ class ReviewCanvasController extends ChangeNotifier {
     _notes.removeWhere(
       (ReviewNote nt) => nt.qNum == qNum && nt.isSolution == isSolution,
     );
+  }
+
+  // ---- Selection / Multi-Select (UI) -------------------------------------
+
+  /// Toggles selection of item at [index].
+  void toggleSelection(int index) {
+    if (index < 0 || index >= _items.length) return;
+    if (_selectedItemIndices.contains(index)) {
+      _selectedItemIndices.remove(index);
+    } else {
+      _selectedItemIndices.add(index);
+    }
+    _bump();
+  }
+
+  /// Clears the selection.
+  void clearSelection() {
+    if (_selectedItemIndices.isEmpty) return;
+    _selectedItemIndices.clear();
+    _bump();
+  }
+
+  /// Sets selection exclusively to [index].
+  void selectExclusive(int index) {
+    if (index < 0 || index >= _items.length) return;
+    _selectedItemIndices.clear();
+    _selectedItemIndices.add(index);
+    _bump();
+  }
+
+  /// Merges all selected items into a single multi-segment manual item.
+  /// The item with the lowest index remains, keeping its properties, and
+  /// all other selected items are deleted. Their segments are appended and sorted
+  /// by page and yStartPct. Review notes for all merged items are cleared.
+  void mergeSelectedItems() {
+    if (_selectedItemIndices.length < 2) return;
+
+    // Sort selected indices ascending
+    final List<int> sortedIndices = List<int>.of(_selectedItemIndices)..sort();
+    final int destIdx = sortedIndices.first;
+
+    // Collect all segments
+    final List<QuestionSegment> mergedSegs = <QuestionSegment>[];
+    for (final int idx in sortedIndices) {
+      mergedSegs.addAll(_items[idx].segments);
+    }
+
+    // Sort segments by page and yStartPct
+    mergedSegs.sort((QuestionSegment a, QuestionSegment b) => a.page != b.page
+        ? a.page.compareTo(b.page)
+        : a.yStartPct.compareTo(b.yStartPct));
+
+    // Clear notes for all merged items (save keys first)
+    for (final int idx in sortedIndices) {
+      final String qNum = _items[idx].qNum;
+      final bool isSolution = _items[idx].isSolution;
+      _clearNoteFor(qNum, isSolution);
+    }
+
+    // Update target item
+    final AnalyzedItem destItem = _items[destIdx];
+    _items[destIdx] = AnalyzedItem(
+      qNum: destItem.qNum,
+      isSolution: destItem.isSolution,
+      segments: mergedSegs,
+      source: 'manual',
+      flagged: false,
+      flagReason: null,
+      align: destItem.align,
+    );
+
+    // Remove other items in descending order
+    for (int i = sortedIndices.length - 1; i > 0; i--) {
+      _items.removeAt(sortedIndices[i]);
+    }
+
+    _selectedItemIndices.clear();
+    _bump();
   }
 
   void _bump() {

@@ -22,6 +22,7 @@ import '../../../models/crop.dart';
 import '../../../models/tools.dart';
 import '../../../widgets/drop_target.dart';
 import '../../../widgets/pdf_preview_dialog.dart';
+import '../../../widgets/qpic_dropdown.dart';
 import 'preflight_controller.dart';
 
 /// Stateless surface for the Preflight tool. Listens to [controller] so every
@@ -56,7 +57,7 @@ class PreflightView extends StatelessWidget {
   Widget _buildPanel(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
-    
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool wide = constraints.maxWidth >= 900;
@@ -71,7 +72,8 @@ class PreflightView extends StatelessWidget {
                 child: Material(
                   color: palette?.panel ?? theme.colorScheme.surface,
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 32),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
@@ -84,17 +86,21 @@ class PreflightView extends StatelessWidget {
                         ),
                         if (controller.errorText != null) ...<Widget>[
                           const SizedBox(height: 16),
-                          _ErrorBanner(message: controller.errorText!, palette: palette),
+                          _ErrorBanner(
+                              message: controller.errorText!, palette: palette),
                         ],
                         const SizedBox(height: 32),
                         _PreflightButton(controller: controller),
-                        if (result != null && result.mixedPageSizes) ...<Widget>[
+                        if (result != null &&
+                            result.mixedPageSizes) ...<Widget>[
                           const SizedBox(height: 24),
-                          _FixPageSizesSection(controller: controller, palette: palette),
+                          _FixPageSizesSection(
+                              controller: controller, palette: palette),
                         ],
                         if (controller.fixResult != null) ...<Widget>[
                           const SizedBox(height: 24),
-                          _FixResultCard(controller: controller, palette: palette),
+                          _FixResultCard(
+                              controller: controller, palette: palette),
                         ],
                       ],
                     ),
@@ -146,7 +152,8 @@ class PreflightView extends StatelessWidget {
                   ),
                   if (controller.errorText != null) ...<Widget>[
                     const SizedBox(height: 16),
-                    _ErrorBanner(message: controller.errorText!, palette: palette),
+                    _ErrorBanner(
+                        message: controller.errorText!, palette: palette),
                   ],
                   const SizedBox(height: 24),
                   _PreflightButton(controller: controller),
@@ -255,14 +262,12 @@ class _DropZone extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  controller.fileName ??
-                      'Drop a PDF here or click to browse',
+                  controller.fileName ?? 'Drop a PDF here or click to browse',
                   key: const ValueKey<String>('preflight-file-name'),
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: controller.fileName == null
-                        ? (palette?.muted ??
-                            theme.colorScheme.onSurfaceVariant)
+                        ? (palette?.muted ?? theme.colorScheme.onSurfaceVariant)
                         : (palette?.text ?? theme.colorScheme.onSurface),
                     fontStyle: controller.fileName == null
                         ? FontStyle.italic
@@ -407,8 +412,7 @@ class _ResultCard extends StatelessWidget {
             ],
             if (result.mixedPageSizes) ...<Widget>[
               const SizedBox(height: 24),
-              _FixPageSizesSection(
-                  controller: controller, palette: palette),
+              _FixPageSizesSection(controller: controller, palette: palette),
             ],
           ],
         ),
@@ -602,8 +606,7 @@ class _ChecksList extends StatelessWidget {
                         check.title,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: palette?.text ??
-                              theme.colorScheme.onSurface,
+                          color: palette?.text ?? theme.colorScheme.onSurface,
                         ),
                       ),
                       if (check.detail.isNotEmpty)
@@ -674,8 +677,7 @@ class _FontsList extends StatelessWidget {
                     child: Text(
                       font.name,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        color: palette?.text ??
-                            theme.colorScheme.onSurface,
+                        color: palette?.text ?? theme.colorScheme.onSurface,
                       ),
                     ),
                   ),
@@ -683,17 +685,17 @@ class _FontsList extends StatelessWidget {
                   Text(
                     font.type,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: palette?.muted ??
-                          theme.colorScheme.onSurfaceVariant,
+                      color:
+                          palette?.muted ?? theme.colorScheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(width: 8),
                   if (font.embedded)
-                    Icon(Icons.check, size: 16,
-                        color: palette?.success ?? Colors.green)
+                    Icon(Icons.check,
+                        size: 16, color: palette?.success ?? Colors.green)
                   else
-                    Icon(Icons.close, size: 16,
-                        color: palette?.warn ?? Colors.orange),
+                    Icon(Icons.close,
+                        size: 16, color: palette?.warn ?? Colors.orange),
                 ],
               ),
             ),
@@ -816,12 +818,10 @@ class _FixPageSizesSection extends StatelessWidget {
               Expanded(
                 child: Text(
                   'Mixed page sizes detected',
-                  key: const ValueKey<String>(
-                      'preflight-mixed-warning'),
+                  key: const ValueKey<String>('preflight-mixed-warning'),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: palette?.text ??
-                        theme.colorScheme.onSurface,
+                    color: palette?.text ?? theme.colorScheme.onSurface,
                   ),
                 ),
               ),
@@ -857,22 +857,18 @@ class _TargetField extends StatelessWidget {
       }
     }
 
-    return DropdownButtonFormField<String>(
+    return QpicDropdownField<String>(
       key: const ValueKey<String>('preflight-fix-target'),
-      initialValue: options.contains(controller.target)
-          ? controller.target
-          : 'auto',
-      decoration: const InputDecoration(
-        labelText: 'Target page size',
-        helperText: '"auto" uses the most common size in the PDF.',
-        isDense: true,
-        border: OutlineInputBorder(),
-      ),
-      items: options
-          .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-          .toList(),
+      value: options.contains(controller.target) ? controller.target : 'auto',
+      prefixIcon: const Icon(Icons.aspect_ratio_rounded, size: 18),
+      items: options.map((s) {
+        return QpicDropdownItem<String>(
+          value: s,
+          label: s == 'auto' ? 'Auto Detect (Most common)' : s,
+        );
+      }).toList(),
       onChanged: (value) {
-        if (value != null) controller.target = value;
+        controller.target = value;
       },
     );
   }
@@ -939,8 +935,7 @@ class _FixButton extends StatelessWidget {
     final fixing = controller.fixing;
     return FilledButton.icon(
       key: const ValueKey<String>('preflight-fix-submit'),
-      onPressed:
-          controller.canFix ? () => controller.fixPageSizes() : null,
+      onPressed: controller.canFix ? () => controller.fixPageSizes() : null,
       icon: fixing
           ? const SizedBox(
               width: 18,
@@ -994,16 +989,15 @@ class _FixResultCard extends StatelessWidget {
                 _Stat(
                   label: 'Target',
                   value: fixResult.targetLabel,
-                  valueKey: const ValueKey<String>(
-                      'preflight-fix-target-label'),
+                  valueKey:
+                      const ValueKey<String>('preflight-fix-target-label'),
                   palette: palette,
                 ),
                 _Stat(
                   label: 'Pages changed',
-                  value:
-                      '${fixResult.pagesChanged} / ${fixResult.pagesTotal}',
-                  valueKey: const ValueKey<String>(
-                      'preflight-fix-pages-changed'),
+                  value: '${fixResult.pagesChanged} / ${fixResult.pagesTotal}',
+                  valueKey:
+                      const ValueKey<String>('preflight-fix-pages-changed'),
                   palette: palette,
                 ),
               ],
@@ -1014,8 +1008,7 @@ class _FixResultCard extends StatelessWidget {
                 fixResult.note,
                 key: const ValueKey<String>('preflight-fix-note'),
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: palette?.muted ??
-                      theme.colorScheme.onSurfaceVariant,
+                  color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
@@ -1111,13 +1104,15 @@ class _CollapsibleSectionState extends State<_CollapsibleSection> {
                     widget.title,
                     style: theme.textTheme.titleSmall?.copyWith(
                       fontWeight: FontWeight.w700,
-                      color: widget.palette?.text ?? theme.colorScheme.onSurface,
+                      color:
+                          widget.palette?.text ?? theme.colorScheme.onSurface,
                     ),
                   ),
                 ),
                 Icon(
                   _expanded ? Icons.expand_less : Icons.expand_more,
-                  color: widget.palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                  color: widget.palette?.muted ??
+                      theme.colorScheme.onSurfaceVariant,
                   size: 20,
                 ),
               ],
@@ -1147,7 +1142,7 @@ class _ResultPlaceholder extends StatelessWidget {
     return Card(
       color: palette?.panel ?? theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: border),
       ),
       elevation: 0,

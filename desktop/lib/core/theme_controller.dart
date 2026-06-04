@@ -218,18 +218,18 @@ class QpicPalette extends ThemeExtension<QpicPalette> {
     success: Color(0xFF2DD4BF), // --success
     warn: Color(0xFFFBBF24), // --warn
     danger: Color(0xFFFB7185), // --danger
-    background: Color(0xFF0C0B15), // --bg
-    backgroundAlt: Color(0xFF14121F), // --bg-2
-    panel: Color(0xFF181626), // --panel
-    panelAlt: Color(0xFF131120), // --panel-2
-    field: Color(0xFF211E33), // --field
-    border: Color(0xFF2F2B46), // --border
-    borderSoft: Color(0xFF262339), // --border-soft
-    text: Color(0xFFF4F3FB), // --text
-    muted: Color(0xFFB5B1CC), // --muted
-    mutedAlt: Color(0xFF7D789A), // --muted-2
-    appBar: Color(0xFF14121F), // --appbar
-    appBarText: Color(0xFFF4F3FB), // --appbar-text
+    background: Color(0xFF111113), // --bg  (true near-black)
+    backgroundAlt: Color(0xFF161618), // --bg-2
+    panel: Color(0xFF1C1C1E), // --panel
+    panelAlt: Color(0xFF1A1A1C), // --panel-2
+    field: Color(0xFF232325), // --field
+    border: Color(0xFF2C2C2E), // --border (subtle dark gray)
+    borderSoft: Color(0xFF252527), // --border-soft
+    text: Color(0xFFF5F5F7), // --text (clean white)
+    muted: Color(0xFF98989D), // --muted (neutral gray)
+    mutedAlt: Color(0xFF636366), // --muted-2
+    appBar: Color(0xFF161618), // --appbar
+    appBarText: Color(0xFFF5F5F7), // --appbar-text
   );
 
   /// Light palette — reproduces the web `:root[data-theme="light"]` block
@@ -241,18 +241,18 @@ class QpicPalette extends ThemeExtension<QpicPalette> {
     success: Color(0xFF0D9488), // --success
     warn: Color(0xFFD97706), // --warn
     danger: Color(0xFFE11D48), // --danger
-    background: Color(0xFFF4F3FB), // --bg
-    backgroundAlt: Color(0xFFECEAF8), // --bg-2
+    background: Color(0xFFF5F5F7), // --bg (neutral gray-white)
+    backgroundAlt: Color(0xFFEFEFEF), // --bg-2
     panel: Color(0xFFFFFFFF), // --panel
-    panelAlt: Color(0xFFF7F6FD), // --panel-2
-    field: Color(0xFFF1EFFB), // --field
-    border: Color(0xFFE0DCF0), // --border
-    borderSoft: Color(0xFFEBE8F7), // --border-soft
-    text: Color(0xFF1B1830), // --text
-    muted: Color(0xFF58536F), // --muted
-    mutedAlt: Color(0xFF8B86A3), // --muted-2
+    panelAlt: Color(0xFFFAFAFA), // --panel-2
+    field: Color(0xFFF0F0F2), // --field
+    border: Color(0xFFD1D1D6), // --border (neutral gray)
+    borderSoft: Color(0xFFE5E5EA), // --border-soft
+    text: Color(0xFF1C1C1E), // --text (near-black)
+    muted: Color(0xFF6E6E73), // --muted
+    mutedAlt: Color(0xFF8E8E93), // --muted-2
     appBar: Color(0xFFFFFFFF), // --appbar
-    appBarText: Color(0xFF1B1830), // --appbar-text
+    appBarText: Color(0xFF1C1C1E), // --appbar-text
   );
 }
 
@@ -287,7 +287,7 @@ class QpicTheme {
       brightness: brightness,
       colorScheme: scheme,
       scaffoldBackgroundColor: palette.background,
-      canvasColor: palette.panel,
+      canvasColor: palette.field, // Used by DropdownButton popups
       dividerColor: palette.border,
       appBarTheme: AppBarTheme(
         backgroundColor: palette.appBar,
@@ -296,22 +296,22 @@ class QpicTheme {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
       ),
-      // Refined input decoration for text fields — tighter, more polished.
+      // Input fields — nearly invisible until focused.
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: palette.field,
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: palette.border),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: palette.borderSoft, width: 1.0),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: palette.border),
+          borderRadius: BorderRadius.circular(10),
+          borderSide: BorderSide(color: palette.borderSoft.withValues(alpha: 0.5), width: 1.0),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           borderSide: BorderSide(color: palette.brand, width: 1.5),
         ),
         labelStyle: TextStyle(color: palette.muted, fontSize: 13),
@@ -341,19 +341,18 @@ class QpicTheme {
         }),
         trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
       ),
-      // Refined filled button style — brand gradient feel.
+      // Filled button — clean solid brand.
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: palette.brand,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(10),
           ),
           textStyle: const TextStyle(
             fontSize: 13.5,
             fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
           ),
         ),
       ),
@@ -364,7 +363,7 @@ class QpicTheme {
           side: BorderSide(color: palette.brand.withValues(alpha: 0.5)),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(9),
+            borderRadius: BorderRadius.circular(10),
           ),
           textStyle: const TextStyle(
             fontSize: 13,
@@ -378,42 +377,43 @@ class QpicTheme {
           filled: true,
           fillColor: palette.field,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-            borderSide: BorderSide(color: palette.border),
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: palette.border, width: 1.0),
           ),
         ),
       ),
-      // Segmented button refinements.
+      // Segmented button — clean, subtle.
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return palette.brand.withValues(alpha: 0.15);
+              return palette.brand.withValues(alpha: 0.12);
             }
-            return palette.field;
+            return Colors.transparent;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) return palette.brand;
             return palette.muted;
           }),
           side: WidgetStateProperty.all(
-            BorderSide(color: palette.border),
+            BorderSide(color: palette.borderSoft.withValues(alpha: 0.5)),
           ),
           shape: WidgetStateProperty.all(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
           textStyle: WidgetStateProperty.all(
             const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
           ),
         ),
       ),
-      // Card theme.
+      // Card theme — borderless, flat, modern.
       cardTheme: CardThemeData(
         color: palette.panel,
         elevation: 0,
+        shadowColor: Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: BorderSide(color: palette.border),
+          side: BorderSide.none,
         ),
       ),
       // Tooltip.
@@ -431,6 +431,23 @@ class QpicTheme {
         thickness: WidgetStateProperty.all(6),
         thumbColor: WidgetStateProperty.all(palette.border),
       ),
+      // Popup menu — matches the app's dark/light surface.
+      popupMenuTheme: PopupMenuThemeData(
+        color: palette.field,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(
+            color: palette.borderSoft,
+          ),
+        ),
+        elevation: 8,
+        shadowColor: Colors.black.withValues(alpha: 0.35),
+        textStyle: TextStyle(
+          color: palette.text,
+          fontSize: 13,
+        ),
+      ),
       extensions: <ThemeExtension<dynamic>>[palette],
     );
   }
@@ -447,7 +464,8 @@ class QpicTheme {
 /// follows `MediaQuery.platformBrightness` live (4.7); this controller does not
 /// need to observe OS brightness itself.
 class ThemeController extends ChangeNotifier {
-  ThemeController({SharedPreferences? preferences}) : _preferences = preferences;
+  ThemeController({SharedPreferences? preferences})
+      : _preferences = preferences;
 
   /// `shared_preferences` key under which the selected mode is stored.
   static const String storageKey = 'qpic.theme_mode';

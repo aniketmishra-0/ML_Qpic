@@ -96,8 +96,8 @@ class Settings(BaseSettings):
     # — only when Online mode is on and a key is configured.
     ANSWER_SHEET_ENABLED: bool = True
 
-    MAX_PDF_SIZE_MB: int = 50
-    MAX_PAGES: int = 100
+    MAX_PDF_SIZE_MB: int = 2048
+    MAX_PAGES: int = 2000
     # Separate, far higher limits for the standalone PDF tools (Compress / Edit /
     # Preflight). These do plain PyMuPDF work — no per-page AI/OCR — so they can
     # safely chew through big documents the cropper never should. Compress in

@@ -37,9 +37,16 @@ class TextBlock(NamedTuple):
     q_num: str
 
 
+from pathlib import Path
+
 class TextDetector:
     def detect(
-        self, pdf_bytes: bytes, padding_px: int = 0, marker_style: str = "auto", layout_columns: Optional[int] = None
+        self,
+        pdf_source: bytes | str | Path,
+        padding_px: int = 0,
+        marker_style: str = "auto",
+        layout_columns: Optional[int] = None,
+        custom_regex: Optional[str] = None,
     ) -> list[DetectedQuestion]:
         """Detect question start positions using extracted text.
 
@@ -53,7 +60,8 @@ class TextDetector:
         """
 
         self._marker_style = marker_style
-        if not pdf_bytes:
+        self._custom_regex = custom_regex
+        if not pdf_source:
             return []
 
         starts: list[QuestionStart] = []
@@ -63,7 +71,11 @@ class TextDetector:
         page_widths: dict[int, float] = {}
 
         try:
-            with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+            if isinstance(pdf_source, bytes):
+                doc = fitz.open(stream=pdf_source, filetype="pdf")
+            else:
+                doc = fitz.open(str(pdf_source))
+            with doc:
                 total_pages = doc.page_count
                 in_solutions = False
                 for page_idx in range(total_pages):
@@ -217,4 +229,8 @@ class TextDetector:
         return out
 
     def _match_question_start(self, text: str) -> Optional[tuple[str, bool]]:
-        return match_question_start_ex(text, getattr(self, "_marker_style", "auto"))
+        return match_question_start_ex(
+            text,
+            getattr(self, "_marker_style", "auto"),
+            custom_regex=getattr(self, "_custom_regex", None),
+        )

@@ -17,14 +17,16 @@ logger = logging.getLogger(__name__)
 ERR_INVALID_PDF = "Invalid PDF file"
 
 
+from pathlib import Path
+
 def validate_pdf(
-    file_bytes: bytes,
+    pdf_source: bytes | str | Path,
     settings: Settings,
     *,
     max_size_mb: int | None = None,
     max_pages: int | None = None,
 ) -> None:
-    """Validate PDF bytes and enforce size/page limits.
+    """Validate PDF bytes or file path and enforce size/page limits.
 
     By default the cropper limits (``MAX_PDF_SIZE_MB`` / ``MAX_PAGES``) apply.
     Callers that do cheap, non-AI work (the Compress/Edit/Preflight tools) pass
@@ -39,28 +41,56 @@ def validate_pdf(
     size_limit = max_size_mb if max_size_mb is not None else settings.MAX_PDF_SIZE_MB
     page_limit = max_pages if max_pages is not None else settings.MAX_PAGES
 
-    size_mb = len(file_bytes) / (1024 * 1024)
-    if size_mb > size_limit:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"PDF exceeds size limit ({size_mb:.2f}MB > {size_limit}MB)",
-        )
+    if isinstance(pdf_source, bytes):
+        size_mb = len(pdf_source) / (1024 * 1024)
+        if size_mb > size_limit:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"PDF exceeds size limit ({size_mb:.2f}MB > {size_limit}MB)",
+            )
 
-    if not file_bytes.startswith(b"%PDF"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF)
+        if not pdf_source.startswith(b"%PDF"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF)
 
-    try:
-        with fitz.open(stream=file_bytes, filetype="pdf") as doc:
-            page_count = doc.page_count
-    except (fitz.FileDataError, fitz.FileNotFoundError, ValueError) as exc:
-        logger.error("pdf_open_failed error=%s", str(exc))
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF) from exc
+        try:
+            with fitz.open(stream=pdf_source, filetype="pdf") as doc:
+                page_count = doc.page_count
+        except Exception as exc:
+            logger.error("pdf_open_failed error=%s", str(exc))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF) from exc
+    else:
+        pdf_path = Path(pdf_source)
+        if not pdf_path.exists():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF)
+
+        size_mb = pdf_path.stat().st_size / (1024 * 1024)
+        if size_mb > size_limit:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"PDF exceeds size limit ({size_mb:.2f}MB > {size_limit}MB)",
+            )
+
+        try:
+            with open(pdf_path, "rb") as f:
+                start_bytes = f.read(4)
+            if start_bytes != b"%PDF":
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF)
+        except Exception as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF) from exc
+
+        try:
+            with fitz.open(str(pdf_path)) as doc:
+                page_count = doc.page_count
+        except Exception as exc:
+            logger.error("pdf_open_failed error=%s", str(exc))
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF) from exc
 
     if page_count > page_limit:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"PDF exceeds page limit ({page_count} > {page_limit})",
         )
+
 
 
 def render_page_image(doc: "fitz.Document", page_index: int, dpi: int) -> Image.Image:
@@ -73,8 +103,8 @@ def render_page_image(doc: "fitz.Document", page_index: int, dpi: int) -> Image.
     return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
 
-def pdf_to_images(file_bytes: bytes, dpi: int) -> list[Image.Image]:
-    """Convert PDF bytes to a list of PIL Images.
+def pdf_to_images(pdf_source: bytes | str | Path, dpi: int) -> list[Image.Image]:
+    """Convert PDF bytes or file path to a list of PIL Images.
 
     Eager renderer kept for callers (and tests) that genuinely want every page
     materialised at once. The detection path uses :class:`LazyPageImages`
@@ -82,8 +112,55 @@ def pdf_to_images(file_bytes: bytes, dpi: int) -> list[Image.Image]:
     most a single page in memory.
     """
 
-    with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+    if isinstance(pdf_source, bytes):
+        doc = fitz.open(stream=pdf_source, filetype="pdf")
+    else:
+        doc = fitz.open(str(pdf_source))
+    with doc:
         return [render_page_image(doc, i, dpi) for i in range(doc.page_count)]
+
+
+def deskew_image(img: Image.Image) -> Image.Image:
+    """Detect text lines tilt angle and rotate to make them horizontal."""
+    try:
+        import cv2
+        import numpy as np
+    except ImportError:
+        return img
+
+    try:
+        # Convert PIL Image to grayscale array to estimate tilt
+        gray = img.convert("L")
+        arr_gray = np.array(gray)
+
+        inv = cv2.bitwise_not(arr_gray)
+        _, mask = cv2.threshold(inv, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        coords = cv2.findNonZero(mask)
+        if coords is None or len(coords) < 50:
+            return img
+
+        angle = cv2.minAreaRect(coords)[-1]
+        if angle < -45:
+            angle = 90.0 + angle
+        if abs(angle) < 0.3 or abs(angle) > 10.0:
+            return img
+
+        # Warp the original image (supports RGB/RGBA shape)
+        arr_img = np.array(img)
+        h, w = arr_img.shape[:2]
+        center = (w / 2.0, h / 2.0)
+        matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+        
+        warped = cv2.warpAffine(
+            arr_img,
+            matrix,
+            (w, h),
+            flags=cv2.INTER_CUBIC,
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+        return Image.fromarray(warped)
+    except Exception:
+        return img
 
 
 class LazyPageImages:
@@ -107,15 +184,35 @@ class LazyPageImages:
     ``asyncio.to_thread`` worker threads.
     """
 
-    def __init__(self, file_bytes: bytes, dpi: int, *, cache: bool = False) -> None:
-        self._doc = fitz.open(stream=file_bytes, filetype="pdf")
+    def __init__(
+        self,
+        pdf_source: bytes | str | Path,
+        dpi: int,
+        *,
+        cache: bool = False,
+        binarize: bool = False,
+        contrast: float = 1.0,
+        brightness: float = 1.0,
+        watermark_threshold: int = 255,
+        deskew: bool = False,
+    ) -> None:
+        if isinstance(pdf_source, bytes):
+            self._doc = fitz.open(stream=pdf_source, filetype="pdf")
+        else:
+            self._doc = fitz.open(str(pdf_source))
         self._dpi = dpi
         self._count = self._doc.page_count
         self._lock = threading.Lock()
         # When cache=False (default) we keep at most the most-recently rendered
+
         # page, so iteration never accumulates bitmaps. cache=True keeps every
         # page (used only where a caller really needs random repeat access).
         self._cache = cache
+        self._binarize = binarize
+        self._contrast = contrast
+        self._brightness = brightness
+        self._watermark_threshold = watermark_threshold
+        self._deskew = deskew
         self._store: dict[int, Image.Image] = {}
 
     def __len__(self) -> int:
@@ -131,6 +228,27 @@ class LazyPageImages:
             if cached is not None:
                 return cached
             img = render_page_image(self._doc, index, self._dpi)
+            
+            # Apply binarize/contrast/brightness/watermark thresholding if non-default
+            if (
+                self._binarize
+                or self._contrast != 1.0
+                or self._brightness != 1.0
+                or self._watermark_threshold < 255
+            ):
+                from ..services.pdf_tools.enhance_service import enhance_image
+                img = enhance_image(
+                    img,
+                    binarize=self._binarize,
+                    contrast=self._contrast,
+                    brightness=self._brightness,
+                    watermark_threshold=self._watermark_threshold,
+                )
+
+            # Apply deskewing if requested
+            if self._deskew:
+                img = deskew_image(img)
+
             if self._cache:
                 self._store[index] = img
             else:

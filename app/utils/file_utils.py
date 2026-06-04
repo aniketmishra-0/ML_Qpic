@@ -80,3 +80,36 @@ def has_pending_jobs(temp_dir: str) -> bool:
     except OSError:
         return False
 
+
+async def stream_upload_to_file(upload: any, dest_path: Path, max_bytes: int) -> int:
+    """Stream an upload to a file on disk in chunks to keep memory usage flat."""
+    from fastapi import HTTPException, status
+
+    written = 0
+    chunk_size = 1024 * 1024  # 1 MiB
+    try:
+        with open(dest_path, "wb") as out:
+            while True:
+                chunk = await upload.read(chunk_size)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    out.close()
+                    dest_path.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"Upload exceeds size limit ({written / (1024 * 1024):.2f}MB > {max_bytes / (1024 * 1024)}MB)",
+                    )
+                out.write(chunk)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to write uploaded file to disk")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to stream upload to disk: {str(exc)}"
+        ) from exc
+    return written
+
+

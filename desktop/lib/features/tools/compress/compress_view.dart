@@ -58,7 +58,7 @@ class CompressView extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool wide = constraints.maxWidth >= 900;
-        
+
         if (wide) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -68,7 +68,8 @@ class CompressView extends StatelessWidget {
                 child: Material(
                   color: palette?.panel ?? theme.colorScheme.surface,
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 32),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: <Widget>[
@@ -81,7 +82,8 @@ class CompressView extends StatelessWidget {
                         ),
                         if (controller.errorText != null) ...<Widget>[
                           const SizedBox(height: 16),
-                          _ErrorBanner(message: controller.errorText!, palette: palette),
+                          _ErrorBanner(
+                              message: controller.errorText!, palette: palette),
                         ],
                         const SizedBox(height: 32),
                         _SectionCard(
@@ -110,7 +112,8 @@ class CompressView extends StatelessWidget {
                       child: controller.result != null
                           ? ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 600),
-                              child: _ResultCard(controller: controller, palette: palette),
+                              child: _ResultCard(
+                                  controller: controller, palette: palette),
                             )
                           : ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 500),
@@ -141,7 +144,8 @@ class CompressView extends StatelessWidget {
                   ),
                   if (controller.errorText != null) ...<Widget>[
                     const SizedBox(height: 16),
-                    _ErrorBanner(message: controller.errorText!, palette: palette),
+                    _ErrorBanner(
+                        message: controller.errorText!, palette: palette),
                   ],
                   const SizedBox(height: 24),
                   _SectionCard(
@@ -183,8 +187,8 @@ class _ResultPlaceholder extends StatelessWidget {
     return Card(
       color: palette?.panel ?? theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: border),
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide.none,
       ),
       elevation: 0,
       child: Padding(
@@ -384,10 +388,9 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Material(
-      color: palette?.panel ?? theme.colorScheme.surface,
+      color: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: palette?.border ?? theme.dividerColor),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -396,10 +399,10 @@ class _SectionCard extends StatelessWidget {
           children: <Widget>[
             Text(
               title,
-              style: theme.textTheme.titleSmall?.copyWith(
+              style: TextStyle(
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
                 color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                letterSpacing: 0.4,
               ),
             ),
             const SizedBox(height: 12),
@@ -438,8 +441,7 @@ class _LevelSelector extends StatelessWidget {
                 selected: controller.level == level,
                 onTap: () => controller.level = level,
               ),
-              if (level != CompressLevel.values.last)
-                const SizedBox(height: 8),
+              if (level != CompressLevel.values.last) const SizedBox(height: 8),
             ],
           ],
         ),
@@ -654,7 +656,7 @@ class _ResultCard extends StatelessWidget {
       color: palette?.panel ?? theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: palette?.border ?? theme.dividerColor),
+        side: BorderSide.none,
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -677,8 +679,7 @@ class _ResultCard extends StatelessWidget {
                 _Stat(
                   label: 'Before',
                   value: humanFileSize(result.originalSize),
-                  valueKey:
-                      const ValueKey<String>('compress-result-original'),
+                  valueKey: const ValueKey<String>('compress-result-original'),
                   palette: palette,
                 ),
                 _Stat(
@@ -727,8 +728,9 @@ class _ResultCard extends StatelessWidget {
                 Expanded(
                   child: FilledButton.icon(
                     key: const ValueKey<String>('compress-download'),
-                    onPressed:
-                        controller.canDownload ? () => controller.download() : null,
+                    onPressed: controller.canDownload
+                        ? () => controller.download()
+                        : null,
                     icon: const Icon(Icons.download),
                     label: const Text('Download PDF'),
                   ),

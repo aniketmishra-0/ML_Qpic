@@ -31,6 +31,13 @@ from ..models.schemas import (
     PageInfo,
     SnapRequest,
     SnapResponse,
+    MLConfigRequest,
+    MLConfigResponse,
+    RegexTestRequest,
+    RegexMatchResult,
+    RegexTestResponse,
+    AlignOffsetsRequest,
+    AlignOffsetsResponse,
 )
 from ..models.schemas import DetectedQuestion
 from ..services.crop_service import crop_and_stitch_hires, save_question_image
@@ -203,7 +210,7 @@ def _get_temp_root(request: Request, settings: Settings) -> str:
     return str(getattr(request.app.state, "temp_root", settings.TEMP_DIR))
 
 
-def _answer_key_from_pdf_text(file_bytes: bytes, in_scope_pages: "set[int] | None") -> dict[int, str]:
+def _answer_key_from_pdf_text(pdf_source: bytes | str | Path, in_scope_pages: "set[int] | None") -> dict[int, str]:
     """Parse the paper's answer key from the PDF text layer (free, no AI).
 
     Tries two formats, in order:
@@ -220,7 +227,11 @@ def _answer_key_from_pdf_text(file_bytes: bytes, in_scope_pages: "set[int] | Non
     """
 
     try:
-        with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+        if isinstance(pdf_source, bytes):
+            doc = fitz.open(stream=pdf_source, filetype="pdf")
+        else:
+            doc = fitz.open(str(pdf_source))
+        with doc:
             parts: list[str] = []
             for idx in range(doc.page_count):
                 page_no = idx + 1
@@ -240,11 +251,15 @@ def _answer_key_from_pdf_text(file_bytes: bytes, in_scope_pages: "set[int] | Non
         return {}
 
 
-def _pdf_has_text(file_bytes: bytes) -> bool:
+def _pdf_has_text(pdf_source: bytes | str | Path) -> bool:
     """True if the PDF has a meaningful selectable-text layer (not a pure scan)."""
 
     try:
-        with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+        if isinstance(pdf_source, bytes):
+            doc = fitz.open(stream=pdf_source, filetype="pdf")
+        else:
+            doc = fitz.open(str(pdf_source))
+        with doc:
             total = 0
             for idx in range(min(5, doc.page_count)):
                 total += len((doc.load_page(idx).get_text("text") or "").strip())
@@ -258,7 +273,7 @@ def _pdf_has_text(file_bytes: bytes) -> bool:
 async def _resolve_answer_key(
     *,
     settings: Settings,
-    file_bytes: bytes,
+    pdf_source: bytes | str | Path,
     page_images: Any,
     in_scope_pages: "set[int] | None",
     use_ai: bool,
@@ -276,14 +291,14 @@ async def _resolve_answer_key(
         logger.info("answer_key skipped reason=ANSWER_SHEET_ENABLED=false")
         return {}
 
-    key = await asyncio.to_thread(_answer_key_from_pdf_text, file_bytes, in_scope_pages)
+    key = await asyncio.to_thread(_answer_key_from_pdf_text, pdf_source, in_scope_pages)
     if key:
         logger.info("answer_key source=text pairs=%s", len(key))
         return key
 
     # Distinguish "searchable PDF but no key grid found" from "scanned PDF (no
     # text at all)" so the logs say *why* nothing came back.
-    has_text = await asyncio.to_thread(_pdf_has_text, file_bytes)
+    has_text = await asyncio.to_thread(_pdf_has_text, pdf_source)
     if use_ai and settings.ai_is_configured():
         logger.info("answer_key source=ai_vision attempt has_text_layer=%s", has_text)
         key = await read_answer_key_with_ai(
@@ -300,7 +315,6 @@ async def _resolve_answer_key(
         settings.ai_is_configured(),
     )
     return {}
-
 
 @router.get("/health", response_model=HealthResponse)
 async def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
@@ -478,6 +492,13 @@ async def crop_pdf(
         "auto",
         description="Force page layout columns: 'auto', '1', '2', or '3'.",
     ),
+    binarize: bool = Query(False, description="Binarize/monochrome pages."),
+    contrast: float = Query(1.0, description="Contrast scaling factor."),
+    brightness: float = Query(1.0, description="Brightness scaling factor."),
+    watermark_threshold: int = Query(255, ge=0, le=255, description="Watermark background filter."),
+    deskew: bool = Query(False, description="Straighten skew scan tilt."),
+    custom_regex: Optional[str] = Query(None, description="Custom marker matching regular expression."),
+    confidence: Optional[float] = Query(None, description="YOLO score confidence threshold."),
     settings: Settings = Depends(get_settings),
     client: Optional[anthropic.AsyncAnthropic] = Depends(get_anthropic_client_optional),
 ) -> CropResponse:
@@ -519,12 +540,6 @@ async def crop_pdf(
     if style not in ("auto", "q", "numbered"):
         style = "auto"
 
-    file_bytes = await file.read()
-    if not file_bytes.startswith(b"%PDF"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF)
-
-    validate_pdf(file_bytes=file_bytes, settings=settings)
-
     job_id = generate_job_id()
     temp_root = _get_temp_root(request, settings)
 
@@ -534,12 +549,30 @@ async def crop_pdf(
     job_dir: Optional[Path] = None
     try:
         job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
+        source_pdf_path = job_dir / "source.pdf"
+
+        # Stream upload directly to disk
+        max_bytes = settings.MAX_PDF_SIZE_MB * 1024 * 1024
+        from ..utils.file_utils import stream_upload_to_file
+        await stream_upload_to_file(file, source_pdf_path, max_bytes)
+
+        # Validate PDF on disk
+        validate_pdf(pdf_source=source_pdf_path, settings=settings)
 
         # Lazy page view: pages are rasterised only when a detector asks for
         # one, and at most a single page bitmap is held in memory at a time.
         # A searchable PDF (text tier wins) renders zero pages here; the final
         # crops are re-rendered straight from the PDF vector source regardless.
-        page_images = await asyncio.to_thread(LazyPageImages, file_bytes, dpi)
+        page_images = await asyncio.to_thread(
+            LazyPageImages,
+            source_pdf_path,
+            dpi,
+            binarize=binarize,
+            contrast=contrast,
+            brightness=brightness,
+            watermark_threshold=watermark_threshold,
+            deskew=deskew,
+        )
         total_pages = len(page_images)
         logger.info("request_id=%s job_id=%s stage=pdf_rendered total_pages=%s", request_id, job_id, total_pages)
 
@@ -578,13 +611,15 @@ async def crop_pdf(
         )
         layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
-            pdf_bytes=file_bytes,
+            pdf_source=source_pdf_path,
             page_images=page_images,
             settings=settings,
             render_dpi=dpi,
             prefer_ai=use_ai,
             marker_style=style,
             layout_columns=layout_val,
+            confidence=confidence,
+            custom_regex=custom_regex,
         )
 
         # Resolve the paper's answer key for the answer-sheet export while the
@@ -595,7 +630,7 @@ async def crop_pdf(
         # entirely when the user turned the sheet off.
         answer_key = await _resolve_answer_key(
             settings=settings,
-            file_bytes=file_bytes,
+            pdf_source=source_pdf_path,
             page_images=page_images,
             in_scope_pages=None,
             use_ai=use_ai,
@@ -646,7 +681,7 @@ async def crop_pdf(
             # from the PDF vector source at this higher DPI keeps text sharp when
             # zoomed instead of upscaling the detection raster.
             crop_dpi = max(dpi, settings.CROP_RENDER_DPI)
-            with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+            with fitz.open(str(source_pdf_path)) as doc:
                 # Structural page furniture (branding footers, logos, decorative
                 # rules) collected once per document and painted out of any crop
                 # region it intersects — including the middle of a cross-page
@@ -662,6 +697,11 @@ async def crop_pdf(
                         detection_dpi=dpi,
                         crop_dpi=crop_dpi,
                         furniture_by_page=furniture_by_page,
+                        binarize=binarize,
+                        contrast=contrast,
+                        brightness=brightness,
+                        watermark_threshold=watermark_threshold,
+                        deskew=deskew,
                     )
                     saved = save_question_image(
                         image=img,
@@ -797,6 +837,13 @@ async def analyze_pdf(
         "auto",
         description="Force page layout columns: 'auto', '1', '2', or '3'.",
     ),
+    binarize: bool = Query(False, description="Binarize/monochrome pages."),
+    contrast: float = Query(1.0, description="Contrast scaling factor."),
+    brightness: float = Query(1.0, description="Brightness scaling factor."),
+    watermark_threshold: int = Query(255, ge=0, le=255, description="Watermark background filter."),
+    deskew: bool = Query(False, description="Straighten skew scan tilt."),
+    custom_regex: Optional[str] = Query(None, description="Custom marker matching regular expression."),
+    confidence: Optional[float] = Query(None, description="YOLO score confidence threshold."),
     settings: Settings = Depends(get_settings),
     client: Optional[anthropic.AsyncAnthropic] = Depends(get_anthropic_client_optional),
 ) -> AnalyzeResponse:
@@ -816,12 +863,6 @@ async def analyze_pdf(
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_FILE_TYPE)
 
-    file_bytes = await file.read()
-    if not file_bytes.startswith(b"%PDF"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF)
-
-    validate_pdf(file_bytes=file_bytes, settings=settings)
-
     job_id = generate_job_id()
     temp_root = _get_temp_root(request, settings)
     request_id = getattr(request.state, "request_id", None)
@@ -830,12 +871,40 @@ async def analyze_pdf(
     job_dir: Optional[Path] = None
     try:
         job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
-
-        # Cache the source PDF so /finalize can re-render without a re-upload.
         source_pdf = job_dir / "source.pdf"
-        await asyncio.to_thread(source_pdf.write_bytes, file_bytes)
 
-        page_images = await asyncio.to_thread(LazyPageImages, file_bytes, dpi)
+        # Stream upload directly to disk
+        max_bytes = settings.MAX_PDF_SIZE_MB * 1024 * 1024
+        from ..utils.file_utils import stream_upload_to_file
+        await stream_upload_to_file(file, source_pdf, max_bytes)
+
+        # Validate PDF on disk
+        validate_pdf(pdf_source=source_pdf, settings=settings)
+
+        # Cache the enhancement parameters
+        enhancements = {
+            "binarize": binarize,
+            "contrast": contrast,
+            "brightness": brightness,
+            "watermark_threshold": watermark_threshold,
+            "deskew": deskew,
+        }
+        await asyncio.to_thread(
+            (job_dir / "enhancements.json").write_text,
+            json.dumps(enhancements),
+            "utf-8",
+        )
+
+        page_images = await asyncio.to_thread(
+            LazyPageImages,
+            source_pdf,
+            dpi,
+            binarize=binarize,
+            contrast=contrast,
+            brightness=brightness,
+            watermark_threshold=watermark_threshold,
+            deskew=deskew,
+        )
         total_pages = len(page_images)
 
         try:
@@ -860,7 +929,7 @@ async def analyze_pdf(
         )
         layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
-            pdf_bytes=file_bytes,
+            pdf_source=source_pdf,
             page_images=page_images,
             settings=settings,
             render_dpi=dpi,
@@ -870,6 +939,8 @@ async def analyze_pdf(
             if (marker_style or "auto").strip().lower() in ("auto", "q", "numbered")
             else "auto",
             layout_columns=layout_val,
+            confidence=confidence,
+            custom_regex=custom_regex,
         )
 
         # Resolve the paper's answer key for the answer-sheet export while the
@@ -886,7 +957,7 @@ async def analyze_pdf(
         in_scope_pages = question_page_set | answer_page_set
         answer_key = await _resolve_answer_key(
             settings=settings,
-            file_bytes=file_bytes,
+            pdf_source=source_pdf,
             page_images=page_images,
             in_scope_pages=None,
             use_ai=use_ai,
@@ -934,7 +1005,8 @@ async def analyze_pdf(
 
         def _write_previews() -> list[PageInfo]:
             infos: list[PageInfo] = []
-            with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+            from PIL import Image
+            with fitz.open(str(source_pdf)) as doc:
                 zoom = preview_dpi / 72.0
                 matrix = fitz.Matrix(zoom, zoom)
                 for idx in range(doc.page_count):
@@ -944,8 +1016,21 @@ async def analyze_pdf(
                     page = doc.load_page(idx)
                     rect = page.rect
                     pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csRGB, alpha=False)
+                    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+                    if binarize or contrast != 1.0 or brightness != 1.0 or watermark_threshold < 255 or deskew:
+                        from ..services.pdf_tools.enhance_service import enhance_image
+                        img = enhance_image(
+                            img,
+                            binarize=binarize,
+                            contrast=contrast,
+                            brightness=brightness,
+                            watermark_threshold=watermark_threshold,
+                            deskew=deskew,
+                        )
+
                     out_path = job_dir / f"page_{page_no:03d}.png"
-                    pix.save(str(out_path))
+                    img.save(str(out_path))
                     infos.append(
                         PageInfo(
                             page=page_no,
@@ -1025,7 +1110,11 @@ async def analyze_pdf(
 
         items = build_analyzed_items(detected, page_lines or None)
         notes = build_review_notes(
-            detected, method_used, expected_q_nums or None, page_lines or None
+            detected,
+            method_used,
+            expected_q_nums or None,
+            page_lines or None,
+            pdf_source=source_pdf,
         )
         needs_review = bool(notes) or any(it.flagged for it in items)
 
@@ -1065,6 +1154,11 @@ async def prepare_manual(
     request: Request,
     file: UploadFile = File(...),
     dpi: int = Query(200, ge=72, le=600),
+    binarize: bool = Query(False),
+    contrast: float = Query(1.0),
+    brightness: float = Query(1.0),
+    watermark_threshold: int = Query(255),
+    deskew: bool = Query(False),
     settings: Settings = Depends(get_settings),
 ) -> AnalyzeResponse:
     """Prepare a PDF for fully-manual cropping — no auto-detection runs.
@@ -1080,12 +1174,6 @@ async def prepare_manual(
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_FILE_TYPE)
 
-    file_bytes = await file.read()
-    if not file_bytes.startswith(b"%PDF"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_INVALID_PDF)
-
-    validate_pdf(file_bytes=file_bytes, settings=settings)
-
     job_id = generate_job_id()
     temp_root = _get_temp_root(request, settings)
     request_id = getattr(request.state, "request_id", None)
@@ -1094,18 +1182,37 @@ async def prepare_manual(
     job_dir: Optional[Path] = None
     try:
         job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
-
-        # Cache the source PDF so /snap and /finalize can re-render without a
-        # re-upload, exactly like the smart-analyze flow.
         source_pdf = job_dir / "source.pdf"
-        await asyncio.to_thread(source_pdf.write_bytes, file_bytes)
+
+        # Stream upload directly to disk
+        max_bytes = settings.MAX_PDF_SIZE_MB * 1024 * 1024
+        from ..utils.file_utils import stream_upload_to_file
+        await stream_upload_to_file(file, source_pdf, max_bytes)
+
+        # Validate PDF on disk
+        validate_pdf(pdf_source=source_pdf, settings=settings)
+
+        # Cache the enhancement parameters
+        enhancements = {
+            "binarize": binarize,
+            "contrast": contrast,
+            "brightness": brightness,
+            "watermark_threshold": watermark_threshold,
+            "deskew": deskew,
+        }
+        await asyncio.to_thread(
+            (job_dir / "enhancements.json").write_text,
+            json.dumps(enhancements),
+            "utf-8",
+        )
 
         # Render every page as a preview so the user can crop from any page.
         preview_dpi = min(dpi, 120)
 
         def _write_previews() -> tuple[int, list[PageInfo]]:
             infos: list[PageInfo] = []
-            with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+            from PIL import Image
+            with fitz.open(str(source_pdf)) as doc:
                 zoom = preview_dpi / 72.0
                 matrix = fitz.Matrix(zoom, zoom)
                 for idx in range(doc.page_count):
@@ -1113,8 +1220,21 @@ async def prepare_manual(
                     page = doc.load_page(idx)
                     rect = page.rect
                     pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csRGB, alpha=False)
+                    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                    
+                    if binarize or contrast != 1.0 or brightness != 1.0 or watermark_threshold < 255 or deskew:
+                        from ..services.pdf_tools.enhance_service import enhance_image
+                        img = enhance_image(
+                            img,
+                            binarize=binarize,
+                            contrast=contrast,
+                            brightness=brightness,
+                            watermark_threshold=watermark_threshold,
+                            deskew=deskew,
+                        )
+                    
                     out_path = job_dir / f"page_{page_no:03d}.png"
-                    pix.save(str(out_path))
+                    img.save(str(out_path))
                     infos.append(
                         PageInfo(
                             page=page_no,
@@ -1161,6 +1281,13 @@ async def auto_detect_job_page(
     use_ai: bool = Query(False),
     marker_style: str = Query("auto"),
     layout_columns: str = Query("auto", description="Force page layout columns: 'auto', '1', '2', or '3'."),
+    binarize: bool = Query(False),
+    contrast: float = Query(1.0),
+    brightness: float = Query(1.0),
+    watermark_threshold: int = Query(255),
+    deskew: bool = Query(False),
+    custom_regex: Optional[str] = Query(None),
+    confidence: Optional[float] = Query(None),
     settings: Settings = Depends(get_settings),
     client: Optional[anthropic.AsyncAnthropic] = Depends(get_anthropic_client_optional),
 ) -> list[AnalyzedItem]:
@@ -1176,9 +1303,17 @@ async def auto_detect_job_page(
     if not await asyncio.to_thread(_exists, source_pdf):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=ERR_JOB_NOT_FOUND)
 
-    file_bytes = await asyncio.to_thread(source_pdf.read_bytes)
     dpi = settings.PDF_RENDER_DPI
-    page_images = await asyncio.to_thread(LazyPageImages, file_bytes, dpi)
+    page_images = await asyncio.to_thread(
+        LazyPageImages,
+        source_pdf,
+        dpi,
+        binarize=binarize,
+        contrast=contrast,
+        brightness=brightness,
+        watermark_threshold=watermark_threshold,
+        deskew=deskew,
+    )
     total_pages = len(page_images)
 
     try:
@@ -1230,7 +1365,7 @@ async def auto_detect_job_page(
 
         layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
-            pdf_bytes=file_bytes,
+            pdf_source=source_pdf,
             page_images=wrapped_images,
             settings=settings,
             render_dpi=dpi,
@@ -1238,6 +1373,8 @@ async def auto_detect_job_page(
             prefer_ai=use_ai,
             marker_style=style,
             layout_columns=layout_val,
+            confidence=confidence,
+            custom_regex=custom_regex,
         )
 
         detected = apply_page_ranges(
@@ -1251,7 +1388,7 @@ async def auto_detect_job_page(
         def _page_text_lines() -> dict[int, list[tuple[float, float, float, float]]]:
             out: dict[int, list[tuple[float, float, float, float]]] = {}
             try:
-                with fitz.open(stream=file_bytes, filetype="pdf") as doc:
+                with fitz.open(str(source_pdf)) as doc:
                     for p_num in question_page_set | answer_page_set:
                         page_idx = p_num - 1
                         page = doc.load_page(page_idx)
@@ -1360,8 +1497,25 @@ async def snap_box(
         x_end_pct=payload.x_end_pct,
         y_start_pct=payload.y_start_pct,
         y_end_pct=payload.y_end_pct,
+        margin_pct=payload.margin_pct,
     )
     return SnapResponse(**snapped)
+
+
+def _load_cached_enhancements(job_dir: Path) -> dict:
+    path = job_dir / "enhancements.json"
+    if path.exists():
+        try:
+            return json.loads(path.read_text("utf-8"))
+        except Exception:
+            pass
+    return {
+        "binarize": False,
+        "contrast": 1.0,
+        "brightness": 1.0,
+        "watermark_threshold": 255,
+        "deskew": False,
+    }
 
 
 @router.post("/crop/preview")
@@ -1413,8 +1567,11 @@ async def crop_preview(
 
     file_bytes = await asyncio.to_thread(source_pdf.read_bytes)
 
+    enh = _load_cached_enhancements(job_dir)
+
     def _render() -> bytes:
         import io
+        from PIL import Image
 
         crop_dpi = max(dpi, settings.CROP_RENDER_DPI)
         with fitz.open(stream=file_bytes, filetype="pdf") as doc:
@@ -1427,7 +1584,52 @@ async def crop_preview(
                 crop_dpi=crop_dpi,
                 furniture_by_page=furniture_by_page,
                 align_parts=_should_align_parts(question),
+                binarize=enh.get("binarize", False),
+                contrast=enh.get("contrast", 1.0),
+                brightness=enh.get("brightness", 1.0),
+                watermark_threshold=enh.get("watermark_threshold", 255),
+                deskew=enh.get("deskew", False),
             )
+
+            if payload.bilingual_mode in ("bilingual_horizontal", "bilingual_vertical") and payload.other_segments:
+                other_q = DetectedQuestion(
+                    q_num=question.q_num,
+                    is_solution=question.is_solution,
+                    segments=list(payload.other_segments),
+                    source=payload.source or "auto",
+                    align=payload.align,
+                )
+                other_img = crop_and_stitch_hires(
+                    doc,
+                    other_q,
+                    padding_px=padding,
+                    detection_dpi=dpi,
+                    crop_dpi=crop_dpi,
+                    furniture_by_page=furniture_by_page,
+                    align_parts=_should_align_parts(other_q),
+                    binarize=enh.get("binarize", False),
+                    contrast=enh.get("contrast", 1.0),
+                    brightness=enh.get("brightness", 1.0),
+                    watermark_threshold=enh.get("watermark_threshold", 255),
+                    deskew=enh.get("deskew", False),
+                )
+
+                gap = 20
+                if payload.bilingual_mode == "bilingual_horizontal":
+                    w = img.width + other_img.width + gap
+                    h = max(img.height, other_img.height)
+                    bilingual_img = Image.new("RGB", (w, h), (255, 255, 255))
+                    bilingual_img.paste(img, (0, 0))
+                    bilingual_img.paste(other_img, (img.width + gap, 0))
+                    img = bilingual_img
+                else: # bilingual_vertical
+                    w = max(img.width, other_img.width)
+                    h = img.height + other_img.height + gap
+                    bilingual_img = Image.new("RGB", (w, h), (255, 255, 255))
+                    bilingual_img.paste(img, (0, 0))
+                    bilingual_img.paste(other_img, (0, img.height + gap))
+                    img = bilingual_img
+
         buf = io.BytesIO()
         if out_format == "jpg":
             ensure_rgb(img).save(buf, format="JPEG", quality=jpg_quality, optimize=True)
@@ -1516,15 +1718,67 @@ async def finalize_crop(
         )
 
     file_bytes = await asyncio.to_thread(source_pdf.read_bytes)
+    enh = _load_cached_enhancements(job_dir)
 
     def _crop_and_save_all() -> tuple[list[Path], list[Path], int]:
         question_paths: list[Path] = []
         solution_paths: list[Path] = []
         stitched = 0
         crop_dpi = max(dpi, settings.CROP_RENDER_DPI)
+
+        # Partition questions for bilingual export if requested
+        if payload.bilingual_mode in ("english", "hindi", "bilingual_horizontal", "bilingual_vertical"):
+            grouped = {}
+            for item in detected:
+                key = (item.is_solution, item.q_num)
+                grouped.setdefault(key, []).append(item)
+
+            filtered_items = []
+            for (is_sol, q_num), items in grouped.items():
+                if len(items) >= 2:
+                    import functools
+
+                    def compare_items(it1, it2):
+                        p1 = it1.segments[0].page if it1.segments else 0
+                        p2 = it2.segments[0].page if it2.segments else 0
+                        if p1 != p2:
+                            return -1 if p1 < p2 else 1
+
+                        s1 = it1.segments[0] if it1.segments else None
+                        s2 = it2.segments[0] if it2.segments else None
+                        if not s1 or not s2:
+                            return 0
+
+                        c1 = (s1.x_start_pct + s1.x_end_pct) / 2.0
+                        c2 = (s2.x_start_pct + s2.x_end_pct) / 2.0
+                        is_side_by_side = (abs(s1.x_start_pct - s2.x_start_pct) > 15.0) or (abs(c1 - c2) > 15.0)
+
+                        if is_side_by_side:
+                            return -1 if s1.x_start_pct < s2.x_start_pct else (1 if s1.x_start_pct > s2.x_start_pct else 0)
+                        else:
+                            return -1 if s1.y_start_pct < s2.y_start_pct else (1 if s1.y_start_pct > s2.y_start_pct else 0)
+
+                    items.sort(key=functools.cmp_to_key(compare_items))
+                    en_item = items[0]
+                    hi_item = items[1]
+
+                    if payload.bilingual_mode == "english":
+                        filtered_items.append(en_item)
+                    elif payload.bilingual_mode == "hindi":
+                        filtered_items.append(hi_item)
+                    else: # bilingual_horizontal or bilingual_vertical
+                        setattr(en_item, "_bilingual_other", hi_item)
+                        filtered_items.append(en_item)
+                else:
+                    filtered_items.append(items[0])
+            items_to_crop = filtered_items
+        else:
+            items_to_crop = detected
+
         with fitz.open(stream=file_bytes, filetype="pdf") as doc:
             furniture_by_page = collect_document_furniture(doc)
-            for question in detected:
+            from PIL import Image
+            for question in items_to_crop:
                 if len(question.segments) > 1:
                     stitched += 1
                 img = crop_and_stitch_hires(
@@ -1539,7 +1793,46 @@ async def finalize_crop(
                     # untouched; an explicit `align` override (the review "Align
                     # parts" toggle) wins so the file matches the preview.
                     align_parts=_should_align_parts(question),
+                    binarize=enh.get("binarize", False),
+                    contrast=enh.get("contrast", 1.0),
+                    brightness=enh.get("brightness", 1.0),
+                    watermark_threshold=enh.get("watermark_threshold", 255),
+                    deskew=enh.get("deskew", False),
                 )
+
+                other = getattr(question, "_bilingual_other", None)
+                if other is not None:
+                    other_img = crop_and_stitch_hires(
+                        doc,
+                        other,
+                        padding_px=padding,
+                        detection_dpi=dpi,
+                        crop_dpi=crop_dpi,
+                        furniture_by_page=furniture_by_page,
+                        align_parts=_should_align_parts(other),
+                        binarize=enh.get("binarize", False),
+                        contrast=enh.get("contrast", 1.0),
+                        brightness=enh.get("brightness", 1.0),
+                        watermark_threshold=enh.get("watermark_threshold", 255),
+                        deskew=enh.get("deskew", False),
+                    )
+
+                    gap = 20
+                    if payload.bilingual_mode == "bilingual_horizontal":
+                        w = img.width + other_img.width + gap
+                        h = max(img.height, other_img.height)
+                        bilingual_img = Image.new("RGB", (w, h), (255, 255, 255))
+                        bilingual_img.paste(img, (0, 0))
+                        bilingual_img.paste(other_img, (img.width + gap, 0))
+                        img = bilingual_img
+                    else: # bilingual_vertical
+                        w = max(img.width, other_img.width)
+                        h = img.height + other_img.height + gap
+                        bilingual_img = Image.new("RGB", (w, h), (255, 255, 255))
+                        bilingual_img.paste(img, (0, 0))
+                        bilingual_img.paste(other_img, (0, img.height + gap))
+                        img = bilingual_img
+
                 saved = save_question_image(
                     image=img,
                     q_num=question.q_num,
@@ -1676,3 +1969,245 @@ async def download_zip(
         media_type="application/zip",
         filename=download_name,
     )
+
+
+@router.get("/config/ml-model", response_model=MLConfigResponse)
+async def get_ml_config(settings: Settings = Depends(get_settings)) -> MLConfigResponse:
+    """Get the current local ML configuration and availability status."""
+    local_ml_detector = build_local_ml_detector(settings)
+    local_ml_available = (
+        local_ml_detector is not None and local_ml_detector.is_available()
+    )
+    return MLConfigResponse(
+        model_path=settings.LOCAL_ML_MODEL_PATH,
+        labels_path=settings.LOCAL_ML_LABELS_PATH,
+        model_name=settings.LOCAL_ML_MODEL_NAME,
+        confidence=settings.LOCAL_ML_CONFIDENCE,
+        input_size=settings.LOCAL_ML_INPUT_SIZE,
+        local_ml_available=local_ml_available,
+    )
+
+
+@router.post("/config/ml-model", response_model=MLConfigResponse)
+async def update_ml_config(
+    req: MLConfigRequest,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> MLConfigResponse:
+    """Update the local ML configuration parameters at runtime."""
+    if req.model_path is not None:
+        settings.LOCAL_ML_MODEL_PATH = req.model_path
+    if req.labels_path is not None:
+        settings.LOCAL_ML_LABELS_PATH = req.labels_path
+    if req.model_name is not None:
+        settings.LOCAL_ML_MODEL_NAME = req.model_name
+    if req.confidence is not None:
+        settings.LOCAL_ML_CONFIDENCE = req.confidence
+    if req.input_size is not None:
+        settings.LOCAL_ML_INPUT_SIZE = req.input_size
+
+    local_ml_detector = build_local_ml_detector(settings)
+    local_ml_available = (
+        local_ml_detector is not None and local_ml_detector.is_available()
+    )
+    return MLConfigResponse(
+        model_path=settings.LOCAL_ML_MODEL_PATH,
+        labels_path=settings.LOCAL_ML_LABELS_PATH,
+        model_name=settings.LOCAL_ML_MODEL_NAME,
+        confidence=settings.LOCAL_ML_CONFIDENCE,
+        input_size=settings.LOCAL_ML_INPUT_SIZE,
+        local_ml_available=local_ml_available,
+    )
+
+
+@router.post("/tools/regex-test", response_model=RegexTestResponse)
+async def test_regex(req: RegexTestRequest) -> RegexTestResponse:
+    """Test a custom regex pattern against sample text lines."""
+    results = []
+    from ..services.detector.base import match_question_start_ex
+    import re
+
+    for line in req.sample_lines:
+        match_res = match_question_start_ex(line, custom_regex=req.pattern)
+        if match_res is not None:
+            q_num, is_strong = match_res
+            groups = []
+            try:
+                pat = re.compile(req.pattern, re.IGNORECASE)
+                match = pat.match(line.strip())
+                if match:
+                    groups = [str(g) if g is not None else "" for g in match.groups()]
+            except Exception:
+                pass
+            results.append(
+                RegexMatchResult(
+                    line=line,
+                    matched=True,
+                    q_num=q_num,
+                    groups=groups,
+                )
+            )
+        else:
+            results.append(
+                RegexMatchResult(
+                    line=line,
+                    matched=False,
+                    q_num=None,
+                    groups=[],
+                )
+            )
+
+    return RegexTestResponse(pattern=req.pattern, results=results)
+
+
+@router.post("/tools/align-offsets", response_model=AlignOffsetsResponse)
+async def calculate_align_offsets(
+    request: Request,
+    payload: AlignOffsetsRequest,
+    settings: Settings = Depends(get_settings),
+) -> AlignOffsetsResponse:
+    """Calculate horizontal alignment offsets to align subsequent segment crop boundaries to Segment #1."""
+    temp_root = settings.TEMP_DIR
+    job_dir = get_job_dir(payload.job_id, temp_root)
+    source_pdf = job_dir / "source.pdf"
+    if not source_pdf.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=ERR_JOB_NOT_FOUND
+        )
+
+    if not payload.segments:
+        return AlignOffsetsResponse(offsets=[])
+
+    # Try to calculate alignment using dynamic PDF column margins
+    doc = None
+    try:
+        import fitz
+        import numpy as np
+        doc = fitz.open(source_pdf)
+    except Exception as exc:
+        logger.error("Failed to import fitz/numpy or open PDF in calculate_align_offsets: %s", exc)
+        doc = None
+
+    if doc is not None:
+        try:
+            def find_standard_column_margins(page: fitz.Page) -> list[float]:
+                rect = page.rect
+                pw = float(rect.width)
+                try:
+                    data = page.get_text("dict") or {}
+                except Exception:
+                    return [0.10 * pw]
+                x_coords = []
+                for block in data.get("blocks", []):
+                    for ln in block.get("lines", []):
+                        spans = ln.get("spans", [])
+                        if not spans:
+                            continue
+                        text = "".join(s.get("text", "") for s in spans).strip()
+                        if not text:
+                            continue
+                        x0, y0, x1, y1 = ln.get("bbox", (0, 0, 0, 0))
+                        if x0 < 5.0 or x1 > pw - 5.0:
+                            continue
+                        x_coords.append(x0)
+                        
+                if not x_coords:
+                    return [0.10 * pw]
+                    
+                x_coords.sort()
+                clusters = []
+                current_cluster = [x_coords[0]]
+                for x in x_coords[1:]:
+                    if x - current_cluster[-1] <= 15.0:
+                        current_cluster.append(x)
+                    else:
+                        clusters.append(current_cluster)
+                        current_cluster = [x]
+                clusters.append(current_cluster)
+                
+                # Separate clusters into Left Column (< 45% of page width) and Right Column (>= 45%)
+                left_clusters = [c for c in clusters if np.median(c) < 0.45 * pw]
+                right_clusters = [c for c in clusters if np.median(c) >= 0.45 * pw]
+                
+                std_margins = []
+                if left_clusters:
+                    best_left = max(left_clusters, key=len)
+                    std_margins.append(float(np.median(best_left)))
+                else:
+                    std_margins.append(0.10 * pw)
+                    
+                if right_clusters:
+                    best_right = max(right_clusters, key=len)
+                    std_margins.append(float(np.median(best_right)))
+                    
+                return std_margins
+
+            seg1 = payload.segments[0]
+            page1 = doc.load_page(seg1.page - 1)
+            pw1 = float(page1.rect.width)
+            margins1 = find_standard_column_margins(page1)
+            
+            seg1_x = (seg1.x_start_pct / 100.0) * pw1
+            ref_margin = min(margins1, key=lambda m: abs(m - seg1_x)) if margins1 else seg1_x
+            ref_margin_pct = (ref_margin / pw1) * 100.0
+            
+            offsets = []
+            for i, seg in enumerate(payload.segments):
+                if i == 0:
+                    offsets.append(0.0)
+                    logger.info("segment_index=0 page=%s x_start_pct=%s offset_pct=0.0 (reference)", seg.page, seg.x_start_pct)
+                    continue
+                
+                page = doc.load_page(seg.page - 1)
+                pw = float(page.rect.width)
+                margins = find_standard_column_margins(page)
+                
+                seg_x = (seg.x_start_pct / 100.0) * pw
+                seg_margin = min(margins, key=lambda m: abs(m - seg_x)) if margins else seg_x
+                seg_margin_pct = (seg_margin / pw) * 100.0
+                
+                # Formula to align column margins
+                offset_pct = (seg.x_start_pct - seg_margin_pct) - (seg1.x_start_pct - ref_margin_pct)
+                
+                # Clamp offset to [-15.0, 15.0] to prevent extreme shifts
+                offset_pct = max(-15.0, min(15.0, offset_pct))
+                offset_pct = round(offset_pct, 2)
+                
+                offsets.append(offset_pct)
+                logger.info(
+                    "segment_index=%s page=%s x_start_pct=%s seg_margin_pct=%s offset_pct=%s",
+                    i, seg.page, seg.x_start_pct, seg_margin_pct, offset_pct
+                )
+            
+            doc.close()
+            logger.info("calculate_align_offsets fitz-based result_offsets=%s", offsets)
+            return AlignOffsetsResponse(offsets=offsets)
+        except Exception as exc:
+            logger.error("Error executing fitz-based alignment in calculate_align_offsets: %s", exc)
+            if doc is not None:
+                doc.close()
+
+    # Simple/Fallback alignment logic
+    current_ref = payload.segments[0].x_start_pct
+    offsets = []
+    logger.info("calculate_align_offsets (fallback) payload_job_id=%s initial_ref=%s", payload.job_id, current_ref)
+    for i, seg in enumerate(payload.segments):
+        if i == 0:
+            offsets.append(0.0)
+            logger.info("segment_index=0 page=%s x_start_pct=%s offset_pct=0.0 (reference)", seg.page, seg.x_start_pct)
+            continue
+
+        offset_pct = seg.x_start_pct - current_ref
+        if abs(offset_pct) > 15.0:
+            offset_pct = 0.0
+            current_ref = seg.x_start_pct
+            logger.info("segment_index=%s page=%s x_start_pct=%s offset_pct=0.0 (column cross, new_ref=%s)", i, seg.page, seg.x_start_pct, current_ref)
+        else:
+            offset_pct = max(-10.0, min(10.0, offset_pct))
+            logger.info("segment_index=%s page=%s x_start_pct=%s offset_pct=%s (aligned to current_ref=%s)", i, seg.page, seg.x_start_pct, offset_pct, current_ref)
+        offsets.append(offset_pct)
+
+    logger.info("calculate_align_offsets (fallback) result_offsets=%s", offsets)
+    return AlignOffsetsResponse(offsets=offsets)
+
+

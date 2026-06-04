@@ -316,4 +316,80 @@ void main() {
     // Items are retained so the user can retry (Req 7.7).
     expect(h.controller.items.length, 1);
   });
+
+  testWidgets('bilingual download selector displays tabs and triggers refinalize',
+      (tester) async {
+    final h = _Harness(
+      statusCode: 200,
+      body: _cropBody(questionsCount: 2),
+    );
+    h.controller.loadFromAnalyze(_analyze());
+    h.controller.bilingualMode = 'bilingual_horizontal';
+    h.controller.bilingualModeActive = true;
+    await _pump(tester, h);
+
+    await tester.tap(find.byKey(const ValueKey('review-finalize')));
+    await tester.pumpAndSettle();
+
+    // Verify download bar is visible
+    expect(
+      find.byKey(const ValueKey('review-finalize-download-bar')),
+      findsOneWidget,
+    );
+
+    // Verify SegmentedButton for language selection is displayed
+    expect(find.byType(SegmentedButton<String>), findsOneWidget);
+
+    // Verify English segment is present and tap it
+    expect(find.text('English'), findsOneWidget);
+    await tester.tap(find.text('English'));
+    await tester.pumpAndSettle();
+
+    // The active finalization mode should become 'english'
+    expect(h.controller.activeFinalizeBilingualMode, 'english');
+  });
+
+  testWidgets('segmented button language selector is visible in standard finalization mode when active',
+      (tester) async {
+    final h = _Harness(
+      statusCode: 200,
+      body: _cropBody(questionsCount: 2),
+    );
+    h.controller.loadFromAnalyze(_analyze());
+    h.controller.bilingualMode = null; // Standard
+    h.controller.bilingualModeActive = true;
+    await _pump(tester, h);
+
+    await tester.tap(find.byKey(const ValueKey('review-finalize')));
+    await tester.pumpAndSettle();
+
+    // Verify SegmentedButton for language selection is displayed
+    expect(find.byType(SegmentedButton<String>), findsOneWidget);
+    // Standard segment should be selected
+    final SegmentedButton<String> segmentedButton = tester.widget(find.byType(SegmentedButton<String>));
+    expect(segmentedButton.selected, <String>{'none'});
+  });
+
+  testWidgets('language selector is hidden when bilingual mode option is false',
+      (tester) async {
+    final h = _Harness(
+      statusCode: 200,
+      body: _cropBody(questionsCount: 2),
+    );
+    h.controller.loadFromAnalyze(_analyze());
+    h.controller.bilingualModeActive = false; // Hidden
+    await _pump(tester, h);
+
+    await tester.tap(find.byKey(const ValueKey('review-finalize')));
+    await tester.pumpAndSettle();
+
+    // Verify download bar is visible
+    expect(
+      find.byKey(const ValueKey('review-finalize-download-bar')),
+      findsOneWidget,
+    );
+
+    // Verify SegmentedButton for language selection is NOT displayed
+    expect(find.byType(SegmentedButton<String>), findsNothing);
+  });
 }

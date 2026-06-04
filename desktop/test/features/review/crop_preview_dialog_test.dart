@@ -20,6 +20,22 @@ class _FakeAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    if (options.path.contains('/api/tools/align-offsets')) {
+      final jsonStr = jsonEncode(<String, dynamic>{
+        'offsets': <double>[0.0, 0.0],
+      });
+      final stream = Stream<Uint8List>.value(
+        Uint8List.fromList(utf8.encode(jsonStr)),
+      );
+      return ResponseBody(
+        stream,
+        200,
+        headers: <String, List<String>>{
+          Headers.contentTypeHeader: <String>['application/json'],
+        },
+      );
+    }
+
     // Return dummy 1x1 PNG bytes for preview
     final dummyPng = base64Decode(
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -111,7 +127,11 @@ void main() {
     // Since we seeded offsets (5.0, 10.0), _manualMode is indeed true.
     expect(find.byKey(const ValueKey<String>('crop-preview-manual-bar')), findsOneWidget);
 
-    // Auto button should be visible.
+    // Recommended Align button should be visible on the align bar.
+    final recAlignFinder = find.byKey(const ValueKey<String>('crop-preview-auto-align-action'));
+    expect(recAlignFinder, findsOneWidget);
+
+    // Auto button in the sidebar should also be visible.
     final autoFinder = find.byKey(const ValueKey<String>('crop-preview-manual-auto'));
     expect(autoFinder, findsOneWidget);
 
@@ -119,8 +139,8 @@ void main() {
     final resetFinder = find.byKey(const ValueKey<String>('crop-preview-manual-reset'));
     expect(resetFinder, findsOneWidget);
 
-    // Tap Auto button. It should set align override to true and clear offsets.
-    await tester.tap(autoFinder);
+    // Tap Recommended Align button. It should set align override to true and clear offsets.
+    await tester.tap(recAlignFinder);
     await tester.pumpAndSettle();
 
     expect(controller.alignFor(0), isTrue);

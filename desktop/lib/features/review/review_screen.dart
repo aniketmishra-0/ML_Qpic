@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/download_service.dart';
 import '../../core/theme_controller.dart';
+import '../../widgets/qpic_dropdown.dart';
 import '../auto_crop/auto_crop_controller.dart' show CropArchive;
 import 'review_canvas.dart';
 import 'review_controller.dart';
@@ -375,6 +376,20 @@ class _ReviewToolbar extends StatelessWidget {
               ),
             ),
           const SizedBox(width: 8),
+          if (controller.selectedItemIndices.length >= 2) ...[
+            FilledButton.icon(
+              key: const ValueKey<String>('review-merge-selected'),
+              onPressed: controller.mergeSelectedItems,
+              style: FilledButton.styleFrom(
+                backgroundColor: palette.brandBlue,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.call_merge_rounded, size: 16),
+              label: Text(
+                  'Merge Selected (${controller.selectedItemIndices.length})'),
+            ),
+            const SizedBox(width: 8),
+          ],
           FilledButton.icon(
             key: const ValueKey<String>('review-finalize'),
             onPressed: (onFinalize == null ||
@@ -606,42 +621,136 @@ class _FinalizeDownloadBar extends StatelessWidget {
             palette.success.withValues(alpha: 0.08), palette.panel),
         border: Border(bottom: BorderSide(color: palette.border)),
       ),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(Icons.check_circle_outline, size: 18, color: palette.success),
-          Text(
-            'Crops are ready.',
-            style: TextStyle(color: palette.text, fontSize: 13),
-          ),
-          const SizedBox(width: 4),
-          // Combined is always available once finalize succeeds (Req 11.1).
-          FilledButton.icon(
-            key: const ValueKey<String>('review-download-combined'),
-            onPressed: controller.canDownload(CropArchive.combined)
-                ? () => _save(context, CropArchive.combined)
-                : null,
-            icon: const Icon(Icons.download, size: 18),
-            label: const Text('Download combined ZIP'),
-          ),
-          // Questions-only, only when the engine reported its URL (Req 11.2).
-          if (controller.canDownload(CropArchive.questions))
-            OutlinedButton.icon(
-              key: const ValueKey<String>('review-download-questions'),
-              onPressed: () => _save(context, CropArchive.questions),
-              icon: const Icon(Icons.help_outline, size: 18),
-              label: const Text('Questions only'),
+          if (controller.bilingualModeActive) ...[
+            Row(
+              children: <Widget>[
+                Icon(Icons.g_translate_rounded,
+                    size: 14, color: palette.brandBlue),
+                const SizedBox(width: 6),
+                Text(
+                  'Select Language for Download (द्विभाषी डाउनलोड योजक):',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: palette.muted,
+                  ),
+                ),
+              ],
             ),
-          // Solutions-only, only when the engine reported its URL (Req 11.3).
-          if (controller.canDownload(CropArchive.solutions))
-            OutlinedButton.icon(
-              key: const ValueKey<String>('review-download-solutions'),
-              onPressed: () => _save(context, CropArchive.solutions),
-              icon: const Icon(Icons.lightbulb_outline, size: 18),
-              label: const Text('Solutions only'),
+            const SizedBox(height: 8),
+            SegmentedButton<String>(
+              showSelectedIcon: false,
+              segments: const <ButtonSegment<String>>[
+                ButtonSegment<String>(
+                  value: 'none',
+                  label: Text('Standard'),
+                  icon: Icon(Icons.star_outline_rounded, size: 14),
+                ),
+                ButtonSegment<String>(
+                  value: 'bilingual_horizontal',
+                  label: Text('Bilingual (H)'),
+                  icon: Icon(Icons.border_vertical_rounded, size: 14),
+                ),
+                ButtonSegment<String>(
+                  value: 'bilingual_vertical',
+                  label: Text('Bilingual (V)'),
+                  icon: Icon(Icons.border_horizontal_rounded, size: 14),
+                ),
+                ButtonSegment<String>(
+                  value: 'english',
+                  label: Text('English'),
+                  icon: Icon(Icons.text_fields_rounded, size: 14),
+                ),
+                ButtonSegment<String>(
+                  value: 'hindi',
+                  label: Text('Hindi (हिन्दी)'),
+                  icon: Icon(Icons.translate_rounded, size: 14),
+                ),
+              ],
+              selected: <String>{
+                controller.activeFinalizeBilingualMode ?? 'none'
+              },
+              onSelectionChanged: controller.refinalizing
+                  ? null
+                  : (Set<String> selection) async {
+                      final val = selection.first;
+                      await controller
+                          .refinalizeForMode(val == 'none' ? null : val);
+                    },
             ),
+            const SizedBox(height: 12),
+          ],
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: <Widget>[
+              if (controller.refinalizing) ...[
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(palette.brand),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Preparing selected language crops...',
+                  style: TextStyle(color: palette.text, fontSize: 13),
+                ),
+              ] else ...[
+                Icon(Icons.check_circle_outline,
+                    size: 18, color: palette.success),
+                Text(
+                  () {
+                    final mode = controller.activeFinalizeBilingualMode;
+                    if (mode == 'english')
+                      return 'Crops are ready (English only).';
+                    if (mode == 'hindi') return 'Crops are ready (Hindi only).';
+                    if (mode == 'bilingual_horizontal')
+                      return 'Crops are ready (Bilingual Horizontal stitched).';
+                    if (mode == 'bilingual_vertical')
+                      return 'Crops are ready (Bilingual Vertical stitched).';
+                    return 'Crops are ready.';
+                  }(),
+                  style: TextStyle(color: palette.text, fontSize: 13),
+                ),
+              ],
+              const SizedBox(width: 4),
+              FilledButton.icon(
+                key: const ValueKey<String>('review-download-combined'),
+                onPressed: (controller.canDownload(CropArchive.combined) &&
+                        !controller.refinalizing)
+                    ? () => _save(context, CropArchive.combined)
+                    : null,
+                icon: const Icon(Icons.download, size: 18),
+                label: const Text('Download combined ZIP'),
+              ),
+              if (controller.canDownload(CropArchive.questions))
+                OutlinedButton.icon(
+                  key: const ValueKey<String>('review-download-questions'),
+                  onPressed: (!controller.refinalizing)
+                      ? () => _save(context, CropArchive.questions)
+                      : null,
+                  icon: const Icon(Icons.help_outline, size: 18),
+                  label: const Text('Questions only'),
+                ),
+              if (controller.canDownload(CropArchive.solutions))
+                OutlinedButton.icon(
+                  key: const ValueKey<String>('review-download-solutions'),
+                  onPressed: (!controller.refinalizing)
+                      ? () => _save(context, CropArchive.solutions)
+                      : null,
+                  icon: const Icon(Icons.lightbulb_outline, size: 18),
+                  label: const Text('Solutions only'),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -762,6 +871,13 @@ class _NotesSidebarState extends State<_NotesSidebar> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: <Widget>[
+                            if (widget.controller.bilingualModeActive) ...[
+                              _BilingualStitcherCard(
+                                controller: widget.controller,
+                                palette: widget.palette,
+                              ),
+                              const SizedBox(height: 16),
+                            ],
                             ReviewNotesPanel(
                               controller: widget.controller,
                               searchQuery: _searchQuery,
@@ -823,6 +939,71 @@ class _ReviewStatusBar extends StatelessWidget {
             style: TextStyle(color: palette.mutedAlt, fontSize: 11),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _BilingualStitcherCard extends StatelessWidget {
+  const _BilingualStitcherCard({
+    required this.controller,
+    required this.palette,
+  });
+
+  final ReviewController controller;
+  final QpicPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: palette.field,
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: palette.borderSoft),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(Icons.g_translate_rounded,
+                    size: 16, color: palette.brandBlue),
+                const SizedBox(width: 8),
+                Text(
+                  'Bilingual Stitcher',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: palette.text,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: QpicDropdownButton<String>(
+                key: const ValueKey<String>('review-bilingual-mode-dropdown'),
+                value: controller.bilingualMode ?? 'none',
+                isExpanded: true,
+                items: const [
+                  QpicDropdownItem(value: 'none', label: 'Standard (Default)'),
+                  QpicDropdownItem(value: 'english', label: 'English Only'),
+                  QpicDropdownItem(value: 'hindi', label: 'Hindi Only (हिन्दी)'),
+                  QpicDropdownItem(value: 'bilingual_horizontal', label: 'Bilingual (Horizontal)'),
+                  QpicDropdownItem(value: 'bilingual_vertical', label: 'Bilingual (Vertical)'),
+                ],
+                onChanged: (value) {
+                  controller.bilingualMode = value == 'none' ? null : value;
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

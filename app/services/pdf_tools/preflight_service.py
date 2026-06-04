@@ -197,10 +197,13 @@ def _has_text_layer(doc: "fitz.Document") -> bool:
     return total > 50
 
 
-def preflight_pdf(file_bytes: bytes) -> PreflightReport:
+def preflight_pdf(pdf_source: bytes | str | Path) -> PreflightReport:
     """Run a read-only production-readiness inspection of a PDF."""
 
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    if isinstance(pdf_source, bytes):
+        doc = fitz.open(stream=pdf_source, filetype="pdf")
+    else:
+        doc = fitz.open(str(pdf_source))
     try:
         checks: list[PreflightCheck] = []
         page_count = doc.page_count
@@ -373,11 +376,17 @@ def preflight_pdf(file_bytes: bytes) -> PreflightReport:
         worst_sev = max((_SEVERITY_ORDER.get(c.status, 0) for c in checks), default=0)
         verdict = {0: "pass", 1: "warn", 2: "fail"}[worst_sev]
 
+        from pathlib import Path
+        if isinstance(pdf_source, bytes):
+            fsize = len(pdf_source)
+        else:
+            fsize = Path(pdf_source).stat().st_size
+
         return PreflightReport(
             verdict=verdict,
             page_count=page_count,
             page_sizes=page_sizes,
-            file_size=len(file_bytes),
+            file_size=fsize,
             is_encrypted=is_encrypted,
             has_text_layer=has_text,
             checks=checks,
@@ -488,7 +497,7 @@ def resolve_target_size(doc: "fitz.Document", target: str) -> tuple[float, float
 
 
 def normalize_page_sizes(
-    file_bytes: bytes,
+    pdf_source: bytes | str | Path,
     *,
     target: str = "auto",
     tolerance_pt: float = 1.0,
@@ -520,7 +529,10 @@ def normalize_page_sizes(
 
     skip_set: set[int] = set(skip_pages) if skip_pages else set()
 
-    src = fitz.open(stream=file_bytes, filetype="pdf")
+    if isinstance(pdf_source, bytes):
+        src = fitz.open(stream=pdf_source, filetype="pdf")
+    else:
+        src = fitz.open(str(pdf_source))
     out = fitz.open()
     try:
         tw, th = resolve_target_size(src, target)

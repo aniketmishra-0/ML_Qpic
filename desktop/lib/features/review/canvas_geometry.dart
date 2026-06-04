@@ -154,7 +154,6 @@ class CanvasGeometry {
   }
 
   @override
-  String toString() =>
-      'CanvasGeometry(pageDisplaySize: $pageDisplaySize, '
+  String toString() => 'CanvasGeometry(pageDisplaySize: $pageDisplaySize, '
       'panOffset: $panOffset, zoom: $zoom)';
 }

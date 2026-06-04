@@ -226,9 +226,10 @@ class EditExtractResponse {
       spans: (json['spans'] as List<dynamic>)
           .map((e) => EditableSpanModel.fromJson(e as Map<String, dynamic>))
           .toList(),
-      vectorObjects: ((json['vector_objects'] as List<dynamic>?) ?? const <dynamic>[])
-          .map((e) => VectorObjectModel.fromJson(e as Map<String, dynamic>))
-          .toList(),
+      vectorObjects:
+          ((json['vector_objects'] as List<dynamic>?) ?? const <dynamic>[])
+              .map((e) => VectorObjectModel.fromJson(e as Map<String, dynamic>))
+              .toList(),
     );
   }
 
@@ -695,11 +696,10 @@ class PreflightResponse {
               .map((e) => e as String)
               .toList(),
       mixedPageSizes: json['mixed_page_sizes'] as bool? ?? false,
-      pageDetails:
-          ((json['page_details'] as List<dynamic>?) ?? const <dynamic>[])
-              .map((e) =>
-                  PreflightPageDetail.fromJson(e as Map<String, dynamic>))
-              .toList(),
+      pageDetails: ((json['page_details'] as List<dynamic>?) ??
+              const <dynamic>[])
+          .map((e) => PreflightPageDetail.fromJson(e as Map<String, dynamic>))
+          .toList(),
       jobId: json['job_id'] as String?,
       pages: ((json['pages'] as List<dynamic>?) ?? const <dynamic>[])
           .map((e) => EditPageModel.fromJson(e as Map<String, dynamic>))
@@ -820,3 +820,64 @@ class EnhanceResponse {
   }
 }
 
+/// DTO representing a single line regex match test result (Feature 2).
+class RegexMatchResult {
+  const RegexMatchResult({
+    required this.line,
+    required this.matched,
+    this.qNum,
+    this.groups = const <String>[],
+  });
+
+  final String line;
+  final bool matched;
+  final String? qNum;
+  final List<String> groups;
+
+  factory RegexMatchResult.fromJson(Map<String, dynamic> json) {
+    return RegexMatchResult(
+      line: json['line'] as String,
+      matched: json['matched'] as bool,
+      qNum: json['q_num'] as String?,
+      groups: ((json['groups'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((e) => e as String)
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'line': line,
+      'matched': matched,
+      'q_num': qNum,
+      'groups': groups,
+    };
+  }
+}
+
+/// DTO representing the full regex test response (Feature 2).
+class RegexTestResponse {
+  const RegexTestResponse({
+    required this.pattern,
+    required this.results,
+  });
+
+  final String pattern;
+  final List<RegexMatchResult> results;
+
+  factory RegexTestResponse.fromJson(Map<String, dynamic> json) {
+    return RegexTestResponse(
+      pattern: json['pattern'] as String? ?? '',
+      results: ((json['results'] as List<dynamic>?) ?? const <dynamic>[])
+          .map((e) => RegexMatchResult.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'pattern': pattern,
+      'results': results.map((e) => e.toJson()).toList(),
+    };
+  }
+}

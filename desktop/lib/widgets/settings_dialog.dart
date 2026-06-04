@@ -1,9 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_selector/file_selector.dart' as fs;
+import 'package:file_selector/file_selector.dart' show XTypeGroup;
 
+import '../core/api_client.dart';
+import '../models/crop.dart';
 import '../core/sidecar_bootstrap.dart';
 import '../core/sidecar_manager.dart';
 import '../core/theme_controller.dart';
+import '../features/shell/about_dialog.dart';
+import 'qpic_dropdown.dart';
+
+enum SettingsTab {
+  general,
+  naming,
+  mlModel,
+  about,
+  privacy,
+}
 
 /// A premium, beautiful Settings Dialog for the Qpic desktop application.
 ///
@@ -44,6 +58,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
   late final TextEditingController _qPrefixController;
   late final TextEditingController _sPrefixController;
 
+  bool _loadingML = false;
+  bool _updatingML = false;
+  String? _mlError;
+
+  final _modelPathController = TextEditingController();
+  final _labelsPathController = TextEditingController();
+  final _modelNameController = TextEditingController();
+  double _confidence = 0.35;
+  int _inputSize = 640;
+  bool _localMlAvailable = false;
+
+  SettingsTab _activeTab = SettingsTab.general;
+
   @override
   void initState() {
     super.initState();
@@ -53,13 +80,101 @@ class _SettingsDialogState extends State<SettingsDialog> {
     _sPrefixController = TextEditingController(
       text: widget.themeController.defaultSolutionPrefix,
     );
+    _loadMLConfig();
   }
 
   @override
   void dispose() {
     _qPrefixController.dispose();
     _sPrefixController.dispose();
+    _modelPathController.dispose();
+    _labelsPathController.dispose();
+    _modelNameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMLConfig() async {
+    final bootstrap = widget.sidecarBootstrap;
+    if (bootstrap == null || bootstrap.currentStatus != SidecarStatus.ready) {
+      return;
+    }
+    final url = bootstrap.baseUrl;
+    if (url == null) return;
+
+    setState(() {
+      _loadingML = true;
+      _mlError = null;
+    });
+
+    try {
+      final client = ApiClient(url);
+      final config = await client.getMlConfig();
+      setState(() {
+        _modelPathController.text = config.modelPath ?? '';
+        _labelsPathController.text = config.labelsPath ?? '';
+        _modelNameController.text = config.modelName;
+        _confidence = config.confidence;
+        _inputSize = config.inputSize;
+        _localMlAvailable = config.localMlAvailable;
+        _loadingML = false;
+      });
+    } catch (e) {
+      setState(() {
+        _mlError = e.toString();
+        _loadingML = false;
+      });
+    }
+  }
+
+  Future<void> _saveMLConfig() async {
+    final bootstrap = widget.sidecarBootstrap;
+    if (bootstrap == null || bootstrap.currentStatus != SidecarStatus.ready) {
+      return;
+    }
+    final url = bootstrap.baseUrl;
+    if (url == null) return;
+
+    setState(() {
+      _updatingML = true;
+      _mlError = null;
+    });
+
+    try {
+      final client = ApiClient(url);
+      final config = await client.updateMlConfig(
+        modelPath: _modelPathController.text.trim().isEmpty
+            ? ''
+            : _modelPathController.text.trim(),
+        labelsPath: _labelsPathController.text.trim().isEmpty
+            ? ''
+            : _labelsPathController.text.trim(),
+        modelName: _modelNameController.text.trim(),
+        confidence: _confidence,
+        inputSize: _inputSize,
+      );
+      setState(() {
+        _modelPathController.text = config.modelPath ?? '';
+        _labelsPathController.text = config.labelsPath ?? '';
+        _modelNameController.text = config.modelName;
+        _confidence = config.confidence;
+        _inputSize = config.inputSize;
+        _localMlAvailable = config.localMlAvailable;
+        _updatingML = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ML Model Configuration updated successfully!'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _mlError = e.toString();
+        _updatingML = false;
+      });
+    }
   }
 
   @override
@@ -74,12 +189,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
     return Dialog(
       backgroundColor: palette?.panel ?? theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: border, width: 1.5),
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: border, width: 1.0),
       ),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 680),
+        constraints: const BoxConstraints(maxWidth: 780, maxHeight: 600),
         child: AnimatedBuilder(
           animation: widget.themeController,
           builder: (context, _) {
@@ -106,8 +221,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: brand.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
+                          color: brand.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                         child: Icon(Icons.settings_outlined,
                             color: brand, size: 22),
@@ -144,50 +259,34 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 ),
                 Divider(color: border, height: 1),
 
-                // Scrollable Content
+                // Side-by-side split screen
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        // Category: Theme Selector
-                        _CategoryHeader(title: 'THEME', palette: palette),
-                        const SizedBox(height: 10),
-                        _buildThemeSelector(context, palette),
-                        const SizedBox(height: 24),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      // Left Sidebar Navigation
+                      Container(
+                        width: 210,
+                        decoration: BoxDecoration(
+                          color: palette?.backgroundAlt ??
+                              theme.colorScheme.surfaceContainerLow,
+                          border: Border(right: BorderSide(color: border)),
+                        ),
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 12, horizontal: 8),
+                          children: _buildSidebarItems(context, palette),
+                        ),
+                      ),
 
-                        // Category: Default Tool Config
-                        _CategoryHeader(
-                            title: 'DEFAULT TOOL CONFIG', palette: palette),
-                        const SizedBox(height: 14),
-                        _buildDpiConfig(context, palette),
-                        const SizedBox(height: 16),
-                        _buildPaddingConfig(context, palette),
-                        const SizedBox(height: 24),
-
-                        // Category: Output & Naming
-                        _CategoryHeader(
-                            title: 'OUTPUT & NAMING', palette: palette),
-                        const SizedBox(height: 14),
-                        _buildNamingConfig(context, palette),
-                        const SizedBox(height: 16),
-                        _buildImageFormatConfig(context, palette),
-                        const SizedBox(height: 16),
-                        _buildSmartModeConfig(context, palette),
-                        const SizedBox(height: 24),
-
-                        // Category: Backend Sidecar Status
-                        if (widget.sidecarBootstrap != null) ...<Widget>[
-                          _CategoryHeader(
-                              title: 'ENGINE STATUS', palette: palette),
-                          const SizedBox(height: 12),
-                          _buildEngineStatusCard(context, palette),
-                          const SizedBox(height: 8),
-                        ],
-                      ],
-                    ),
+                      // Right Content Panel
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(24),
+                          child: _buildActiveTabContent(context, palette),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
 
@@ -221,6 +320,247 @@ class _SettingsDialogState extends State<SettingsDialog> {
           },
         ),
       ),
+    );
+  }
+
+  Widget _buildMlModelConfig(BuildContext context, QpicPalette? palette) {
+    final theme = Theme.of(context);
+    final text = palette?.text ?? theme.colorScheme.onSurface;
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+    final border = palette?.border ?? theme.dividerColor;
+
+    if (_loadingML) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (_mlError != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12.0),
+            child: Text(
+              'Error loading ML configuration: $_mlError',
+              style: TextStyle(
+                  color: palette?.danger ?? theme.colorScheme.error,
+                  fontSize: 12),
+            ),
+          ),
+
+        // Status Card
+        Container(
+          decoration: BoxDecoration(
+            color: palette?.panelAlt ?? theme.colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: border),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: <Widget>[
+                  Text(
+                    'Local ML Model Status',
+                    style: TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.bold, color: text),
+                  ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _localMlAvailable
+                          ? (palette?.success ?? Colors.green)
+                              .withValues(alpha: 0.15)
+                          : (palette?.danger ?? Colors.red)
+                              .withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: _localMlAvailable
+                            ? (palette?.success ?? Colors.green)
+                                .withValues(alpha: 0.4)
+                            : (palette?.danger ?? Colors.red)
+                                .withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Text(
+                      _localMlAvailable ? 'Available' : 'Unavailable',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: _localMlAvailable
+                            ? (palette?.success ?? Colors.green)
+                            : (palette?.danger ?? Colors.red),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Model Name Textfield
+        TextField(
+          controller: _modelNameController,
+          decoration: const InputDecoration(
+            labelText: 'Model Name',
+            hintText: 'e.g. qpic-local-question-detector',
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Model Path Textfield + Picker
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _modelPathController,
+                decoration: const InputDecoration(
+                  labelText: 'Model Path (.onnx / .pt)',
+                  hintText: 'vendor/models/.../model.onnx',
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.folder_open_rounded),
+              onPressed: () async {
+                final file = await fs.openFile(
+                  acceptedTypeGroups: const [
+                    XTypeGroup(
+                      label: 'ONNX/PyTorch Model',
+                      extensions: ['onnx', 'pt'],
+                    )
+                  ],
+                );
+                if (file != null) {
+                  setState(() {
+                    _modelPathController.text = file.path;
+                  });
+                }
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Labels Path Textfield + Picker
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _labelsPathController,
+                decoration: const InputDecoration(
+                  labelText: 'Labels Path (.json)',
+                  hintText: 'vendor/models/.../labels.json',
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.folder_open_rounded),
+              onPressed: () async {
+                final file = await fs.openFile(
+                  acceptedTypeGroups: const [
+                    XTypeGroup(
+                      label: 'JSON Labels',
+                      extensions: ['json'],
+                    )
+                  ],
+                );
+                if (file != null) {
+                  setState(() {
+                    _labelsPathController.text = file.path;
+                  });
+                }
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Confidence Slider
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: <Widget>[
+                Text(
+                  'Default ML Confidence',
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.bold, color: text),
+                ),
+                Text(
+                  _confidence.toStringAsFixed(2),
+                  style: TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.bold, color: text),
+                ),
+              ],
+            ),
+            Slider(
+              value: _confidence,
+              min: 0.0,
+              max: 1.0,
+              divisions: 100,
+              onChanged: (val) => setState(() => _confidence = val),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // Input Size Dropdown
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: <Widget>[
+            Text(
+              'Model Input Size',
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.bold, color: text),
+            ),
+            QpicDropdownButton<int>(
+              value: _inputSize,
+              items: [320, 416, 512, 640, 800, 1024].map((size) {
+                return QpicDropdownItem<int>(
+                  value: size,
+                  label: '$size px',
+                );
+              }).toList(),
+              onChanged: (val) {
+                setState(() => _inputSize = val);
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
+        // Save Button
+        Align(
+          alignment: Alignment.centerRight,
+          child: _updatingML
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : FilledButton.icon(
+                  icon: const Icon(Icons.save_rounded, size: 16),
+                  label: const Text('Apply ML Settings'),
+                  onPressed: _saveMLConfig,
+                ),
+        ),
+      ],
     );
   }
 
@@ -609,6 +949,383 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
+  List<Widget> _buildSidebarItems(BuildContext context, QpicPalette? palette) {
+    final hasML = widget.sidecarBootstrap != null;
+    return <Widget>[
+      _buildSidebarTile(
+        tab: SettingsTab.general,
+        label: 'General Config',
+        icon: Icons.tune_rounded,
+        palette: palette,
+      ),
+      _buildSidebarTile(
+        tab: SettingsTab.naming,
+        label: 'Output & Naming',
+        icon: Icons.edit_note_rounded,
+        palette: palette,
+      ),
+      if (hasML)
+        _buildSidebarTile(
+          tab: SettingsTab.mlModel,
+          label: 'ML Configuration',
+          icon: Icons.psychology_rounded,
+          palette: palette,
+        ),
+      const SizedBox(height: 12),
+      Divider(
+          color: palette?.border ?? Theme.of(context).dividerColor, height: 1),
+      const SizedBox(height: 12),
+      _buildSidebarTile(
+        tab: SettingsTab.about,
+        label: 'About Qpic',
+        icon: Icons.info_outline_rounded,
+        palette: palette,
+      ),
+      _buildSidebarTile(
+        tab: SettingsTab.privacy,
+        label: 'Privacy Policy',
+        icon: Icons.shield_outlined,
+        palette: palette,
+      ),
+    ];
+  }
+
+  Widget _buildSidebarTile({
+    required SettingsTab tab,
+    required String label,
+    required IconData icon,
+    required QpicPalette? palette,
+  }) {
+    final theme = Theme.of(context);
+    final active = _activeTab == tab;
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+    final text = palette?.text ?? theme.colorScheme.onSurface;
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+    final activeBg = brand.withValues(alpha: 0.1);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 2),
+      decoration: BoxDecoration(
+        color: active ? activeBg : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        border: active
+            ? Border(
+                left: BorderSide(color: brand, width: 3),
+              )
+            : null,
+      ),
+      child: ListTile(
+        visualDensity: VisualDensity.compact,
+        dense: true,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        leading: Icon(
+          icon,
+          color: active ? brand : muted,
+          size: 18,
+        ),
+        title: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: active ? FontWeight.bold : FontWeight.w500,
+            color: active ? text : muted,
+          ),
+        ),
+        selected: active,
+        onTap: () {
+          setState(() {
+            _activeTab = tab;
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildActiveTabContent(BuildContext context, QpicPalette? palette) {
+    switch (_activeTab) {
+      case SettingsTab.general:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _CategoryHeader(title: 'THEME', palette: palette),
+            const SizedBox(height: 10),
+            _buildThemeSelector(context, palette),
+            const SizedBox(height: 24),
+            _CategoryHeader(title: 'DEFAULT TOOL CONFIG', palette: palette),
+            const SizedBox(height: 14),
+            _buildDpiConfig(context, palette),
+            const SizedBox(height: 16),
+            _buildPaddingConfig(context, palette),
+          ],
+        );
+      case SettingsTab.naming:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _CategoryHeader(title: 'OUTPUT & NAMING', palette: palette),
+            const SizedBox(height: 14),
+            _buildNamingConfig(context, palette),
+            const SizedBox(height: 16),
+            _buildImageFormatConfig(context, palette),
+            const SizedBox(height: 16),
+            _buildSmartModeConfig(context, palette),
+          ],
+        );
+      case SettingsTab.mlModel:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            _CategoryHeader(title: 'ML MODEL CONFIGURATION', palette: palette),
+            const SizedBox(height: 14),
+            _buildMlModelConfig(context, palette),
+            const SizedBox(height: 24),
+            _CategoryHeader(title: 'ENGINE STATUS', palette: palette),
+            const SizedBox(height: 12),
+            _buildEngineStatusCard(context, palette),
+          ],
+        );
+      case SettingsTab.about:
+        return _buildAboutContent(context, palette);
+      case SettingsTab.privacy:
+        return _buildPrivacyContent(context, palette);
+    }
+  }
+
+  Widget _buildAboutContent(BuildContext context, QpicPalette? palette) {
+    final theme = Theme.of(context);
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+    final text = palette?.text ?? theme.colorScheme.onSurface;
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+
+    return Column(
+      children: <Widget>[
+        const SizedBox(height: 10),
+        // Large Logo
+        Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: brand.withValues(alpha: 0.25),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Image.asset(
+              'assets/logo.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        // App Title
+        Text(
+          'Qpic',
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: text,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        // Version Info
+        Text(
+          'Version 1.0.0 (1)',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: muted,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Description
+        Text(
+          'Qpic is an advanced, offline-first native desktop assistant designed for educators and students. Easily crop MCQs/questions, organize files, and run batch renaming operations powered by local machine learning.',
+          textAlign: TextAlign.center,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: text,
+            height: 1.4,
+          ),
+        ),
+        const SizedBox(height: 32),
+        // Copyright & Author Link
+        Text(
+          'Copyright © 2026 Qpic. All rights reserved.',
+          style: theme.textTheme.bodySmall?.copyWith(color: muted),
+        ),
+        const SizedBox(height: 6),
+        Text.rich(
+          TextSpan(
+            children: <TextSpan>[
+              TextSpan(
+                text: 'Developer: ',
+                style: theme.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+              TextSpan(
+                text: 'aniketmishra',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: brand,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPrivacyContent(BuildContext context, QpicPalette? palette) {
+    final theme = Theme.of(context);
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+    final text = palette?.text ?? theme.colorScheme.onSurface;
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+    final border = palette?.border ?? theme.dividerColor;
+    final panelAlt = palette?.panelAlt ?? theme.colorScheme.surfaceContainerLow;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        // Alert card stating local nature
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: panelAlt,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(Icons.shield_outlined, color: brand, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Your Data Stays Yours',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: text,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'We respect your privacy. Qpic does not collect, save, or upload any of your files or personal data.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: muted,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        // Points
+        _buildPrivacyPoint(
+          theme: theme,
+          brand: brand,
+          text: text,
+          muted: muted,
+          icon: Icons.computer_rounded,
+          title: '100% Local Execution',
+          description:
+              'No remote servers or cloud processing. All PDF extraction, page layout analysis, and question cropping operations run locally on your device\'s processor.',
+        ),
+        const SizedBox(height: 14),
+        _buildPrivacyPoint(
+          theme: theme,
+          brand: brand,
+          text: text,
+          muted: muted,
+          icon: Icons.block_rounded,
+          title: 'Zero Telemetry & Analytics',
+          description:
+              'Your data is completely private. The application contains no tracking scripts, cookies, or telemetry reporting. We do not monitor your activity or usage.',
+        ),
+        const SizedBox(height: 14),
+        _buildPrivacyPoint(
+          theme: theme,
+          brand: brand,
+          text: text,
+          muted: muted,
+          icon: Icons.psychology_rounded,
+          title: 'Offline Machine Learning',
+          description:
+              'The built-in intelligence (YOLOv8 layout detection) is fully self-contained. It operates locally without downloading assets or sending input to remote APIs.',
+        ),
+        const SizedBox(height: 14),
+        _buildPrivacyPoint(
+          theme: theme,
+          brand: brand,
+          text: text,
+          muted: muted,
+          icon: Icons.storage_rounded,
+          title: 'Secure File System Handling',
+          description:
+              'Your documents and exported cropped images remain strictly within your local file system, protected under standard system permissions.',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPrivacyPoint({
+    required ThemeData theme,
+    required Color brand,
+    required Color text,
+    required Color muted,
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Container(
+          width: 32,
+          height: 32,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: brand.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 18, color: brand),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                title,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: text,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: muted,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // --- Confirm Reset dialog ---
   void _confirmReset(BuildContext context, QpicPalette? palette) {
     final theme = Theme.of(context);
@@ -664,10 +1381,10 @@ class _CategoryHeader extends StatelessWidget {
     return Text(
       title,
       style: TextStyle(
-        fontSize: 10.5,
-        fontWeight: FontWeight.w800,
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
         color: palette?.mutedAlt ?? theme.colorScheme.onSurfaceVariant,
-        letterSpacing: 0.8,
+        letterSpacing: 0.3,
       ),
     );
   }
@@ -706,19 +1423,11 @@ class _ThemeOptionCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
           color: active ? activeBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: active ? brand.withValues(alpha: 0.5) : Colors.transparent,
+            color: active ? brand.withValues(alpha: 0.3) : Colors.transparent,
+            width: 1.0,
           ),
-          boxShadow: active
-              ? <BoxShadow>[
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ]
-              : null,
         ),
         child: Column(
           children: <Widget>[

@@ -235,6 +235,35 @@ void main() {
       expect(c.items.single.flagged, isFalse);
     });
 
+    test('startEditing centers the item segment in the viewport', () {
+      final c = ReviewCanvasController(
+        pages: <PageInfo>[_page(1)],
+        items: <AnalyzedItem>[
+          _item(
+            qNum: '5',
+            segments: <QuestionSegment>[
+              _seg(page: 1, x0: 40, x1: 60, y0: 40, y1: 60), // Center at (50%, 50%)
+            ],
+          ),
+        ],
+      );
+      // Simulate layout size.
+      c.setViewportSize(const Size(1000, 1000));
+      c.startEditing(0);
+
+      // Page display size at zoom 1.0 (fit width 1000, aspect of _page(1) is 800/600 = 1.3333333333333333).
+      // So pageW = 1000, pageH = 1333.3333333333333.
+      // Content center:
+      // contentCenterX = 0.5 * 1000 = 500.
+      // contentCenterY = 0.5 * 1333.3333333333333 = 666.6666666666666.
+      // Viewport center is (500, 500).
+      // targetDx = 500 - 500 = 0.
+      // targetDy = 500 - 666.6666666666666 = -166.66666666666663.
+      // Clamped dy = -166.66666666666663.
+      expect(c.panOffset.dx, 0.0);
+      expect(c.panOffset.dy, closeTo(-166.66666666666663, 0.1));
+    });
+
     test('re-select clears a matching review note (Fix semantics)', () {
       final c = ReviewCanvasController(
         pages: <PageInfo>[_page(1)],
@@ -384,6 +413,110 @@ void main() {
 
       // Review notes for Q1 should be cleared
       expect(c.notes.any((n) => n.qNum == '1'), isFalse);
+    });
+  });
+
+  group('reorderItemSegments', () {
+    test('swaps segments of a multi-part question', () {
+      final s1 = _seg(page: 1, y0: 10, y1: 20);
+      final s2 = _seg(page: 1, y0: 30, y1: 40);
+      final s3 = _seg(page: 2, y0: 10, y1: 20);
+      final c = ReviewCanvasController(
+        items: <AnalyzedItem>[
+          _item(qNum: '1', segments: <QuestionSegment>[s1, s2, s3]),
+        ],
+      );
+
+      // Reorder: Move segment at index 2 (s3) to index 0
+      c.reorderItemSegments(0, 2, 0);
+      final next = c.items[0];
+      expect(next.segments.length, 3);
+      expect(next.segments[0].page, 2);
+      expect(next.segments[1].yStartPct, 10);
+      expect(next.segments[2].yStartPct, 30);
+    });
+
+    test('no-op on invalid target indices', () {
+      final s1 = _seg(page: 1, y0: 10, y1: 20);
+      final c = ReviewCanvasController(
+        items: <AnalyzedItem>[
+          _item(qNum: '1', segments: <QuestionSegment>[s1]),
+        ],
+      );
+      c.reorderItemSegments(0, 0, 5); // index out of bounds
+      expect(c.items[0].segments.length, 1);
+    });
+  });
+
+  group('multi-select and merge', () {
+    test('toggles and clears selection', () {
+      final c = ReviewCanvasController(
+        pages: <PageInfo>[_page(1)],
+        items: <AnalyzedItem>[_item(qNum: '1'), _item(qNum: '2')],
+      );
+      expect(c.selectedItemIndices, isEmpty);
+      expect(c.isSelected(0), isFalse);
+
+      c.toggleSelection(0);
+      expect(c.selectedItemIndices, <int>[0]);
+      expect(c.isSelected(0), isTrue);
+
+      c.toggleSelection(1);
+      expect(c.selectedItemIndices, containsAll(<int>[0, 1]));
+
+      c.toggleSelection(0);
+      expect(c.selectedItemIndices, <int>[1]);
+
+      c.clearSelection();
+      expect(c.selectedItemIndices, isEmpty);
+    });
+
+    test('exclusively selects index', () {
+      final c = ReviewCanvasController(
+        pages: <PageInfo>[_page(1)],
+        items: <AnalyzedItem>[_item(qNum: '1'), _item(qNum: '2')],
+      );
+      c.toggleSelection(0);
+      c.toggleSelection(1);
+      expect(c.selectedItemIndices.length, 2);
+
+      c.selectExclusive(0);
+      expect(c.selectedItemIndices, <int>[0]);
+    });
+
+    test('merges selected items into the lowest-indexed item and clears notes', () {
+      final s1 = _seg(page: 1, y0: 10, y1: 20);
+      final s2 = _seg(page: 1, y0: 30, y1: 40);
+      final c = ReviewCanvasController(
+        pages: <PageInfo>[_page(1)],
+        items: <AnalyzedItem>[
+          _item(qNum: '1', segments: <QuestionSegment>[s1]),
+          _item(qNum: '2', segments: <QuestionSegment>[s2]),
+        ],
+        notes: <ReviewNote>[
+          const ReviewNote(kind: 'incomplete', message: 'Note 1', qNum: '1'),
+          const ReviewNote(kind: 'incomplete', message: 'Note 2', qNum: '2'),
+        ],
+      );
+
+      c.toggleSelection(1);
+      c.toggleSelection(0);
+      expect(c.selectedItemIndices.length, 2);
+
+      c.mergeSelectedItems();
+
+      // Q1 should be target of merge and Q2 should be deleted
+      expect(c.items.length, 1);
+      expect(c.items.first.qNum, '1');
+      expect(c.items.first.segments.length, 2);
+      expect(c.items.first.segments[0], s1);
+      expect(c.items.first.segments[1], s2);
+      expect(c.items.first.source, 'manual');
+
+      // Notes should be cleared
+      expect(c.notes, isEmpty);
+      // Selection should be cleared
+      expect(c.selectedItemIndices, isEmpty);
     });
   });
 }

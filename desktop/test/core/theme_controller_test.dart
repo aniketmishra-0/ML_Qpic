@@ -174,8 +174,8 @@ void main() {
       expect(p.warn, const Color(0xFFFBBF24)); // --warn
       expect(p.danger, const Color(0xFFFB7185)); // --danger
       // A couple of surfaces.
-      expect(p.background, const Color(0xFF0C0B15)); // --bg
-      expect(p.text, const Color(0xFFF4F3FB)); // --text
+      expect(p.background, const Color(0xFF111113)); // --bg
+      expect(p.text, const Color(0xFFF5F5F7)); // --text
     });
 
     test('light palette matches the web :root[data-theme="light"] block', () {
@@ -184,8 +184,8 @@ void main() {
       expect(p.success, const Color(0xFF0D9488)); // --success
       expect(p.warn, const Color(0xFFD97706)); // --warn
       expect(p.danger, const Color(0xFFE11D48)); // --danger
-      expect(p.background, const Color(0xFFF4F3FB)); // --bg
-      expect(p.text, const Color(0xFF1B1830)); // --text
+      expect(p.background, const Color(0xFFF5F5F7)); // --bg
+      expect(p.text, const Color(0xFF1C1C1E)); // --text
     });
 
     test('derived canvas/note colors map to the right CSS rules', () {

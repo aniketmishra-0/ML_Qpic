@@ -22,7 +22,8 @@
 import 'dart:math' as math;
 import 'dart:ui' show Rect, Size;
 
-import '../../../models/tools.dart' show EditPageModel, EditableSpanModel, VectorObjectModel;
+import '../../../models/tools.dart'
+    show EditPageModel, EditableSpanModel, VectorObjectModel;
 
 /// Minimum on-screen size (px) for a span box, matching the web
 /// `Math.max(6, ...)` clamp in `layoutSpans` so a hair-thin run is still a

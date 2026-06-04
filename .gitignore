@@ -15,3 +15,7 @@ dist/
 
 # Vendored Tesseract (populated at build time by scripts/vendor_tesseract.py)
 vendor/
+
+# Local model weights and runs
+yolov8s.pt
+runs/

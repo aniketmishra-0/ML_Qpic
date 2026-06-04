@@ -8,14 +8,19 @@ import 'app_credit.dart';
 /// A custom, highly-polished About Qpic dialog featuring a brand logo
 /// and a dedicated Privacy tab to assure users that their data is processed 100% locally.
 class QpicAboutDialog extends StatefulWidget {
-  const QpicAboutDialog({super.key});
+  const QpicAboutDialog({
+    super.key,
+    this.initialTab = 0,
+  });
+
+  final int initialTab;
 
   /// Shows the custom about dialog.
-  static Future<void> show(BuildContext context) {
+  static Future<void> show(BuildContext context, {int initialTab = 0}) {
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
-      builder: (_) => const QpicAboutDialog(),
+      builder: (_) => QpicAboutDialog(initialTab: initialTab),
     );
   }
 
@@ -23,7 +28,8 @@ class QpicAboutDialog extends StatefulWidget {
   State<QpicAboutDialog> createState() => _QpicAboutDialogState();
 }
 
-class _QpicAboutDialogState extends State<QpicAboutDialog> with SingleTickerProviderStateMixin {
+class _QpicAboutDialogState extends State<QpicAboutDialog>
+    with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   late final TapGestureRecognizer _tapRecognizer;
   bool _creditHovered = false;
@@ -31,7 +37,11 @@ class _QpicAboutDialogState extends State<QpicAboutDialog> with SingleTickerProv
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTab.clamp(0, 1),
+    );
     _tapRecognizer = TapGestureRecognizer()..onTap = _openLinkedIn;
   }
 
@@ -66,7 +76,7 @@ class _QpicAboutDialogState extends State<QpicAboutDialog> with SingleTickerProv
         borderRadius: BorderRadius.all(Radius.circular(16)),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440, maxHeight: 420),
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 520),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -126,8 +136,10 @@ class _QpicAboutDialogState extends State<QpicAboutDialog> with SingleTickerProv
               child: TabBarView(
                 controller: _tabController,
                 children: <Widget>[
-                  _buildAppInfoTab(context, palette, theme, brand, brandMagenta, titleColor, muted),
-                  _buildPrivacyTab(context, palette, theme, brand, titleColor, muted),
+                  _buildAppInfoTab(context, palette, theme, brand, brandMagenta,
+                      titleColor, muted),
+                  _buildPrivacyTab(
+                      context, palette, theme, brand, titleColor, muted),
                 ],
               ),
             ),
@@ -195,7 +207,7 @@ class _QpicAboutDialogState extends State<QpicAboutDialog> with SingleTickerProv
           const SizedBox(height: 16),
           // Description
           Text(
-            'A lightning-fast native desktop client for cropping, organizing, and batch renaming question papers and images.',
+            'Qpic is an advanced, offline-first native desktop assistant designed for educators and students. Easily crop MCQs/questions, organize files, and run batch renaming operations powered by local machine learning.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: titleColor,
@@ -298,24 +310,36 @@ class _QpicAboutDialogState extends State<QpicAboutDialog> with SingleTickerProv
           theme,
           palette,
           icon: Icons.computer_rounded,
-          title: '100% Local Processing',
-          description: 'All PDF processing, question cropping, and image renaming occurs entirely on your own computer.',
-        ),
-        const SizedBox(height: 14),
-        _buildPrivacyPoint(
-          theme,
-          palette,
-          icon: Icons.cloud_off_rounded,
-          title: 'No Cloud Uploads',
-          description: 'Your documents and files never leave your computer. There are no server uploads or external data storage.',
+          title: '100% Local Execution',
+          description:
+              'No remote servers or cloud processing. All PDF extraction, page layout analysis, and question cropping operations run locally on your device\'s processor.',
         ),
         const SizedBox(height: 14),
         _buildPrivacyPoint(
           theme,
           palette,
           icon: Icons.block_rounded,
-          title: 'No Tracking or Telemetry',
-          description: 'The application contains absolutely zero tracking, analytics, or telemetry code. Your usage remains fully private.',
+          title: 'Zero Telemetry & Analytics',
+          description:
+              'Your data is completely private. The application contains no tracking scripts, cookies, or telemetry reporting. We do not monitor your activity or usage.',
+        ),
+        const SizedBox(height: 14),
+        _buildPrivacyPoint(
+          theme,
+          palette,
+          icon: Icons.psychology_rounded,
+          title: 'Offline Machine Learning',
+          description:
+              'The built-in intelligence (YOLOv8 layout detection) is fully self-contained. It operates locally without downloading assets or sending input to remote APIs.',
+        ),
+        const SizedBox(height: 14),
+        _buildPrivacyPoint(
+          theme,
+          palette,
+          icon: Icons.storage_rounded,
+          title: 'Secure File System Handling',
+          description:
+              'Your documents and exported cropped images remain strictly within your local file system, protected under standard system permissions.',
         ),
       ],
     );

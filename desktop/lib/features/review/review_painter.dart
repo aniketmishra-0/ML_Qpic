@@ -28,6 +28,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme_controller.dart';
@@ -68,6 +69,7 @@ class ReviewPainter extends CustomPainter {
     required this.items,
     required this.pageNumber,
     required this.revision,
+    required this.selectedIndices,
     this.pageImage,
     this.editingIndex = -1,
     this.hoveredIndex = -1,
@@ -101,6 +103,9 @@ class ReviewPainter extends CustomPainter {
   /// Index into [items] of the hovered item, or -1. Reserved for hover
   /// emphasis; the hovered item's number label is always shown like the rest.
   final int hoveredIndex;
+
+  /// All selected item indices for merging.
+  final List<int> selectedIndices;
 
   /// The in-progress drag rectangle in page-percent space, or null when no
   /// drag is active. Rendered as the filled `.sel-box`.
@@ -152,6 +157,7 @@ class ReviewPainter extends CustomPainter {
     for (int itemIdx = 0; itemIdx < items.length; itemIdx++) {
       final AnalyzedItem item = items[itemIdx];
       final bool isEditing = itemIdx == editingIndex;
+      final bool isSelected = selectedIndices.contains(itemIdx);
       final bool multiSegment = item.segments.length > 1;
 
       for (int segIdx = 0; segIdx < item.segments.length; segIdx++) {
@@ -159,7 +165,7 @@ class ReviewPainter extends CustomPainter {
         if (seg.page != pageNumber) continue;
 
         final Rect rect = geometry.segToScreenRect(seg);
-        final Color color = _outlineColor(item, isEditing);
+        final Color color = _outlineColor(item, isEditing, isSelected);
 
         if (isEditing) {
           // `.existing-box.editing` — a SOLID 2px brand outline.
@@ -167,6 +173,23 @@ class ReviewPainter extends CustomPainter {
             ..style = PaintingStyle.stroke
             ..strokeWidth = 2.0
             ..color = color;
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(rect, const Radius.circular(_kBoxRadius)),
+            stroke,
+          );
+        } else if (isSelected) {
+          // SOLID 2px brandBlue outline + subtle brandBlue fill.
+          final Paint fill = Paint()
+            ..style = PaintingStyle.fill
+            ..color = palette.brandBlue.withValues(alpha: 0.08);
+          final Paint stroke = Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.0
+            ..color = color;
+          canvas.drawRRect(
+            RRect.fromRectAndRadius(rect, const Radius.circular(_kBoxRadius)),
+            fill,
+          );
           canvas.drawRRect(
             RRect.fromRectAndRadius(rect, const Radius.circular(_kBoxRadius)),
             stroke,
@@ -186,7 +209,8 @@ class ReviewPainter extends CustomPainter {
         // Per-box number label (Req 8.3). Multi-segment items get a part
         // letter (a, b, c…) in draw order, matching the web `segLetter`.
         final String label = _label(item, segIdx, multiSegment);
-        _drawTag(canvas, rect, label, color, isEditing, item.flagged);
+        _drawTag(
+            canvas, rect, label, color, isEditing || isSelected, item.flagged);
 
         // The item being re-selected gets handles + a delete affordance.
         if (isEditing) {
@@ -198,9 +222,10 @@ class ReviewPainter extends CustomPainter {
   }
 
   /// Outline/label color for an item, by state (Req 8.2):
-  /// being re-selected → brand; flagged → warn; otherwise → success.
-  Color _outlineColor(AnalyzedItem item, bool isEditing) {
+  /// being re-selected → brand; selected → brandBlue; flagged → warn; otherwise → success.
+  Color _outlineColor(AnalyzedItem item, bool isEditing, bool isSelected) {
     if (isEditing) return palette.boxEditing;
+    if (isSelected) return palette.brandBlue;
     if (item.flagged) return palette.boxFlagged;
     return palette.boxOutline;
   }
@@ -400,6 +425,7 @@ class ReviewPainter extends CustomPainter {
         pageNumber != oldDelegate.pageNumber ||
         editingIndex != oldDelegate.editingIndex ||
         hoveredIndex != oldDelegate.hoveredIndex ||
+        !listEquals(selectedIndices, oldDelegate.selectedIndices) ||
         !identical(pageImage, oldDelegate.pageImage) ||
         !identical(selection, oldDelegate.selection) ||
         !identical(items, oldDelegate.items) ||
