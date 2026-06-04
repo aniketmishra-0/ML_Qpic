@@ -1236,9 +1236,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
           text: text,
           muted: muted,
           icon: Icons.computer_rounded,
-          title: '100% Local Execution',
+          title: '100% Local Processing',
           description:
-              'No remote servers or cloud processing. All PDF extraction, page layout analysis, and question cropping operations run locally on your device\'s processor.',
+              'All PDF parsing, question detection, and image cropping run entirely on your device. No files are sent to remote servers unless you explicitly enable Online mode.',
         ),
         const SizedBox(height: 14),
         _buildPrivacyPoint(
@@ -1249,7 +1249,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
           icon: Icons.block_rounded,
           title: 'Zero Telemetry & Analytics',
           description:
-              'Your data is completely private. The application contains no tracking scripts, cookies, or telemetry reporting. We do not monitor your activity or usage.',
+              'No tracking scripts, cookies, or usage telemetry. We do not monitor your activity, collect analytics, or report any data back to us.',
         ),
         const SizedBox(height: 14),
         _buildPrivacyPoint(
@@ -1258,9 +1258,20 @@ class _SettingsDialogState extends State<SettingsDialog> {
           text: text,
           muted: muted,
           icon: Icons.psychology_rounded,
-          title: 'Offline Machine Learning',
+          title: 'Local ML Detection',
           description:
-              'The built-in intelligence (YOLOv8 layout detection) is fully self-contained. It operates locally without downloading assets or sending input to remote APIs.',
+              'The built-in ML model (YOLOv8/ONNX) runs fully offline. It detects question and solution regions as bounding box coordinates only \u2014 it does not read, extract, or understand your document content.',
+        ),
+        const SizedBox(height: 14),
+        _buildPrivacyPoint(
+          theme: theme,
+          brand: brand,
+          text: text,
+          muted: muted,
+          icon: Icons.cloud_off_rounded,
+          title: 'Online AI (Optional)',
+          description:
+              'When Online mode is enabled, only page images are sent to your configured AI provider (Anthropic or OpenRouter) to obtain question region coordinates. No document content is extracted, stored, or retained by the app or the AI provider.',
         ),
         const SizedBox(height: 14),
         _buildPrivacyPoint(
@@ -1269,9 +1280,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
           text: text,
           muted: muted,
           icon: Icons.storage_rounded,
-          title: 'Secure File System Handling',
+          title: 'Secure Local File Handling',
           description:
-              'Your documents and exported cropped images remain strictly within your local file system, protected under standard system permissions.',
+              'Your documents and exported cropped images remain strictly within your local file system. Temporary job files are automatically cleaned up after processing.',
         ),
       ],
     );

@@ -440,38 +440,40 @@ const List<_HelpTab> _helpTabs = <_HelpTab>[
     steps: <_HelpStep>[
       _HelpStep(
         number: 1,
-        title: '100% Local Execution',
-        detail: 'Qpic runs entirely on your machine. All PDF extraction, '
-            'cropping, and image renaming happens locally on your processor '
-            'without remote servers.',
+        title: '100% Local Processing',
+        detail: 'All PDF parsing, question detection, and image cropping '
+            'run entirely on your device. No files are sent to remote '
+            'servers unless you explicitly enable Online mode.',
       ),
       _HelpStep(
         number: 2,
         title: 'Zero Telemetry & Analytics',
-        detail: 'We do not collect, store, or transmit any of your data. '
-            'Your files never leave your computer, and there are absolutely '
-            'no tracking scripts or analytics.',
+        detail: 'No tracking scripts, cookies, or usage telemetry. We do '
+            'not monitor your activity, collect analytics, or report any '
+            'data back to us.',
       ),
       _HelpStep(
         number: 3,
-        title: 'Offline Machine Learning',
-        detail: 'The built-in intelligence (YOLOv8 layout detection) is '
-            'fully self-contained, performing high-fidelity local model '
-            'inference entirely offline.',
+        title: 'Local ML Detection',
+        detail: 'The built-in ML model (YOLOv8/ONNX) runs fully offline. '
+            'It detects question and solution regions as bounding box '
+            'coordinates only — it does not read, extract, or understand '
+            'your document content.',
       ),
       _HelpStep(
         number: 4,
-        title: 'Secure File System Handling',
-        detail: 'Your documents and exported cropped images remain strictly '
-            'within your local file system, protected under standard system '
-            'permissions.',
+        title: 'Online AI (Optional)',
+        detail: 'When Online mode is enabled, only page images are sent to '
+            'your configured AI provider to obtain question region '
+            'coordinates. No document content is extracted, stored, or '
+            'retained. This requires an API key and is disabled by default.',
       ),
       _HelpStep(
         number: 5,
-        title: 'Open & Transparent',
-        detail: 'Qpic is built with transparency in mind. Your trust is '
-            'our priority — we will always keep you informed about any '
-            'changes to how the app handles your data.',
+        title: 'Secure Local File Handling',
+        detail: 'Your documents and exported cropped images remain strictly '
+            'within your local file system. Temporary job files are '
+            'automatically cleaned up after processing.',
       ),
     ],
   ),

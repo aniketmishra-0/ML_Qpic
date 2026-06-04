@@ -632,7 +632,7 @@ class _FinalizeDownloadBar extends StatelessWidget {
                     size: 14, color: palette.brandBlue),
                 const SizedBox(width: 6),
                 Text(
-                  'Select Language for Download (द्विभाषी डाउनलोड योजक):',
+                  'Select Language for Download:', 
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -667,7 +667,7 @@ class _FinalizeDownloadBar extends StatelessWidget {
                 ),
                 ButtonSegment<String>(
                   value: 'hindi',
-                  label: Text('Hindi (हिन्दी)'),
+                  label: Text('Hindi'),
                   icon: Icon(Icons.translate_rounded, size: 14),
                 ),
               ],
@@ -993,7 +993,7 @@ class _BilingualStitcherCard extends StatelessWidget {
                 items: const [
                   QpicDropdownItem(value: 'none', label: 'Standard (Default)'),
                   QpicDropdownItem(value: 'english', label: 'English Only'),
-                  QpicDropdownItem(value: 'hindi', label: 'Hindi Only (हिन्दी)'),
+                  QpicDropdownItem(value: 'hindi', label: 'Hindi Only'),
                   QpicDropdownItem(value: 'bilingual_horizontal', label: 'Bilingual (Horizontal)'),
                   QpicDropdownItem(value: 'bilingual_vertical', label: 'Bilingual (Vertical)'),
                 ],

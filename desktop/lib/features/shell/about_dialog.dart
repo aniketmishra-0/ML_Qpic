@@ -38,9 +38,9 @@ class _QpicAboutDialogState extends State<QpicAboutDialog>
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 2,
+      length: 3,
       vsync: this,
-      initialIndex: widget.initialTab.clamp(0, 1),
+      initialIndex: widget.initialTab.clamp(0, 2),
     );
     _tapRecognizer = TapGestureRecognizer()..onTap = _openLinkedIn;
   }
@@ -121,6 +121,10 @@ class _QpicAboutDialogState extends State<QpicAboutDialog>
                   text: 'App Info',
                 ),
                 Tab(
+                  key: ValueKey<String>('about-tab-help'),
+                  text: 'How to Use',
+                ),
+                Tab(
                   key: ValueKey<String>('about-tab-privacy'),
                   text: 'Privacy',
                 ),
@@ -138,6 +142,8 @@ class _QpicAboutDialogState extends State<QpicAboutDialog>
                 children: <Widget>[
                   _buildAppInfoTab(context, palette, theme, brand, brandMagenta,
                       titleColor, muted),
+                  _buildHelpTab(
+                      context, palette, theme, brand, titleColor, muted),
                   _buildPrivacyTab(
                       context, palette, theme, brand, titleColor, muted),
                 ],
@@ -252,6 +258,150 @@ class _QpicAboutDialogState extends State<QpicAboutDialog>
     );
   }
 
+  Widget _buildHelpTab(
+    BuildContext context,
+    QpicPalette? palette,
+    ThemeData theme,
+    Color brand,
+    Color titleColor,
+    Color muted,
+  ) {
+    final panelAlt = palette?.panelAlt ?? theme.colorScheme.surfaceContainerLow;
+    final border = palette?.border ?? theme.dividerColor;
+
+    return ListView(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      children: <Widget>[
+        // Quick Start
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: panelAlt,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(Icons.rocket_launch_rounded, color: brand, size: 22),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Quick Start',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: titleColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Load a PDF → Analyze → Review detections → Finalize & Download your cropped question images.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: muted,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        // Steps
+        _buildHelpStep(theme, palette, number: '1', title: 'Load a PDF',
+            description: 'Click "Choose PDF" or drag-and-drop your exam paper onto the upload area.'),
+        const SizedBox(height: 14),
+        _buildHelpStep(theme, palette, number: '2', title: 'Configure & Analyze',
+            description: 'Set question numbering style, enable Smart Mode for the full pipeline with review, and optionally toggle Online mode for AI-assisted detection on tricky layouts. Click "Analyze" to detect questions.'),
+        const SizedBox(height: 14),
+        _buildHelpStep(theme, palette, number: '3', title: 'Review Detections',
+            description: 'The review canvas shows detected boxes over page previews. Fix incorrect boxes with "Re-select", draw new boxes for missed questions, or delete duplicates. Snap-to-content auto-tightens drawn boxes.'),
+        const SizedBox(height: 14),
+        _buildHelpStep(theme, palette, number: '4', title: 'Finalize & Download',
+            description: 'Click "Finalize" to generate crisp cropped images from the original PDF. Download as Combined, Questions-only, or Solutions-only ZIP.'),
+        const SizedBox(height: 20),
+        Divider(color: border),
+        const SizedBox(height: 16),
+        // ML Detection
+        _buildPrivacyPoint(theme, palette,
+            icon: Icons.psychology_rounded,
+            title: 'ML Detection',
+            description: 'The built-in ML model detects question and solution regions as bounding box coordinates only. It does not read, extract, or understand your document content. All actual cropping is done locally from the original PDF source.'),
+        const SizedBox(height: 14),
+        _buildPrivacyPoint(theme, palette,
+            icon: Icons.cloud_off_rounded,
+            title: 'Online AI (Optional)',
+            description: 'When enabled, page images are sent to your configured AI provider solely to obtain region coordinates. No document content is extracted or stored. This feature requires an API key and is disabled by default.'),
+        const SizedBox(height: 14),
+        _buildPrivacyPoint(theme, palette,
+            icon: Icons.view_column_rounded,
+            title: 'Bilingual PDF Support',
+            description: 'Automatically detects side-by-side bilingual layouts and merges duplicate detections. Use the Bilingual Stitcher to choose English only, Hindi only, or stitched bilingual output.'),
+      ],
+    );
+  }
+
+  Widget _buildHelpStep(
+    ThemeData theme,
+    QpicPalette? palette, {
+    required String number,
+    required String title,
+    required String description,
+  }) {
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+    final titleColor = palette?.text ?? theme.colorScheme.onSurface;
+    final muted = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Container(
+          width: 28,
+          height: 28,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: brand,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            number,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                title,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: titleColor,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: muted,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildPrivacyTab(
     BuildContext context,
     QpicPalette? palette,
@@ -310,9 +460,9 @@ class _QpicAboutDialogState extends State<QpicAboutDialog>
           theme,
           palette,
           icon: Icons.computer_rounded,
-          title: '100% Local Execution',
+          title: '100% Local Processing',
           description:
-              'No remote servers or cloud processing. All PDF extraction, page layout analysis, and question cropping operations run locally on your device\'s processor.',
+              'All PDF parsing, question detection, and image cropping run entirely on your device. No files are sent to remote servers unless you explicitly enable Online mode.',
         ),
         const SizedBox(height: 14),
         _buildPrivacyPoint(
@@ -321,25 +471,34 @@ class _QpicAboutDialogState extends State<QpicAboutDialog>
           icon: Icons.block_rounded,
           title: 'Zero Telemetry & Analytics',
           description:
-              'Your data is completely private. The application contains no tracking scripts, cookies, or telemetry reporting. We do not monitor your activity or usage.',
+              'No tracking scripts, cookies, or usage telemetry. We do not monitor your activity, collect analytics, or report any data back to us.',
         ),
         const SizedBox(height: 14),
         _buildPrivacyPoint(
           theme,
           palette,
           icon: Icons.psychology_rounded,
-          title: 'Offline Machine Learning',
+          title: 'Local ML Detection',
           description:
-              'The built-in intelligence (YOLOv8 layout detection) is fully self-contained. It operates locally without downloading assets or sending input to remote APIs.',
+              'The built-in ML model (YOLOv8/ONNX) runs fully offline. It detects question and solution regions as bounding box coordinates only \u2014 it does not read, extract, or understand your document content.',
+        ),
+        const SizedBox(height: 14),
+        _buildPrivacyPoint(
+          theme,
+          palette,
+          icon: Icons.cloud_off_rounded,
+          title: 'Online AI (Optional)',
+          description:
+              'When Online mode is enabled, only page images are sent to your configured AI provider (Anthropic or OpenRouter) to obtain question region coordinates. No document content is extracted, stored, or retained by the app or the AI provider.',
         ),
         const SizedBox(height: 14),
         _buildPrivacyPoint(
           theme,
           palette,
           icon: Icons.storage_rounded,
-          title: 'Secure File System Handling',
+          title: 'Secure Local File Handling',
           description:
-              'Your documents and exported cropped images remain strictly within your local file system, protected under standard system permissions.',
+              'Your documents and exported cropped images remain strictly within your local file system. Temporary job files are automatically cleaned up after processing.',
         ),
       ],
     );

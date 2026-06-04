@@ -1268,7 +1268,7 @@ class _ModeToggles extends StatelessWidget {
         _buildToggleItem(
           key: const ValueKey<String>('auto-crop-bilingual-mode'),
           icon: Icons.g_translate_rounded,
-          title: 'Bilingual Mode (द्विभाषी)',
+          title: 'Bilingual Mode',
           subtitle:
               'Enable side-by-side bilingual question stitching and download options.',
           value: controller.bilingualModeActive,
