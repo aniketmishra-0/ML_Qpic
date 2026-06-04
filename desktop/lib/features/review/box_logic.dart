@@ -50,10 +50,10 @@ double segIoU(QuestionSegment a, QuestionSegment b) {
   final double iy1 = math.min(a.yEndPct, b.yEndPct);
   final double inter = math.max(0, ix1 - ix0) * math.max(0, iy1 - iy0);
   if (inter <= 0) return 0;
-  final double areaA =
-      math.max(0, a.xEndPct - a.xStartPct) * math.max(0, a.yEndPct - a.yStartPct);
-  final double areaB =
-      math.max(0, b.xEndPct - b.xStartPct) * math.max(0, b.yEndPct - b.yStartPct);
+  final double areaA = math.max(0, a.xEndPct - a.xStartPct) *
+      math.max(0, a.yEndPct - a.yStartPct);
+  final double areaB = math.max(0, b.xEndPct - b.xStartPct) *
+      math.max(0, b.yEndPct - b.yStartPct);
   final double union = areaA + areaB - inter;
   return union > 0 ? inter / union : 0;
 }

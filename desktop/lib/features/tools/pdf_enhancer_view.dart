@@ -7,6 +7,7 @@ import '../../core/download_service.dart';
 import '../../core/file_picker_service.dart';
 import '../../core/theme_controller.dart';
 import '../../widgets/drop_target.dart';
+import '../../widgets/qpic_dropdown.dart';
 import '../auto_crop/auto_crop_controller.dart';
 import '../manual_crop/manual_crop_controller.dart';
 
@@ -38,7 +39,6 @@ class PdfEnhancerView extends StatefulWidget {
 }
 
 class _PdfEnhancerViewState extends State<PdfEnhancerView> {
-
   // File state
   Uint8List? _fileBytes;
   String? _fileName;
@@ -53,6 +53,7 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
   double _brightness = 1.0;
   int _watermarkThreshold = 255; // 255 = Off
   bool _binarize = false;
+  bool _deskew = false;
   int _dpi = 150;
 
   // Loading & Error states
@@ -138,6 +139,7 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
       _brightness = 1.0;
       _watermarkThreshold = 255;
       _binarize = false;
+      _deskew = false;
       _dpi = 150;
     });
   }
@@ -165,13 +167,16 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
         contrast: _contrast,
         brightness: _brightness,
         watermarkThreshold: _watermarkThreshold,
-        dpi: 300, // Process full PDF at 300 DPI for high quality text preservation
+        deskew: _deskew,
+        dpi:
+            300, // Process full PDF at 300 DPI for high quality text preservation
       );
 
       setState(() {
         _enhancedDownloadUrl = res.downloadUrl;
         _busy = false;
-        _successNote = 'PDF enhanced successfully! You can download it or send it to crops.';
+        _successNote =
+            'PDF enhanced successfully! You can download it or send it to crops.';
       });
     } on ApiException catch (e) {
       setState(() {
@@ -191,7 +196,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
     final name = _fileName;
     final client = widget.apiClient;
     final downloader = widget.downloadService;
-    if (url == null || name == null || client == null || downloader == null) return;
+    if (url == null || name == null || client == null || downloader == null)
+      return;
 
     setState(() {
       _busy = true;
@@ -233,11 +239,13 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
       final suggestedName = 'enhanced_$name';
 
       if (autoMode) {
-        widget.autoCropController.setFile(bytes: bytes, filename: suggestedName);
+        widget.autoCropController
+            .setFile(bytes: bytes, filename: suggestedName);
         widget.autoCropController.applyDefaults(widget.themeController);
         widget.onSwitchTab(0); // Switch to Auto Crop tab
       } else {
-        widget.manualCropController.setFile(bytes: bytes, filename: suggestedName);
+        widget.manualCropController
+            .setFile(bytes: bytes, filename: suggestedName);
         widget.manualCropController.applyDefaults(widget.themeController);
         widget.onSwitchTab(1); // Switch to Manual Crop tab
       }
@@ -265,7 +273,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
             const SizedBox(height: 16),
             Text(
               'Waiting for engine connection...',
-              style: TextStyle(color: palette?.muted ?? theme.colorScheme.onSurfaceVariant),
+              style: TextStyle(
+                  color: palette?.muted ?? theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -302,7 +311,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                       'Remove faint watermarks, boost text contrast, and save the original PDF or crop directly.',
                       style: TextStyle(
                         fontSize: 13.5,
-                        color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                        color: palette?.muted ??
+                            theme.colorScheme.onSurfaceVariant,
                         height: 1.4,
                       ),
                     ),
@@ -315,7 +325,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                   icon: const Icon(Icons.refresh_rounded, size: 18),
                   label: const Text('Clear'),
                   style: TextButton.styleFrom(
-                    foregroundColor: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                    foregroundColor:
+                        palette?.muted ?? theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
             ],
@@ -348,7 +359,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
         }
       },
       onRejected: (message) {
-        setState(() => _errorText = 'Invalid file type. Only PDF documents are supported.');
+        setState(() => _errorText =
+            'Invalid file type. Only PDF documents are supported.');
       },
       overlayBuilder: (context, isDragOver, child) {
         return AnimatedContainer(
@@ -357,9 +369,10 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
             color: isDragOver
                 ? brand.withValues(alpha: 0.04)
                 : (palette?.panel ?? theme.colorScheme.surface),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isDragOver ? brand : (palette?.border ?? theme.dividerColor),
+              color:
+                  isDragOver ? brand : (palette?.border ?? theme.dividerColor),
               width: 2,
             ),
           ),
@@ -405,11 +418,15 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
               if (_errorText != null) ...[
                 const SizedBox(height: 20),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: (palette?.danger ?? theme.colorScheme.error).withValues(alpha: 0.12),
+                    color: (palette?.danger ?? theme.colorScheme.error)
+                        .withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: (palette?.danger ?? theme.colorScheme.error).withValues(alpha: 0.3)),
+                    border: Border.all(
+                        color: (palette?.danger ?? theme.colorScheme.error)
+                            .withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     _errorText!,
@@ -442,8 +459,16 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
               width: 340,
               child: SingleChildScrollView(
                 child: Card(
+                  elevation: 0,
                   color: palette?.panel ?? theme.colorScheme.surface,
                   margin: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: palette?.border ?? theme.dividerColor,
+                      width: 1.0,
+                    ),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(20),
                     child: Column(
@@ -454,7 +479,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
-                            color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+                            color: palette?.muted ??
+                                theme.colorScheme.onSurfaceVariant,
                             letterSpacing: 0.8,
                           ),
                         ),
@@ -469,6 +495,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                         const SizedBox(height: 20),
                         _buildBinarizeToggle(palette),
                         const SizedBox(height: 20),
+                        _buildDeskewToggle(palette),
+                        const SizedBox(height: 20),
                         _buildDpiSelector(palette),
                         const SizedBox(height: 24),
 
@@ -477,13 +505,16 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: (palette?.danger ?? theme.colorScheme.error).withValues(alpha: 0.12),
+                              color:
+                                  (palette?.danger ?? theme.colorScheme.error)
+                                      .withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               _errorText!,
                               style: TextStyle(
-                                color: palette?.danger ?? theme.colorScheme.error,
+                                color:
+                                    palette?.danger ?? theme.colorScheme.error,
                                 fontSize: 12,
                               ),
                             ),
@@ -496,13 +527,16 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: (palette?.success ?? theme.colorScheme.primary).withValues(alpha: 0.12),
+                              color: (palette?.success ??
+                                      theme.colorScheme.primary)
+                                  .withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               _successNote!,
                               style: TextStyle(
-                                color: palette?.success ?? theme.colorScheme.primary,
+                                color: palette?.success ??
+                                    theme.colorScheme.primary,
                                 fontSize: 12,
                               ),
                             ),
@@ -518,7 +552,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                                 ? const SizedBox(
                                     width: 16,
                                     height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white),
                                   )
                                 : const Icon(Icons.auto_awesome_rounded),
                             label: const Text('Enhance entire PDF'),
@@ -529,7 +564,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                             icon: const Icon(Icons.download_rounded),
                             label: const Text('Save Enhanced PDF'),
                             style: FilledButton.styleFrom(
-                              backgroundColor: palette?.success ?? theme.colorScheme.primary,
+                              backgroundColor:
+                                  palette?.success ?? theme.colorScheme.primary,
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -556,8 +592,16 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
             // Right Previews Panel
             Expanded(
               child: Card(
+                elevation: 0,
                 color: palette?.panel ?? theme.colorScheme.surface,
                 margin: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: palette?.border ?? theme.dividerColor,
+                    width: 1.0,
+                  ),
+                ),
                 child: isStashed
                     ? _buildPreviewCanvas(palette)
                     : const Center(
@@ -586,11 +630,15 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
           children: [
             Text(
               'Watermark Threshold',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: text),
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.bold, color: text),
             ),
             Text(
               isOff ? 'Off' : '$_watermarkThreshold RGB',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: palette?.brand),
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: palette?.brand),
             ),
           ],
         ),
@@ -608,7 +656,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
           onChanged: (val) {
             setState(() {
               _watermarkThreshold = val.round();
-              _enhancedDownloadUrl = null; // Reset result so user has to re-generate
+              _enhancedDownloadUrl =
+                  null; // Reset result so user has to re-generate
             });
           },
         ),
@@ -628,11 +677,15 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
           children: [
             Text(
               'Text Contrast',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: text),
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.bold, color: text),
             ),
             Text(
               '${_contrast.toStringAsFixed(1)}x',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: palette?.brand),
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: palette?.brand),
             ),
           ],
         ),
@@ -670,11 +723,15 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
           children: [
             Text(
               'Brightness',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: text),
+              style: TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.bold, color: text),
             ),
             Text(
               '${_brightness.toStringAsFixed(1)}x',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: palette?.brand),
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: palette?.brand),
             ),
           ],
         ),
@@ -701,12 +758,35 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
       color: Colors.transparent,
       child: SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text('Binarize (Pure B&W)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-        subtitle: const Text('Convert pages to sharp monochrome text', style: TextStyle(fontSize: 10.5)),
+        title: const Text('Binarize (Pure B&W)',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        subtitle: const Text('Convert pages to sharp monochrome text',
+            style: TextStyle(fontSize: 10.5)),
         value: _binarize,
         onChanged: (val) {
           setState(() {
             _binarize = val;
+            _enhancedDownloadUrl = null;
+          });
+        },
+      ),
+    );
+  }
+
+  // --- Deskew Toggle ---
+  Widget _buildDeskewToggle(QpicPalette? palette) {
+    return Material(
+      color: Colors.transparent,
+      child: SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Deskew pages (straighten tilt)',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+        subtitle: const Text('Detect and correct page orientation alignment',
+            style: TextStyle(fontSize: 10.5)),
+        value: _deskew,
+        onChanged: (val) {
+          setState(() {
+            _deskew = val;
             _enhancedDownloadUrl = null;
           });
         },
@@ -724,22 +804,23 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Preview Quality', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: text)),
-            Text('Resolution density', style: TextStyle(fontSize: 10.5, color: palette?.muted)),
+            Text('Preview Quality',
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.bold, color: text)),
+            Text('Resolution density',
+                style: TextStyle(fontSize: 10.5, color: palette?.muted)),
           ],
         ),
-        DropdownButton<int>(
+        QpicDropdownButton<int>(
           value: _dpi,
           items: const [
-            DropdownMenuItem(value: 72, child: Text('72 DPI')),
-            DropdownMenuItem(value: 150, child: Text('150 DPI')),
-            DropdownMenuItem(value: 200, child: Text('200 DPI')),
-            DropdownMenuItem(value: 300, child: Text('300 DPI (High)')),
+            QpicDropdownItem(value: 72, label: '72 DPI'),
+            QpicDropdownItem(value: 150, label: '150 DPI'),
+            QpicDropdownItem(value: 200, label: '200 DPI'),
+            QpicDropdownItem(value: 300, label: '300 DPI (High)'),
           ],
           onChanged: (val) {
-            if (val != null) {
-              setState(() => _dpi = val);
-            }
+            setState(() => _dpi = val);
           },
         ),
       ],
@@ -757,9 +838,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    final originalUrl = client.resolveUri(
-      '/api/tools/edit/$_jobId/page/$_currentPage'
-    );
+    final originalUrl =
+        client.resolveUri('/api/tools/edit/$_jobId/page/$_currentPage');
     final enhancedUrl = client.enhancePagePreviewUri(
       _jobId!,
       _currentPage,
@@ -767,6 +847,7 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
       contrast: _contrast,
       brightness: _brightness,
       watermarkThreshold: _watermarkThreshold,
+      deskew: _deskew,
       dpi: _dpi,
     );
 
@@ -780,7 +861,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
             children: [
               Text(
                 'LIVE PREVIEW (Page $_currentPage of $_totalPages)',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: muted),
+                style: TextStyle(
+                    fontSize: 11, fontWeight: FontWeight.bold, color: muted),
               ),
               Row(
                 children: [
@@ -790,7 +872,9 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                         ? () => setState(() => _currentPage--)
                         : null,
                   ),
-                  Text('$_currentPage', style: TextStyle(fontWeight: FontWeight.bold, color: text)),
+                  Text('$_currentPage',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, color: text)),
                   IconButton(
                     icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                     onPressed: _currentPage < _totalPages
@@ -814,12 +898,16 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 4),
-                      color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                      color: theme.colorScheme.surfaceContainerHighest
+                          .withValues(alpha: 0.5),
                       width: double.infinity,
                       child: const Center(
                         child: Text(
                           'ORIGINAL',
-                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                          style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5),
                         ),
                       ),
                     ),
@@ -831,7 +919,9 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                           fit: BoxFit.contain,
                           loadingBuilder: (context, child, progress) {
                             if (progress == null) return child;
-                            return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
+                            return const Center(
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2.5));
                           },
                         ),
                       ),
@@ -847,7 +937,8 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 4),
-                      color: palette?.field.withValues(alpha: 0.5) ?? Colors.purple.withValues(alpha: 0.1),
+                      color: palette?.field.withValues(alpha: 0.5) ??
+                          Colors.purple.withValues(alpha: 0.1),
                       width: double.infinity,
                       child: Center(
                         child: Text(
@@ -867,16 +958,18 @@ class _PdfEnhancerViewState extends State<PdfEnhancerView> {
                         child: Image.network(
                           enhancedUrl.toString(),
                           key: ValueKey(
-                            '$_currentPage-$_binarize-$_contrast-$_brightness-$_watermarkThreshold-$_dpi'
-                          ),
+                              '$_currentPage-$_binarize-$_deskew-$_contrast-$_brightness-$_watermarkThreshold-$_dpi'),
                           fit: BoxFit.contain,
                           loadingBuilder: (context, child, progress) {
                             if (progress == null) return child;
-                            return const Center(child: CircularProgressIndicator(strokeWidth: 2.5));
+                            return const Center(
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2.5));
                           },
                           errorBuilder: (context, error, stackTrace) {
                             return const Center(
-                              child: Text('Failed to render enhanced preview.', style: TextStyle(fontSize: 12)),
+                              child: Text('Failed to render enhanced preview.',
+                                  style: TextStyle(fontSize: 12)),
                             );
                           },
                         ),

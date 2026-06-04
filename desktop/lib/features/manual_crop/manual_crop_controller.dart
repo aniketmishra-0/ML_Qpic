@@ -145,6 +145,54 @@ class ManualCropController extends ChangeNotifier {
   int _jpgQuality = AutoCropBounds.jpgQualityDefault;
   int _dpi = AutoCropBounds.dpiDefault;
 
+  bool _binarize = false;
+  double _contrast = 1.0;
+  double _brightness = 1.0;
+  int _watermarkThreshold = 255;
+  bool _deskew = false;
+
+  bool get binarize => _binarize;
+  set binarize(bool value) {
+    if (_binarize == value) return;
+    _binarize = value;
+    notifyListeners();
+  }
+
+  double get contrast => _contrast;
+  set contrast(double value) {
+    if (_contrast == value) return;
+    _contrast = value;
+    notifyListeners();
+  }
+
+  double get brightness => _brightness;
+  set brightness(double value) {
+    if (_brightness == value) return;
+    _brightness = value;
+    notifyListeners();
+  }
+
+  int get watermarkThreshold => _watermarkThreshold;
+  set watermarkThreshold(int value) {
+    if (_watermarkThreshold == value) return;
+    _watermarkThreshold = value;
+    notifyListeners();
+  }
+
+  bool get deskew => _deskew;
+  set deskew(bool value) {
+    if (_deskew == value) return;
+    _deskew = value;
+    notifyListeners();
+  }
+
+  double get snappingMargin => review.snappingMargin;
+  set snappingMargin(double value) {
+    if (review.snappingMargin == value) return;
+    review.snappingMargin = value;
+    notifyListeners();
+  }
+
   /// Filename prefix for question crops (`question_prefix`), independent of the
   /// Auto Crop tool's. Truncated to [AutoCropBounds.prefixMaxLength] chars.
   String get questionPrefix => _questionPrefix;
@@ -234,6 +282,7 @@ class ManualCropController extends ChangeNotifier {
   bool _busy = false;
   String? _errorText;
   bool _canvasOpen = false;
+  String? _enhancePreviewJobId;
 
   /// Name of the currently selected PDF, or null when none is loaded.
   String? get fileName => _fileName;
@@ -258,6 +307,7 @@ class ManualCropController extends ChangeNotifier {
     _fileBytes = bytes;
     _fileName = filename;
     _errorText = null;
+    _enhancePreviewJobId = null;
     notifyListeners();
   }
 
@@ -289,6 +339,11 @@ class ManualCropController extends ChangeNotifier {
         fileBytes: bytes,
         filename: name,
         dpi: _dpi,
+        binarize: _binarize,
+        contrast: _contrast,
+        brightness: _brightness,
+        watermarkThreshold: _watermarkThreshold,
+        deskew: _deskew,
       );
       // Load the page previews with an empty item list — every crop is drawn by
       // hand in the canvas (Req 7.2).
@@ -351,6 +406,7 @@ class ManualCropController extends ChangeNotifier {
     _fileBytes = null;
     _fileName = null;
     _errorText = null;
+    _enhancePreviewJobId = null;
 
     // Independent output configuration.
     _questionPrefix = defaults?.defaultQuestionPrefix ?? 'Q';
@@ -361,6 +417,12 @@ class ManualCropController extends ChangeNotifier {
         : CropImageFormat.png;
     _jpgQuality = AutoCropBounds.jpgQualityDefault;
     _dpi = defaults?.defaultDpi ?? AutoCropBounds.dpiDefault;
+    _binarize = false;
+    _contrast = 1.0;
+    _brightness = 1.0;
+    _watermarkThreshold = 255;
+    _deskew = false;
+    review.snappingMargin = 0.8;
 
     notifyListeners();
   }
@@ -413,6 +475,28 @@ class ManualCropController extends ChangeNotifier {
       imageFormat: _imageFormat.value,
       jpgQuality: _jpgQuality,
     );
+  }
+
+  /// Stashes the currently open PDF on the backend (calls `editOpen`) so it is
+  /// staged for enhancement previewing. Returns the jobId.
+  Future<String?> stashForPreview() async {
+    final client = _apiClient;
+    final bytes = _fileBytes;
+    final name = _fileName;
+    if (client == null || bytes == null || name == null) return null;
+
+    if (_enhancePreviewJobId != null) return _enhancePreviewJobId;
+
+    try {
+      final res = await client.editOpen(
+        fileBytes: bytes,
+        filename: name,
+      );
+      _enhancePreviewJobId = res.jobId;
+      return res.jobId;
+    } catch (_) {
+      return null;
+    }
   }
 
   // --- Internals -----------------------------------------------------------

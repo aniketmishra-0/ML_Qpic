@@ -161,8 +161,7 @@ class EditController extends ChangeNotifier {
 
   /// The text to show for [span]: the user's override when present, otherwise
   /// the engine's original text (mirrors the web `state.edits[id] ?? span.text`).
-  String effectiveText(EditableSpanModel span) =>
-      _edits[span.id] ?? span.text;
+  String effectiveText(EditableSpanModel span) => _edits[span.id] ?? span.text;
 
   /// Whether [spanId] has a pending (uncommitted-to-engine) text override.
   bool isSpanEdited(String spanId) => _edits.containsKey(spanId);
@@ -176,7 +175,9 @@ class EditController extends ChangeNotifier {
 
   /// The vector/image objects on [pageNumber] (1-indexed).
   List<VectorObjectModel> vectorObjectsForPage(int pageNumber) {
-    return vectorObjects.where((v) => v.page == pageNumber).toList(growable: false);
+    return vectorObjects
+        .where((v) => v.page == pageNumber)
+        .toList(growable: false);
   }
 
   /// Whether the vector/image object [objectId] is marked for deletion.
@@ -187,7 +188,8 @@ class EditController extends ChangeNotifier {
   int get pendingEditCount => _edits.length + _deletedVectorObjectIds.length;
 
   /// Whether there is at least one pending edit/deletion to apply.
-  bool get hasPendingEdits => _edits.isNotEmpty || _deletedVectorObjectIds.isNotEmpty;
+  bool get hasPendingEdits =>
+      _edits.isNotEmpty || _deletedVectorObjectIds.isNotEmpty;
 
   // --- OCR control getters --------------------------------------------------
 
@@ -241,7 +243,10 @@ class EditController extends ChangeNotifier {
 
   /// Whether [apply] can run: the doc has text (or there are pending vector object deletions), there are pending edits, and no
   /// action is in flight.
-  bool get canApply => (hasText || _deletedVectorObjectIds.isNotEmpty) && hasPendingEdits && !busy;
+  bool get canApply =>
+      (hasText || _deletedVectorObjectIds.isNotEmpty) &&
+      hasPendingEdits &&
+      !busy;
 
   /// Whether OCR can run: a document is staged and no action is in flight.
   bool get canRunOcr => _fileBytes != null && !busy && isOcrDpiValid;

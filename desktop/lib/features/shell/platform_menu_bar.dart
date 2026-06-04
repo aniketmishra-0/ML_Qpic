@@ -15,7 +15,8 @@
 // the [ActiveDocumentZoom] registry, mirroring `desktop_qt.py`'s zoom
 // shortcuts.
 
-import 'package:flutter/foundation.dart' show TargetPlatform, defaultTargetPlatform;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -103,8 +104,7 @@ class QpicPlatformMenuBar extends StatelessWidget {
         // Zoom in: Ctrl+= (unshifted), Ctrl++ (shifted), and numpad +.
         SingleActivator(LogicalKeyboardKey.equal, control: true):
             _ZoomInIntent(),
-        SingleActivator(LogicalKeyboardKey.add, control: true):
-            _ZoomInIntent(),
+        SingleActivator(LogicalKeyboardKey.add, control: true): _ZoomInIntent(),
         SingleActivator(LogicalKeyboardKey.numpadAdd, control: true):
             _ZoomInIntent(),
         // Zoom out: Ctrl+- and numpad -.
@@ -167,8 +167,7 @@ class QpicPlatformMenuBar extends StatelessWidget {
             ),
           ]),
         if (_isMacOS &&
-            PlatformProvidedMenuItem.hasMenu(
-                PlatformProvidedMenuItemType.hide))
+            PlatformProvidedMenuItem.hasMenu(PlatformProvidedMenuItemType.hide))
           const PlatformMenuItemGroup(members: <PlatformMenuItem>[
             PlatformProvidedMenuItem(
               type: PlatformProvidedMenuItemType.hide,
@@ -180,8 +179,7 @@ class QpicPlatformMenuBar extends StatelessWidget {
               type: PlatformProvidedMenuItemType.showAllApplications,
             ),
           ]),
-        if (PlatformProvidedMenuItem.hasMenu(
-            PlatformProvidedMenuItemType.quit))
+        if (PlatformProvidedMenuItem.hasMenu(PlatformProvidedMenuItemType.quit))
           const PlatformProvidedMenuItem(
             type: PlatformProvidedMenuItemType.quit,
           )
@@ -218,7 +216,8 @@ class QpicPlatformMenuBar extends StatelessWidget {
             control: !_isMacOS,
           ),
           onSelected: () {
-            _invokeEditAction(const CopySelectionTextIntent.cut(SelectionChangedCause.keyboard));
+            _invokeEditAction(const CopySelectionTextIntent.cut(
+                SelectionChangedCause.keyboard));
           },
         ),
         PlatformMenuItem(
@@ -240,7 +239,8 @@ class QpicPlatformMenuBar extends StatelessWidget {
             control: !_isMacOS,
           ),
           onSelected: () {
-            _invokeEditAction(const PasteTextIntent(SelectionChangedCause.keyboard));
+            _invokeEditAction(
+                const PasteTextIntent(SelectionChangedCause.keyboard));
           },
         ),
         PlatformMenuItem(
@@ -251,7 +251,8 @@ class QpicPlatformMenuBar extends StatelessWidget {
             control: !_isMacOS,
           ),
           onSelected: () {
-            _invokeEditAction(const SelectAllTextIntent(SelectionChangedCause.keyboard));
+            _invokeEditAction(
+                const SelectAllTextIntent(SelectionChangedCause.keyboard));
           },
         ),
       ],

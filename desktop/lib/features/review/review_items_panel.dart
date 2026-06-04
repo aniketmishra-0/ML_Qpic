@@ -65,10 +65,12 @@ class ReviewItemsPanel extends StatelessWidget {
         final List<AnalyzedItem> allItems = controller.items;
 
         // Associate items with their original indices to ensure correct callbacks.
-        final List<MapEntry<int, AnalyzedItem>> indexedItems = <MapEntry<int, AnalyzedItem>>[];
+        final List<MapEntry<int, AnalyzedItem>> indexedItems =
+            <MapEntry<int, AnalyzedItem>>[];
         for (int i = 0; i < allItems.length; i++) {
           final AnalyzedItem item = allItems[i];
-          final String prefix = item.isSolution ? solutionPrefix : questionPrefix;
+          final String prefix =
+              item.isSolution ? solutionPrefix : questionPrefix;
           final String label = (prefix + item.qNum).toLowerCase();
           final String kind = item.isSolution ? 'solution' : 'question';
           final String sub = _ItemRow._subLine(
@@ -93,6 +95,26 @@ class ReviewItemsPanel extends StatelessWidget {
           children: <Widget>[
             _ItemsHeader(palette: palette, count: indexedItems.length),
             const SizedBox(height: 8),
+            if (controller.selectedItemIndices.length >= 2) ...[
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: FilledButton.icon(
+                  key: const ValueKey<String>('review-items-merge-button'),
+                  onPressed: controller.mergeSelectedItems,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: palette.brandBlue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  icon: const Icon(Icons.call_merge_rounded, size: 16),
+                  label: Text(
+                      'Merge Selected (${controller.selectedItemIndices.length})'),
+                ),
+              ),
+            ],
             if (indexedItems.isEmpty)
               _EmptyItems(palette: palette)
             else
@@ -105,14 +127,22 @@ class ReviewItemsPanel extends StatelessWidget {
                     item: indexedItems[i].value,
                     index: indexedItems[i].key,
                     editing: controller.editingIndex == indexedItems[i].key,
+                    selected: controller.isSelected(indexedItems[i].key),
+                    onToggleSelection: () =>
+                        controller.toggleSelection(indexedItems[i].key),
                     questionPrefix: questionPrefix,
                     solutionPrefix: solutionPrefix,
                     onPreview: () => _openPreview(context, indexedItems[i].key),
-                    onReselect: () => controller.startReselectForItem(indexedItems[i].key),
-                    onDelete: () => _confirmDelete(context, indexedItems[i].value, indexedItems[i].key),
-                    onMoveUp: (int seg) => controller.moveSegment(indexedItems[i].key, seg, -1),
-                    onMoveDown: (int seg) => controller.moveSegment(indexedItems[i].key, seg, 1),
-                    onDeletePart: (int seg) => controller.deleteSegment(indexedItems[i].key, seg),
+                    onReselect: () =>
+                        controller.startReselectForItem(indexedItems[i].key),
+                    onDelete: () => _confirmDelete(
+                        context, indexedItems[i].value, indexedItems[i].key),
+                    onMoveUp: (int seg) =>
+                        controller.moveSegment(indexedItems[i].key, seg, -1),
+                    onMoveDown: (int seg) =>
+                        controller.moveSegment(indexedItems[i].key, seg, 1),
+                    onDeletePart: (int seg) =>
+                        controller.deleteSegment(indexedItems[i].key, seg),
                   ),
                 ),
           ],
@@ -135,7 +165,8 @@ class ReviewItemsPanel extends StatelessWidget {
   }
 
   /// Prompt the user with a confirmation dialog before deleting an item.
-  Future<void> _confirmDelete(BuildContext context, AnalyzedItem item, int index) async {
+  Future<void> _confirmDelete(
+      BuildContext context, AnalyzedItem item, int index) async {
     final String prefix = item.isSolution ? solutionPrefix : questionPrefix;
     final String label = '$prefix${item.qNum}';
     final String itemType = item.isSolution ? 'Solution' : 'Question';
@@ -149,7 +180,8 @@ class ReviewItemsPanel extends StatelessWidget {
           backgroundColor: palette.panel,
           title: Text(
             'Confirm Delete',
-            style: TextStyle(color: palette.text, fontSize: 16, fontWeight: FontWeight.bold),
+            style: TextStyle(
+                color: palette.text, fontSize: 16, fontWeight: FontWeight.bold),
           ),
           content: Text(
             'Are you sure you want to delete $itemType no. $label?',
@@ -160,7 +192,8 @@ class ReviewItemsPanel extends StatelessWidget {
               onPressed: () => Navigator.of(context).pop(false),
               child: Text(
                 'Cancel',
-                style: TextStyle(color: palette.muted, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                    color: palette.muted, fontWeight: FontWeight.w600),
               ),
             ),
             FilledButton(
@@ -168,7 +201,8 @@ class ReviewItemsPanel extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: palette.danger,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               ),
               child: const Text('Delete'),
             ),
@@ -280,6 +314,8 @@ class _ItemRow extends StatelessWidget {
     required this.item,
     required this.index,
     required this.editing,
+    this.selected = false,
+    required this.onToggleSelection,
     required this.questionPrefix,
     required this.solutionPrefix,
     required this.onPreview,
@@ -294,6 +330,8 @@ class _ItemRow extends StatelessWidget {
   final AnalyzedItem item;
   final int index;
   final bool editing;
+  final bool selected;
+  final VoidCallback onToggleSelection;
   final String questionPrefix;
   final String solutionPrefix;
   final VoidCallback onPreview;
@@ -311,15 +349,18 @@ class _ItemRow extends StatelessWidget {
     final bool manual = item.source == 'manual';
 
     // Border color encodes state, matching the web CSS precedence:
-    // editing → brand ring; flagged → warn; manual → brand; else soft border.
+    // editing → brand ring; selected → brandBlue; flagged → warn; manual → brand; else soft border.
     final Color borderColor = editing
         ? palette.brand
-        : item.flagged
-            ? Color.alphaBlend(palette.warn.withValues(alpha: 0.45), palette.border)
-            : manual
+        : selected
+            ? palette.brandBlue
+            : item.flagged
                 ? Color.alphaBlend(
-                    palette.brand.withValues(alpha: 0.45), palette.border)
-                : palette.borderSoft;
+                    palette.warn.withValues(alpha: 0.45), palette.border)
+                : manual
+                    ? Color.alphaBlend(
+                        palette.brand.withValues(alpha: 0.45), palette.border)
+                    : palette.borderSoft;
 
     final String sub = _subLine(item, kind, multi);
 
@@ -328,7 +369,8 @@ class _ItemRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette.panelAlt,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: borderColor, width: editing ? 1.5 : 1),
+        border: Border.all(
+            color: borderColor, width: (editing || selected) ? 1.5 : 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -336,6 +378,21 @@ class _ItemRow extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: <Widget>[
+              SizedBox(
+                width: 24,
+                height: 24,
+                child: Checkbox(
+                  key: ValueKey<String>('review-item-checkbox-$index'),
+                  value: selected,
+                  activeColor: palette.brandBlue,
+                  onChanged: editing
+                      ? null
+                      : (bool? val) {
+                          onToggleSelection();
+                        },
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -403,9 +460,11 @@ class _ItemRow extends StatelessWidget {
       return '$kind • ${item.segments.length} parts '
           '(stitched top→bottom in this order)';
     }
-    final List<int> pages =
-        item.segments.map((QuestionSegment s) => s.page).toSet().toList()
-          ..sort();
+    final List<int> pages = item.segments
+        .map((QuestionSegment s) => s.page)
+        .toSet()
+        .toList()
+      ..sort();
     final String pageList = pages.join(', ');
     return '$kind • page $pageList';
   }
@@ -547,7 +606,8 @@ class _PreviewButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(6),
               border: Border.all(color: palette.border),
             ),
-            child: Icon(Icons.visibility_outlined, size: 14, color: palette.brand),
+            child:
+                Icon(Icons.visibility_outlined, size: 14, color: palette.brand),
           ),
         ),
       ),
@@ -672,9 +732,13 @@ class _PartMoveButton extends StatelessWidget {
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(5),
-                border: Border.all(color: danger ? palette.danger.withAlpha(128) : palette.border),
+                border: Border.all(
+                    color: danger
+                        ? palette.danger.withAlpha(128)
+                        : palette.border),
               ),
-              child: Icon(icon, size: 13, color: danger ? palette.danger : palette.text),
+              child: Icon(icon,
+                  size: 13, color: danger ? palette.danger : palette.text),
             ),
           ),
         ),

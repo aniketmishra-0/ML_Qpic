@@ -115,14 +115,19 @@ def _color_to_int(color: Any) -> int:
         return 0
 
 
-def extract_text_spans(file_bytes: bytes) -> ExtractResult:
+from pathlib import Path
+
+def extract_text_spans(pdf_source: bytes | str | Path) -> ExtractResult:
     """Return every editable text span across the document, with geometry.
 
     Spans are addressed by a stable id derived from their block/line/span index
     so the apply step can locate the exact same run again.
     """
 
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    if isinstance(pdf_source, bytes):
+        doc = fitz.open(stream=pdf_source, filetype="pdf")
+    else:
+        doc = fitz.open(str(pdf_source))
     try:
         result = ExtractResult()
         total_chars = 0
@@ -334,7 +339,7 @@ def _decode_image(image_b64: str) -> bytes:
     return base64.b64decode(s)
 
 
-def apply_operations(file_bytes: bytes, ops: list[Operation]) -> bytes:
+def apply_operations(pdf_source: bytes | str | Path, ops: list[Operation]) -> bytes:
     """Apply a mixed list of Acrobat-style operations and return new PDF bytes.
 
     Operations are grouped per page. Text edits are redacted first (all on the
@@ -342,7 +347,10 @@ def apply_operations(file_bytes: bytes, ops: list[Operation]) -> bytes:
     insertion (edited text, new text, images, links, erases) is painted on top.
     """
 
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    if isinstance(pdf_source, bytes):
+        doc = fitz.open(stream=pdf_source, filetype="pdf")
+    else:
+        doc = fitz.open(str(pdf_source))
     try:
         by_page: dict[int, list[Operation]] = {}
         for op in ops:
@@ -629,7 +637,7 @@ class OcrResult:
     note: str = ""
 
 
-def ocr_pdf(file_bytes: bytes, *, languages: str = "eng", dpi: int = 300) -> OcrResult:
+def ocr_pdf(pdf_source: bytes | str | Path, *, languages: str = "eng", dpi: int = 300) -> OcrResult:
     """Add an invisible, selectable text layer to a scanned PDF via Tesseract.
 
     Each page is rasterised at ``dpi`` and fed to Tesseract, which returns a
@@ -645,7 +653,10 @@ def ocr_pdf(file_bytes: bytes, *, languages: str = "eng", dpi: int = 300) -> Ocr
     configure_tesseract()
     lang = resolve_languages(languages or "eng")
 
-    src = fitz.open(stream=file_bytes, filetype="pdf")
+    if isinstance(pdf_source, bytes):
+        src = fitz.open(stream=pdf_source, filetype="pdf")
+    else:
+        src = fitz.open(str(pdf_source))
     out = fitz.open()
     try:
         pages_ocred = 0

@@ -277,7 +277,8 @@ class RenameController extends ChangeNotifier {
   /// Start number (0–1,000,000).
   int get start => _start;
   set start(int value) {
-    final next = RenameBounds.clamp(value, RenameBounds.startMin, RenameBounds.startMax);
+    final next =
+        RenameBounds.clamp(value, RenameBounds.startMin, RenameBounds.startMax);
     if (_start == next) return;
     _start = next;
     notifyListeners();
@@ -287,7 +288,8 @@ class RenameController extends ChangeNotifier {
   /// Zero-padding (0–12 digits).
   int get padding => _padding;
   set padding(int value) {
-    final next = RenameBounds.clamp(value, RenameBounds.paddingMin, RenameBounds.paddingMax);
+    final next = RenameBounds.clamp(
+        value, RenameBounds.paddingMin, RenameBounds.paddingMax);
     if (_padding == next) return;
     _padding = next;
     notifyListeners();
@@ -308,7 +310,8 @@ class RenameController extends ChangeNotifier {
   /// JPG quality (1–100). Only relevant when outputFormat is jpg/jpeg.
   int get jpgQuality => _jpgQuality;
   set jpgQuality(int value) {
-    final next = RenameBounds.clamp(value, RenameBounds.jpgQualityMin, RenameBounds.jpgQualityMax);
+    final next = RenameBounds.clamp(
+        value, RenameBounds.jpgQualityMin, RenameBounds.jpgQualityMax);
     if (_jpgQuality == next) return;
     _jpgQuality = next;
     notifyListeners();
@@ -800,7 +803,8 @@ class RenameController extends ChangeNotifier {
       '(date)': _formatDate(null),
       '(moddate)': _formatDate(null),
       '(size)': _humanSize(size).replaceAll(RegExp(r'\s+'), ''),
-      '(sizekb)': (size / 1024).round().clamp(1, double.infinity).toInt().toString(),
+      '(sizekb)':
+          (size / 1024).round().clamp(1, double.infinity).toInt().toString(),
       '(sizeb)': size.toString(),
     };
 
@@ -813,7 +817,8 @@ class RenameController extends ChangeNotifier {
 
     // When the pattern has no number/variable token at all, append the
     // number so a constant pattern still yields unique names.
-    final hadToken = RegExp(r'#|\([a-z]+\)', caseSensitive: false).hasMatch(base);
+    final hadToken =
+        RegExp(r'#|\([a-z]+\)', caseSensitive: false).hasMatch(base);
     if (!hadToken) out = '$out$numStr';
 
     // Sanitize filesystem-unsafe characters.

@@ -469,13 +469,13 @@ class SidecarManager {
     final stderrDone = Completer<void>();
     _stderrDone = stderrDone.future;
     _stderrSub = process.stderr.transform(utf8.decoder).listen(
-          _stderrBuffer.write,
-          onError: (_) {},
-          onDone: () {
-            if (!stderrDone.isCompleted) stderrDone.complete();
-          },
-          cancelOnError: false,
-        );
+      _stderrBuffer.write,
+      onError: (_) {},
+      onDone: () {
+        if (!stderrDone.isCompleted) stderrDone.complete();
+      },
+      cancelOnError: false,
+    );
   }
 
   Future<void> _cancelOutputCapture() async {

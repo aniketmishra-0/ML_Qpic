@@ -88,6 +88,8 @@ void main() {
     await _forEach((cap, client, r) async {
       final qPages = _maybeStr(r);
       final aPages = _maybeStr(r);
+      final customRegex = r.nextBool() ? _word(r) : null;
+      final confidence = r.nextBool() ? _d(r, maxv: 1.0) : null;
       await client.crop(
         fileBytes: _bytes(r),
         filename: '${_word(r)}.pdf',
@@ -105,6 +107,13 @@ void main() {
         jpgQuality: _i(r, 1, 100),
         useAi: r.nextBool(),
         answerSheet: r.nextBool(),
+        binarize: r.nextBool(),
+        contrast: _d(r, maxv: 3.0) + 0.5,
+        brightness: _d(r, maxv: 2.0) + 0.5,
+        watermarkThreshold: _i(r, 0, 255),
+        deskew: r.nextBool(),
+        customRegex: customRegex,
+        confidence: confidence,
       );
       final o = cap.require();
       expect(o.method, 'POST');
@@ -116,6 +125,8 @@ void main() {
         present: <String, bool>{
           'question_pages': qPages != null,
           'answer_pages': aPages != null,
+          'custom_regex': customRegex != null && customRegex.isNotEmpty,
+          'confidence': confidence != null,
         },
       );
       _expectMultipart(o, const {'file'});
@@ -127,6 +138,8 @@ void main() {
     await _forEach((cap, client, r) async {
       final qPages = _maybeStr(r);
       final aPages = _maybeStr(r);
+      final customRegex = r.nextBool() ? _word(r) : null;
+      final confidence = r.nextBool() ? _d(r, maxv: 1.0) : null;
       await client.analyze(
         fileBytes: _bytes(r),
         filename: '${_word(r)}.pdf',
@@ -138,6 +151,13 @@ void main() {
         answerPages: aPages,
         useAi: r.nextBool(),
         answerSheet: r.nextBool(),
+        binarize: r.nextBool(),
+        contrast: _d(r, maxv: 3.0) + 0.5,
+        brightness: _d(r, maxv: 2.0) + 0.5,
+        watermarkThreshold: _i(r, 0, 255),
+        deskew: r.nextBool(),
+        customRegex: customRegex,
+        confidence: confidence,
       );
       final o = cap.require();
       expect(o.method, 'POST');
@@ -149,6 +169,8 @@ void main() {
         present: <String, bool>{
           'question_pages': qPages != null,
           'answer_pages': aPages != null,
+          'custom_regex': customRegex != null && customRegex.isNotEmpty,
+          'confidence': confidence != null,
         },
       );
       _expectMultipart(o, const {'file'});
@@ -162,11 +184,26 @@ void main() {
         fileBytes: _bytes(r),
         filename: '${_word(r)}.pdf',
         dpi: _i(r, 72, 600),
+        binarize: r.nextBool(),
+        contrast: _d(r, maxv: 3.0) + 0.5,
+        brightness: _d(r, maxv: 2.0) + 0.5,
+        watermarkThreshold: _i(r, 0, 255),
+        deskew: r.nextBool(),
       );
       final o = cap.require();
       expect(o.method, 'POST');
       expect(o.path, '/api/prepare-manual');
-      expect(o.queryParameters.keys.toSet(), const {'dpi'});
+      expect(
+        o.queryParameters.keys.toSet(),
+        const {
+          'dpi',
+          'binarize',
+          'contrast',
+          'brightness',
+          'watermark_threshold',
+          'deskew'
+        },
+      );
       _expectMultipart(o, const {'file'});
       _expectNoFormFields(o);
     });
@@ -182,6 +219,7 @@ void main() {
           xEndPct: _d(r),
           yStartPct: _d(r),
           yEndPct: _d(r),
+          marginPct: _d(r, maxv: 2.0),
         ),
       );
       final o = cap.require();
@@ -650,8 +688,18 @@ const Set<String> _cropRequiredQuery = {
   'use_ai',
   'answer_sheet',
   'layout_columns',
+  'binarize',
+  'contrast',
+  'brightness',
+  'watermark_threshold',
+  'deskew',
 };
-const Set<String> _cropOptionalQuery = {'question_pages', 'answer_pages'};
+const Set<String> _cropOptionalQuery = {
+  'question_pages',
+  'answer_pages',
+  'custom_regex',
+  'confidence',
+};
 
 // POST /api/analyze — analyze_pdf query params (app/routers/crop.py).
 const Set<String> _analyzeRequiredQuery = {
@@ -662,8 +710,18 @@ const Set<String> _analyzeRequiredQuery = {
   'use_ai',
   'answer_sheet',
   'layout_columns',
+  'binarize',
+  'contrast',
+  'brightness',
+  'watermark_threshold',
+  'deskew',
 };
-const Set<String> _analyzeOptionalQuery = {'question_pages', 'answer_pages'};
+const Set<String> _analyzeOptionalQuery = {
+  'question_pages',
+  'answer_pages',
+  'custom_regex',
+  'confidence',
+};
 
 // SnapRequest (app/models/schemas.py).
 const Set<String> _snapBodyKeys = {
@@ -673,6 +731,7 @@ const Set<String> _snapBodyKeys = {
   'x_end_pct',
   'y_start_pct',
   'y_end_pct',
+  'margin_pct',
 };
 
 // FinalizeRequest / FinalizeItem / QuestionSegment (app/models/schemas.py).
@@ -687,6 +746,7 @@ const Set<String> _finalizeBodyKeys = {
   'image_format',
   'jpg_quality',
   'answer_sheet',
+  'bilingual_mode',
 };
 const Set<String> _finalizeItemKeys = {
   'q_num',
@@ -708,6 +768,8 @@ const Set<String> _cropPreviewBodyKeys = {
   'padding',
   'image_format',
   'jpg_quality',
+  'bilingual_mode',
+  'other_segments',
 };
 const Set<String> _segmentKeys = {
   'page',

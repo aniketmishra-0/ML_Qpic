@@ -72,6 +72,11 @@ class FilePickerService {
     return fs.openFile(acceptedTypeGroups: const <XTypeGroup>[_pdfGroup]);
   }
 
+  /// Presents a native open dialog filtered to multiple PDF files.
+  Future<List<XFile>> pickPdfs() {
+    return fs.openFiles(acceptedTypeGroups: const <XTypeGroup>[_pdfGroup]);
+  }
+
   /// Presents a native open dialog allowing image files and PDF files,
   /// returning every file the user selects (17.2).
   ///
@@ -102,10 +107,7 @@ class FilePickerService {
     );
 
     if (paths == null || paths.isEmpty) return <XFile>[];
-    return paths
-        .cast<String>()
-        .map((String path) => XFile(path))
-        .toList();
+    return paths.cast<String>().map((String path) => XFile(path)).toList();
   }
 
   /// Presents a native open dialog allowing a single image or PDF file.

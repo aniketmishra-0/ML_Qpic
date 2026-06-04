@@ -17,7 +17,8 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:file_selector/file_selector.dart' as fs;
-import 'package:file_selector/file_selector.dart' show FileSaveLocation, XTypeGroup;
+import 'package:file_selector/file_selector.dart'
+    show FileSaveLocation, XTypeGroup;
 
 import 'api_client.dart';
 
@@ -40,8 +41,7 @@ class DownloadResult {
   const DownloadResult._(this.status, this.path);
 
   /// The bytes were saved to [path].
-  const DownloadResult.saved(String path)
-      : this._(DownloadStatus.saved, path);
+  const DownloadResult.saved(String path) : this._(DownloadStatus.saved, path);
 
   /// The user cancelled; no file was written.
   const DownloadResult.cancelled() : this._(DownloadStatus.cancelled, null);

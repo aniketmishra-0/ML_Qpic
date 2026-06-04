@@ -83,7 +83,7 @@ class _PdfPreviewDialogState extends State<PdfPreviewDialog> {
       key: const ValueKey<String>('pdf-preview-dialog'),
       backgroundColor: panel,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: border),
       ),
       clipBehavior: Clip.antiAlias,

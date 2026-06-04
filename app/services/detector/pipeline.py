@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import re
 from typing import Any, Optional
@@ -37,7 +38,7 @@ class DetectionPipeline:
 
     async def detect(
         self,
-        pdf_bytes: bytes,
+        pdf_source: bytes | str | Path,
         page_images: list[Image.Image],
         settings: Settings,
         *,
@@ -46,6 +47,36 @@ class DetectionPipeline:
         prefer_ai: bool = False,
         marker_style: str = "auto",
         layout_columns: Optional[int] = None,
+        confidence: Optional[float] = None,
+        custom_regex: Optional[str] = None,
+    ) -> tuple[list[DetectedQuestion], str]:
+        questions, method = await self._detect_raw(
+            pdf_source,
+            page_images,
+            settings,
+            render_dpi=render_dpi,
+            smart=smart,
+            prefer_ai=prefer_ai,
+            marker_style=marker_style,
+            layout_columns=layout_columns,
+            confidence=confidence,
+            custom_regex=custom_regex,
+        )
+        return resolve_vertical_overlaps(questions), method
+
+    async def _detect_raw(
+        self,
+        pdf_source: bytes | str | Path,
+        page_images: list[Image.Image],
+        settings: Settings,
+        *,
+        render_dpi: Optional[int] = None,
+        smart: bool = False,
+        prefer_ai: bool = False,
+        marker_style: str = "auto",
+        layout_columns: Optional[int] = None,
+        confidence: Optional[float] = None,
+        custom_regex: Optional[str] = None,
     ) -> tuple[list[DetectedQuestion], str]:
         """Return (questions, method_used).
 
@@ -81,7 +112,7 @@ class DetectionPipeline:
         best_questions: list[DetectedQuestion] = []
         best_method: str = "text"
 
-        searchable = self._is_searchable_pdf(pdf_bytes)
+        searchable = self._is_searchable_pdf(pdf_source)
         ai_ready = self.ai_detector is not None and self.ai_detector.is_available()
         local_ml_ready = (
             self.local_ml_detector is not None
@@ -107,13 +138,20 @@ class DetectionPipeline:
             ai_ready = False
 
         if searchable:
-            text_questions = await asyncio.to_thread(
-                self.text_detector.detect,
-                pdf_bytes,
-                settings.QUESTION_PADDING_PX,
-                marker_style,
-                layout_columns,
-            )
+            def _detect_text():
+                sig = inspect.signature(self.text_detector.detect)
+                kwargs = {}
+                if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                    kwargs["custom_regex"] = custom_regex
+                return self.text_detector.detect(
+                    pdf_source,
+                    settings.QUESTION_PADDING_PX,
+                    marker_style,
+                    layout_columns,
+                    **kwargs
+                )
+
+            text_questions = await asyncio.to_thread(_detect_text)
             if len(text_questions) > len(best_questions):
                 best_questions, best_method = text_questions, "text"
             # In smart mode, only short-circuit on a *confident* text result; a
@@ -129,14 +167,20 @@ class DetectionPipeline:
             logger.info("pdf_not_searchable tier_start=ocr")
 
         # Tier 2: OCR
-        ocr_questions = await asyncio.to_thread(
-            self.ocr_detector.detect,
-            page_images,
-            settings,
-            render_dpi,
-            marker_style,
-            layout_columns,
-        )
+        def _detect_ocr():
+            sig = inspect.signature(self.ocr_detector.detect)
+            kwargs = {}
+            if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                kwargs["custom_regex"] = custom_regex
+            return self.ocr_detector.detect(
+                page_images,
+                settings,
+                render_dpi,
+                marker_style,
+                layout_columns,
+                **kwargs
+            )
+        ocr_questions = await asyncio.to_thread(_detect_ocr)
         if len(ocr_questions) > len(best_questions):
             best_questions, best_method = ocr_questions, "ocr"
         accept_ocr = (
@@ -153,14 +197,18 @@ class DetectionPipeline:
         # whole question/solution boxes. It sits before any online vision model
         # so hard scanned PDFs can still improve when the user is offline.
         if local_ml_ready:
+            sig = inspect.signature(self.local_ml_detector.detect)
+            kwargs = {}
+            if "confidence" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                kwargs["confidence"] = confidence
             local_questions = await self.local_ml_detector.detect(
-                page_images, settings, marker_style=marker_style
+                page_images, settings, marker_style=marker_style, **kwargs
             )
             if len(local_questions) > len(best_questions):
                 best_questions, best_method = local_questions, "local_ml"
             if local_questions and (
                 self._result_is_sufficient(local_questions, total_pages, settings)
-                or not ai_ready
+                or (not ai_ready and len(local_questions) >= len(best_questions))
             ):
                 return local_questions, "local_ml"
 
@@ -287,11 +335,15 @@ class DetectionPipeline:
         )
         return merged
 
-    def _is_searchable_pdf(self, pdf_bytes: bytes) -> bool:
+    def _is_searchable_pdf(self, pdf_source: bytes | str | Path) -> bool:
         """Return True if first 3 pages contain meaningful extractable text."""
 
         try:
-            with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+            if isinstance(pdf_source, bytes):
+                doc = fitz.open(stream=pdf_source, filetype="pdf")
+            else:
+                doc = fitz.open(str(pdf_source))
+            with doc:
                 total = 0
                 for page_idx in range(min(3, doc.page_count)):
                     page = doc.load_page(page_idx)
@@ -300,6 +352,7 @@ class DetectionPipeline:
                 return total > 100
         except Exception:
             return False
+
 
     def _result_is_sufficient(self, questions: list[DetectedQuestion], total_pages: int, settings: Settings) -> bool:
         """Return True if we got at least 1 question per 2 pages."""
@@ -355,3 +408,54 @@ class DetectionPipeline:
                 return False
 
         return True
+
+
+def resolve_vertical_overlaps(questions: list[DetectedQuestion]) -> list[DetectedQuestion]:
+    """Resolve vertical overlaps of questions/solutions in the same column on the same page.
+
+    If segment A starts above segment B, and ends below segment B's start, A is clipped to end at B's start.
+    """
+    if not questions:
+        return questions
+
+    # Group segments by (page, is_solution)
+    groups: dict[tuple[int, bool], list[dict]] = {}
+    for q_idx, q in enumerate(questions):
+        for s_idx, seg in enumerate(q.segments):
+            key = (seg.page, q.is_solution)
+            groups.setdefault(key, []).append({
+                "question": q,
+                "segment": seg,
+                "q_idx": q_idx,
+                "s_idx": s_idx,
+            })
+
+    for (page, is_solution), seg_list in groups.items():
+        if len(seg_list) <= 1:
+            continue
+
+        # Sort segments by their starting y coordinate
+        seg_list.sort(key=lambda x: x["segment"].y_start_pct)
+
+        for i in range(len(seg_list)):
+            for j in range(i + 1, len(seg_list)):
+                seg_a = seg_list[i]["segment"]
+                seg_b = seg_list[j]["segment"]
+
+                # Check horizontal overlap to see if they are in the same column
+                x0_a = getattr(seg_a, "x_start_pct", 0.0)
+                x1_a = getattr(seg_a, "x_end_pct", 100.0)
+                x0_b = getattr(seg_b, "x_start_pct", 0.0)
+                x1_b = getattr(seg_b, "x_end_pct", 100.0)
+
+                horizontal_overlap = min(x1_a, x1_b) - max(x0_a, x0_b)
+                # If they are in the same column (at least 5% width overlap)
+                if horizontal_overlap > 5.0:
+                    # seg_a starts above seg_b (since we sorted by y_start_pct).
+                    # If seg_a ends below seg_b's start:
+                    if seg_a.y_end_pct > seg_b.y_start_pct:
+                        # Clip seg_a to end at seg_b's start
+                        new_y_end = max(seg_a.y_start_pct, seg_b.y_start_pct)
+                        seg_a.y_end_pct = new_y_end
+
+    return questions

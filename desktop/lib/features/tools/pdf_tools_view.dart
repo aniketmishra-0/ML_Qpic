@@ -97,7 +97,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
       child: Card(
         color: palette?.panel ?? theme.colorScheme.surface,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
           side: BorderSide(color: border),
         ),
         elevation: 0,
@@ -331,7 +331,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
           color: palette?.panel ?? theme.colorScheme.surface,
           elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             side: BorderSide(color: border),
           ),
           child: Padding(

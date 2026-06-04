@@ -507,6 +507,9 @@ _JsonMap _genReviewNote(math.Random r) => <String, dynamic>{
       'q_num': _nstr(r),
       'page': _nint(r, min: 1, max: 50),
       'is_solution': _b(r),
+      'suggested_segments': r.nextBool()
+          ? null
+          : List.generate(r.nextInt(3), (_) => _genSegment(r)),
     };
 
 _JsonMap _genAnalyzeResponse(math.Random r) => <String, dynamic>{
@@ -527,6 +530,7 @@ _JsonMap _genSnapRequest(math.Random r) => <String, dynamic>{
       'x_end_pct': _d(r),
       'y_start_pct': _d(r),
       'y_end_pct': _d(r),
+      'margin_pct': _d(r, maxv: 2.0),
     };
 
 _JsonMap _genSnapResponse(math.Random r) => <String, dynamic>{
@@ -555,6 +559,8 @@ _JsonMap _genCropPreviewRequest(math.Random r) => <String, dynamic>{
       'padding': _int(r, max: 200),
       'image_format': _pick(r, _imageFormats),
       'jpg_quality': _int(r, min: 1, max: 100),
+      'bilingual_mode': _pick(r, const [null, 'english', 'hindi', 'bilingual_horizontal', 'bilingual_vertical']),
+      'other_segments': r.nextBool() ? null : _segList(r),
     };
 
 _JsonMap _genFinalizeRequest(math.Random r) => <String, dynamic>{
@@ -568,6 +574,7 @@ _JsonMap _genFinalizeRequest(math.Random r) => <String, dynamic>{
       'image_format': _pick(r, _imageFormats),
       'jpg_quality': _int(r, min: 1, max: 100),
       'answer_sheet': _b(r),
+      'bilingual_mode': _pick(r, const [null, 'english', 'hindi', 'bilingual_horizontal', 'bilingual_vertical']),
     };
 
 _JsonMap _genHealthResponse(math.Random r) => <String, dynamic>{
@@ -842,6 +849,7 @@ const Set<String> _kReviewNote = {
   'q_num',
   'page',
   'is_solution',
+  'suggested_segments',
 };
 
 const Set<String> _kAnalyzeResponse = {
@@ -862,6 +870,7 @@ const Set<String> _kSnapRequest = {
   'x_end_pct',
   'y_start_pct',
   'y_end_pct',
+  'margin_pct',
 };
 
 const Set<String> _kSnapResponse = {
@@ -890,6 +899,8 @@ const Set<String> _kCropPreviewRequest = {
   'padding',
   'image_format',
   'jpg_quality',
+  'bilingual_mode',
+  'other_segments',
 };
 
 const Set<String> _kFinalizeRequest = {
@@ -903,6 +914,7 @@ const Set<String> _kFinalizeRequest = {
   'image_format',
   'jpg_quality',
   'answer_sheet',
+  'bilingual_mode',
 };
 
 const Set<String> _kHealthResponse = {

@@ -167,7 +167,7 @@ class _QpicNavRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color railColor = palette?.appBar ?? theme.colorScheme.surface;
+    final Color railColor = palette?.backgroundAlt ?? theme.colorScheme.surface;
     final Color borderColor = palette?.border ?? theme.dividerColor;
 
     return Container(
@@ -254,17 +254,17 @@ class _QpicBrandMark extends StatelessWidget {
       width: 42,
       height: 42,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         boxShadow: <BoxShadow>[
           BoxShadow(
-            color: brand.withValues(alpha: 0.45),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            color: brand.withValues(alpha: 0.25),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Image.asset(
           'assets/logo.png',
           fit: BoxFit.cover,
@@ -306,16 +306,17 @@ class _NavRailItemState extends State<_NavRailItem> {
     final activeColor = palette?.brand ?? theme.colorScheme.primary;
     final textColor = palette?.appBarText ?? theme.colorScheme.onSurface;
     final inactiveColor = palette?.muted ?? theme.colorScheme.onSurfaceVariant;
-    final fieldColor = palette?.field ?? theme.colorScheme.surfaceContainerHighest;
+    final fieldColor =
+        palette?.field ?? theme.colorScheme.surfaceContainerHighest;
 
-    final Color fgColor = widget.active
-        ? activeColor
-        : (_hovered ? textColor : inactiveColor);
+    final Color fgColor =
+        widget.active ? textColor : (_hovered ? textColor : inactiveColor);
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      cursor: widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      cursor:
+          widget.enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       child: GestureDetector(
         key: ValueKey<String>('tool-tab-${widget.tool.name}'),
         onTap: widget.enabled ? widget.onTap : null,
@@ -324,29 +325,26 @@ class _NavRailItemState extends State<_NavRailItem> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 160),
             curve: Curves.easeOut,
-            width: 60,
+            width: 56,
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
               color: widget.active
-                  ? activeColor.withValues(alpha: 0.12)
-                  : (_hovered ? fieldColor : Colors.transparent),
-              borderRadius: BorderRadius.circular(12),
-              border: widget.active
-                  ? Border.all(color: activeColor.withValues(alpha: 0.5))
-                  : Border.all(color: Colors.transparent),
+                  ? fieldColor
+                  : (_hovered ? fieldColor.withValues(alpha: 0.4) : Colors.transparent),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Icon(widget.tool.icon, size: 21, color: fgColor),
-                const SizedBox(height: 5),
+                Icon(widget.tool.icon, size: 20, color: fgColor),
+                const SizedBox(height: 4),
                 Text(
                   widget.tool.shortLabel,
                   style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: widget.active ? FontWeight.w700 : FontWeight.w500,
+                    fontSize: 10,
+                    fontWeight:
+                        widget.active ? FontWeight.w600 : FontWeight.w400,
                     color: fgColor,
-                    letterSpacing: 0.1,
                   ),
                 ),
               ],

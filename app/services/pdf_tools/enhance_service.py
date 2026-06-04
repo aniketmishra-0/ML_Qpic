@@ -16,9 +16,10 @@ def enhance_image(
     binarize: bool = False,
     contrast: float = 1.0,
     brightness: float = 1.0,
-    watermark_threshold: int = 255
+    watermark_threshold: int = 255,
+    deskew: bool = False,
 ) -> Image.Image:
-    """Enhance a single PIL Image using contrast, brightness, watermark threshold, and binarization."""
+    """Enhance a single PIL Image using contrast, brightness, watermark threshold, binarization, and deskewing."""
     
     img = img.convert("RGB")
     
@@ -44,19 +45,30 @@ def enhance_image(
         binary = gray.point(lambda p: 255 if p > 185 else 0, '1')
         img = binary.convert("RGB")
         
+    # 4. Deskewing (rotate to make text rows horizontal)
+    if deskew:
+        from ..pdf_service import deskew_image
+        img = deskew_image(img)
+        
     return img
 
+from pathlib import Path
+
 def enhance_pdf(
-    file_bytes: bytes,
+    pdf_source: bytes | str | Path,
     binarize: bool = False,
     contrast: float = 1.0,
     brightness: float = 1.0,
     watermark_threshold: int = 255,
-    dpi: int = 200
+    dpi: int = 200,
+    deskew: bool = False,
 ) -> bytes:
     """Enhance all pages in a PDF and return the compiled enhanced PDF bytes."""
     
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    if isinstance(pdf_source, bytes):
+        doc = fitz.open(stream=pdf_source, filetype="pdf")
+    else:
+        doc = fitz.open(str(pdf_source))
     enhanced_images = []
     
     try:
@@ -75,7 +87,8 @@ def enhance_pdf(
                 binarize=binarize,
                 contrast=contrast,
                 brightness=brightness,
-                watermark_threshold=watermark_threshold
+                watermark_threshold=watermark_threshold,
+                deskew=deskew,
             )
             enhanced_images.append(enhanced)
             
@@ -93,17 +106,21 @@ def enhance_pdf(
         doc.close()
 
 def enhance_page_to_png(
-    file_bytes: bytes,
+    pdf_source: bytes | str | Path,
     page_no: int, # 1-indexed
     binarize: bool = False,
     contrast: float = 1.0,
     brightness: float = 1.0,
     watermark_threshold: int = 255,
-    dpi: int = 200
+    dpi: int = 200,
+    deskew: bool = False,
 ) -> bytes:
     """Render a single page of a PDF and return its enhanced PNG bytes for real-time preview."""
     
-    doc = fitz.open(stream=file_bytes, filetype="pdf")
+    if isinstance(pdf_source, bytes):
+        doc = fitz.open(stream=pdf_source, filetype="pdf")
+    else:
+        doc = fitz.open(str(pdf_source))
     if page_no < 1 or page_no > doc.page_count:
         doc.close()
         raise IndexError("Page number out of range")
@@ -123,7 +140,8 @@ def enhance_page_to_png(
             binarize=binarize,
             contrast=contrast,
             brightness=brightness,
-            watermark_threshold=watermark_threshold
+            watermark_threshold=watermark_threshold,
+            deskew=deskew,
         )
         
         buff = io.BytesIO()

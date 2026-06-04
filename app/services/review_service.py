@@ -19,7 +19,10 @@ from __future__ import annotations
 import logging
 import re
 from statistics import median
+from pathlib import Path
 from typing import Iterable
+
+import fitz
 
 from ..models.schemas import AnalyzedItem, DetectedQuestion, QuestionSegment, ReviewNote
 
@@ -231,7 +234,7 @@ def _seg_covers_line(
 def find_undercovered_items(
     detected: Iterable[DetectedQuestion],
     page_lines: "dict[int, list[tuple[float, float, float, float]]] | None",
-) -> set[tuple[bool, str]]:
+) -> dict[tuple[bool, str], list[QuestionSegment]]:
     """Flag crops with a tall band of their own body text left uncovered below.
 
     For each crop segment we look at the strip directly beneath it in its own
@@ -240,14 +243,14 @@ def find_undercovered_items(
     tail. When that uncovered run starts close under the crop (so it isn't a
     separately *missed* item sitting lower down) and is taller than
     :data:`_UNCOVERED_MIN_BAND_PCT`, the crop was almost certainly cut off and we
-    return its ``(is_solution, q_num)``.
+    return its suggested segments.
 
     ``page_lines`` being None/empty (e.g. a scanned PDF whose lines we didn't
     extract) disables the check entirely.
     """
 
     if not page_lines:
-        return set()
+        return {}
 
     items = list(detected)
 
@@ -258,7 +261,7 @@ def find_undercovered_items(
         for seg in q.segments:
             segs_by_page.setdefault(seg.page, []).append((key, seg))
 
-    flagged: set[tuple[bool, str]] = set()
+    flagged: dict[tuple[bool, str], list[QuestionSegment]] = {}
 
     for page, segs in segs_by_page.items():
         lines = page_lines.get(page)
@@ -306,7 +309,14 @@ def find_undercovered_items(
 
             band = sum(b - t for t, b in tail)
             if band >= _UNCOVERED_MIN_BAND_PCT:
-                flagged.add(owner_key)
+                suggested_seg = QuestionSegment(
+                    page=owner.page,
+                    y_start_pct=max(0.0, min(t for t, b in tail)),
+                    y_end_pct=min(100.0, max(b for t, b in tail)),
+                    x_start_pct=owner.x_start_pct,
+                    x_end_pct=owner.x_end_pct,
+                )
+                flagged.setdefault(owner_key, []).append(suggested_seg)
 
     return flagged
 
@@ -314,7 +324,7 @@ def find_undercovered_items(
 def find_uncovered_head_items(
     detected: Iterable[DetectedQuestion],
     page_lines: "dict[int, list[tuple[float, float, float, float]]] | None",
-) -> set[tuple[bool, str]]:
+) -> dict[tuple[bool, str], list[QuestionSegment]]:
     """Flag crops with a band of their own body text left uncovered ABOVE them.
 
     This is the mirror of :func:`find_undercovered_items`. The below-only check
@@ -333,7 +343,7 @@ def find_uncovered_head_items(
     """
 
     if not page_lines:
-        return set()
+        return {}
 
     items = list(detected)
 
@@ -343,7 +353,7 @@ def find_uncovered_head_items(
         for seg in q.segments:
             segs_by_page.setdefault(seg.page, []).append((key, seg))
 
-    flagged: set[tuple[bool, str]] = set()
+    flagged: dict[tuple[bool, str], list[QuestionSegment]] = {}
 
     for page, segs in segs_by_page.items():
         lines = page_lines.get(page)
@@ -399,7 +409,14 @@ def find_uncovered_head_items(
 
             band = sum(b - t for t, b in head)
             if band >= _HEAD_MIN_BAND_PCT:
-                flagged.add(owner_key)
+                suggested_seg = QuestionSegment(
+                    page=owner.page,
+                    y_start_pct=max(0.0, min(t for t, b in head)),
+                    y_end_pct=min(100.0, max(b for t, b in head)),
+                    x_start_pct=owner.x_start_pct,
+                    x_end_pct=owner.x_end_pct,
+                )
+                flagged.setdefault(owner_key, []).append(suggested_seg)
 
     return flagged
 
@@ -540,7 +557,7 @@ def _cutoff_reason(
     if (
         median_extent > 0
         and extent < _SHORT_VS_MEDIAN_FRAC * median_extent
-        and extent < 50.0
+        and extent < 10.0
     ):
         return "Looks shorter than the other items — it may be only half the question. Re-select the full region."
 
@@ -670,11 +687,114 @@ def build_analyzed_items(
     return items
 
 
+def _match_missing_option(text: str, letter: str) -> bool:
+    pat = re.compile(rf"^\s*\(?\s*{letter}\s*[\.\)]", re.IGNORECASE)
+    return bool(pat.match(text))
+
+
+def find_missing_options_segments(
+    detected: Iterable[DetectedQuestion],
+    pdf_source: bytes | str | Path | None,
+) -> dict[tuple[bool, str], list[QuestionSegment]]:
+    if not pdf_source:
+        return {}
+
+    flagged: dict[tuple[bool, str], list[QuestionSegment]] = {}
+
+    try:
+        import fitz
+        if isinstance(pdf_source, bytes):
+            doc = fitz.open(stream=pdf_source, filetype="pdf")
+        else:
+            doc = fitz.open(str(pdf_source))
+    except Exception as exc:
+        logger.exception("Failed to open PDF for missing option scan: %s", str(exc))
+        return {}
+
+    try:
+        items = list(detected)
+        for q in items:
+            if q.is_solution:
+                continue
+
+            labels = getattr(q, "option_labels", "") or ""
+            seen = {c for c in labels if c in "ABCD"}
+            if 2 <= len(seen) < 4:
+                missing = [c for c in "ABCD" if c not in seen]
+
+                if not q.segments:
+                    continue
+
+                last_page = max(s.page for s in q.segments)
+                pages_to_check = [last_page]
+                if last_page < doc.page_count:
+                    pages_to_check.append(last_page + 1)
+
+                suggested_for_q: list[QuestionSegment] = []
+                for p in pages_to_check:
+                    try:
+                        page = doc.load_page(p - 1)
+                        rect = page.rect
+                        pw, ph = float(rect.width), float(rect.height)
+                        if pw <= 0 or ph <= 0:
+                            continue
+
+                        data = page.get_text("dict") or {}
+                        for block in data.get("blocks", []):
+                            found_letter = None
+                            for ln in block.get("lines", []):
+                                spans = ln.get("spans", [])
+                                text = "".join(str(s.get("text", "")) for s in spans).strip()
+                                for m_letter in missing:
+                                    if _match_missing_option(text, m_letter):
+                                        found_letter = m_letter
+                                        break
+                                if found_letter:
+                                    break
+
+                            if found_letter:
+                                bx0, by0, bx1, by1 = block.get("bbox", (0, 0, 0, 0))
+                                suggested_seg = QuestionSegment(
+                                    page=p,
+                                    y_start_pct=max(0.0, (by0 / ph) * 100.0),
+                                    y_end_pct=min(100.0, (by1 / ph) * 100.0),
+                                    x_start_pct=max(0.0, (bx0 / pw) * 100.0),
+                                    x_end_pct=min(100.0, (bx1 / pw) * 100.0),
+                                )
+                                overlap = False
+                                for s in q.segments:
+                                    if s.page == suggested_seg.page:
+                                        x_ov = min(s.x_end_pct, suggested_seg.x_end_pct) - max(s.x_start_pct, suggested_seg.x_start_pct)
+                                        y_ov = min(s.y_end_pct, suggested_seg.y_end_pct) - max(s.y_start_pct, suggested_seg.y_start_pct)
+                                        if x_ov > 0 and y_ov > 0:
+                                            overlap = True
+                                            break
+                                if not overlap:
+                                    suggested_for_q.append(suggested_seg)
+                                    missing.remove(found_letter)
+                    except Exception as e:
+                        logger.error("Error processing page %s for missing options: %s", p, str(e))
+                        continue
+
+                if suggested_for_q:
+                    key = (bool(q.is_solution), q.q_num)
+                    flagged[key] = suggested_for_q
+    finally:
+        try:
+            doc.close()
+        except Exception:
+            pass
+
+    return flagged
+
+
 def build_review_notes(
     detected: list[DetectedQuestion],
     method_used: str,
     expected_question_numbers: "set[int] | None" = None,
     page_lines: "dict[int, list[tuple[float, float, float, float]]] | None" = None,
+    pdf_source: bytes | str | Path | None = None,
+    pdf_bytes: bytes | str | Path | None = None,
 ) -> list[ReviewNote]:
     """Produce human-readable review notes (cut-off crops, duplicates, gaps).
 
@@ -699,6 +819,9 @@ def build_review_notes(
     undercovered = find_undercovered_items(detected, page_lines)
     uncovered_head = find_uncovered_head_items(detected, page_lines)
 
+    pdf_src = pdf_source if pdf_source is not None else pdf_bytes
+    missing_options = find_missing_options_segments(detected, pdf_src)
+
     # Split questions vs solutions; numbering continuity is judged per side.
     for is_solution in (False, True):
         group = [q for q in detected if bool(q.is_solution) == is_solution]
@@ -709,6 +832,7 @@ def build_review_notes(
 
         for q in group:
             num = _q_number(q.q_num)
+            key = (is_solution, q.q_num)
 
             cut = _cutoff_reason(q, median_extent)
             if cut is not None:
@@ -721,7 +845,7 @@ def build_review_notes(
                         is_solution=is_solution,
                     )
                 )
-            elif (is_solution, q.q_num) in undercovered:
+            elif key in undercovered:
                 notes.append(
                     ReviewNote(
                         kind="incomplete",
@@ -733,9 +857,10 @@ def build_review_notes(
                         q_num=q.q_num,
                         page=_primary_page(q),
                         is_solution=is_solution,
+                        suggested_segments=undercovered.get(key),
                     )
                 )
-            elif (is_solution, q.q_num) in uncovered_head:
+            elif key in uncovered_head:
                 notes.append(
                     ReviewNote(
                         kind="incomplete",
@@ -748,9 +873,10 @@ def build_review_notes(
                         q_num=q.q_num,
                         page=_primary_page(q),
                         is_solution=is_solution,
+                        suggested_segments=uncovered_head.get(key),
                     )
                 )
-            elif (is_solution, q.q_num) in overlapping:
+            elif key in overlapping:
                 notes.append(
                     ReviewNote(
                         kind="incomplete",
@@ -774,6 +900,7 @@ def build_review_notes(
                             q_num=q.q_num,
                             page=_primary_page(q),
                             is_solution=is_solution,
+                            suggested_segments=missing_options.get(key),
                         )
                     )
 

@@ -37,6 +37,7 @@ class OCRDetector:
         render_dpi: Optional[int] = None,
         marker_style: str = "auto",
         layout_columns: Optional[int] = None,
+        custom_regex: Optional[str] = None,
     ) -> list[DetectedQuestion]:
         """Detect questions using OCR word boxes grouped into lines.
 
@@ -52,6 +53,7 @@ class OCRDetector:
             return []
 
         self._marker_style = marker_style
+        self._custom_regex = custom_regex
         effective_dpi = int(render_dpi or settings.PDF_RENDER_DPI)
 
         # Resolve the configured OCR languages (e.g. "eng+hin") down to the packs
@@ -406,7 +408,11 @@ class OCRDetector:
                 )
             )
 
-            q_info = match_question_start_ex(line_text, getattr(self, "_marker_style", "auto"))
+            q_info = match_question_start_ex(
+                line_text,
+                getattr(self, "_marker_style", "auto"),
+                custom_regex=getattr(self, "_custom_regex", None),
+            )
             if q_info is not None:
                 q_num, is_strong = q_info
                 starts.append(

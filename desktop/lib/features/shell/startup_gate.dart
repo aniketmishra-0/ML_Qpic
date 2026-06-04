@@ -334,7 +334,8 @@ class StartupFailureScreen extends StatelessWidget {
                   constraints: const BoxConstraints(maxHeight: 240),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: palette?.field ?? theme.colorScheme.surfaceContainerHighest,
+                    color: palette?.field ??
+                        theme.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: palette?.border ?? theme.dividerColor,
@@ -342,9 +343,7 @@ class StartupFailureScreen extends StatelessWidget {
                   ),
                   child: SingleChildScrollView(
                     child: SelectableText(
-                      hasStderr
-                          ? stderr
-                          : 'No diagnostic output was captured.',
+                      hasStderr ? stderr : 'No diagnostic output was captured.',
                       key: const ValueKey<String>('startup-failure-stderr'),
                       style: theme.textTheme.bodySmall?.copyWith(
                         fontFamily: 'monospace',

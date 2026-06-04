@@ -392,10 +392,10 @@ async def rename_preview(
     return RenamePreviewResponse(count=len(items), items=items)
 
 
-def _render_pdf_to_items(file_bytes: bytes, dpi: int, stem: str) -> list[PdfImageItem]:
+def _render_pdf_to_items(pdf_source: bytes | str | Path, dpi: int, stem: str) -> list[PdfImageItem]:
     """Rasterise every PDF page to a PNG data-URL item (runs off the loop)."""
 
-    images = pdf_to_images(file_bytes, dpi)
+    images = pdf_to_images(pdf_source, dpi)
     items: list[PdfImageItem] = []
     pad = max(2, len(str(len(images))))
     for idx, img in enumerate(images, start=1):
@@ -417,6 +417,7 @@ def _render_pdf_to_items(file_bytes: bytes, dpi: int, stem: str) -> list[PdfImag
 
 @router.post("/rename/pdf-to-images", response_model=PdfToImagesResponse)
 async def pdf_to_images_endpoint(
+    request: Request,
     file: UploadFile = File(..., description="A PDF to convert into page images."),
     dpi: Optional[int] = Form(None, description="Optional rasterization DPI."),
     settings: Settings = Depends(get_settings),
@@ -437,27 +438,43 @@ async def pdf_to_images_endpoint(
             detail=f"Not a PDF: {name}. Upload a .pdf file.",
         )
 
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
-
-    validate_pdf(file_bytes, settings)
-
-    stem, _ = split_extension(name)
-    stem = (stem or "page").strip() or "page"
-    render_dpi = dpi if dpi is not None else settings.PDF_RENDER_DPI
+    job_id = generate_job_id()
+    temp_root = _get_temp_root(request, settings)
+    job_dir = None
     try:
+        job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
+        source_pdf_path = job_dir / "source.pdf"
+
+        # Stream upload directly to disk
+        max_bytes = settings.MAX_PDF_SIZE_MB * 1024 * 1024
+        from ..utils.file_utils import stream_upload_to_file
+        await stream_upload_to_file(file, source_pdf_path, max_bytes)
+
+        # Validate PDF on disk
+        validate_pdf(source_pdf_path, settings)
+
+        stem, _ = split_extension(name)
+        stem = (stem or "page").strip() or "page"
+        render_dpi = dpi if dpi is not None else settings.PDF_RENDER_DPI
+        
         items = await asyncio.to_thread(
-            _render_pdf_to_items, file_bytes, render_dpi, stem
+            _render_pdf_to_items, source_pdf_path, render_dpi, stem
         )
     except HTTPException:
+        if job_dir is not None:
+            await asyncio.to_thread(safe_cleanup_job, job_id, temp_root)
         raise
     except Exception as exc:
         logger.exception("pdf_to_images_failed error=%s", str(exc))
+        if job_dir is not None:
+            await asyncio.to_thread(safe_cleanup_job, job_id, temp_root)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Couldn't convert that PDF to images.",
         ) from exc
+    finally:
+        if job_dir is not None:
+            await asyncio.to_thread(safe_cleanup_job, job_id, temp_root)
 
     return PdfToImagesResponse(count=len(items), images=items)
 

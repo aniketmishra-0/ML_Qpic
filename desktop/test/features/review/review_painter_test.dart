@@ -13,6 +13,7 @@ ReviewPainter _painter({
   int pageNumber = 1,
   int editingIndex = -1,
   int hoveredIndex = -1,
+  List<int>? selectedIndices,
   QuestionSegment? selection,
   ui.Image? pageImage,
   int revision = 0,
@@ -29,6 +30,7 @@ ReviewPainter _painter({
     pageNumber: pageNumber,
     editingIndex: editingIndex,
     hoveredIndex: hoveredIndex,
+    selectedIndices: selectedIndices ?? const <int>[],
     selection: selection,
     pageImage: pageImage,
     revision: revision,
@@ -160,6 +162,14 @@ void main() {
           .shouldRepaint(base), isTrue);
       expect(_painter(items: items, revision: 5, hoveredIndex: 0)
           .shouldRepaint(base), isTrue);
+      expect(
+        _painter(
+          items: items,
+          revision: 5,
+          selectedIndices: const <int>[0],
+        ).shouldRepaint(base),
+        isTrue,
+      );
       expect(
         _painter(
           items: items,

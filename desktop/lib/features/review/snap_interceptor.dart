@@ -44,6 +44,7 @@ SegmentInterceptor buildSnapInterceptor({
   required ApiClient apiClient,
   required String Function() jobId,
   required bool Function() enabled,
+  required double Function() marginPct,
 }) {
   return (QuestionSegment drawn) async {
     if (!enabled()) return drawn;
@@ -60,6 +61,7 @@ SegmentInterceptor buildSnapInterceptor({
           xEndPct: drawn.xEndPct,
           yStartPct: drawn.yStartPct,
           yEndPct: drawn.yEndPct,
+          marginPct: marginPct(),
         ),
       );
       // Replace the box with the tightened rect (Req 9.2). The page never

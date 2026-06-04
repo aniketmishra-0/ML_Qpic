@@ -65,7 +65,8 @@
     "message": "Q12 looks cut off at the bottom of page 2.",
     "q_num": "12",
     "page": 2,
-    "is_solution": false
+    "is_solution": false,
+    "suggested_segments": null
   },
 
   "AnalyzeResponse": {
@@ -112,7 +113,8 @@
         "message": "Detection confidence was low on page 2.",
         "q_num": null,
         "page": 2,
-        "is_solution": false
+        "is_solution": false,
+        "suggested_segments": null
       }
     ],
     "needs_review": true,
@@ -125,7 +127,8 @@
     "x_start_pct": 5.0,
     "x_end_pct": 95.0,
     "y_start_pct": 30.0,
-    "y_end_pct": 60.0
+    "y_end_pct": 60.0,
+    "margin_pct": 0.8
   },
 
   "SnapResponse": {
@@ -173,7 +176,9 @@
     "dpi": 200,
     "padding": 20,
     "image_format": "png",
-    "jpg_quality": 90
+    "jpg_quality": 90,
+    "bilingual_mode": null,
+    "other_segments": null
   },
 
   "FinalizeRequest": {
@@ -204,7 +209,8 @@
     "start_number": 1,
     "image_format": "png",
     "jpg_quality": 90,
-    "answer_sheet": true
+    "answer_sheet": true,
+    "bilingual_mode": null
   },
 
   "HealthResponse": {

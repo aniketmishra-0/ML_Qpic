@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme_controller.dart';
+import '../../widgets/enhancement_preview_dialog.dart';
 import '../auto_crop/auto_crop_controller.dart'
     show AutoCropBounds, CropImageFormat;
 import '../review/review_canvas.dart';
@@ -171,6 +172,9 @@ class _OpenForm extends StatelessWidget {
                                     max: AutoCropBounds.dpiMax,
                                     onChanged: (v) => controller.dpi = v,
                                   ),
+                                  const SizedBox(height: 16),
+                                  _AccuracySettingsPanel(
+                                      controller: controller),
                                 ],
                               ),
                             ),
@@ -192,14 +196,16 @@ class _OpenForm extends StatelessWidget {
                               palette: palette,
                               children: <Widget>[
                                 _BoundedSlider(
-                                  sliderKey: const ValueKey<String>(
-                                      'manual-crop-dpi'),
+                                  sliderKey:
+                                      const ValueKey<String>('manual-crop-dpi'),
                                   label: 'DPI',
                                   value: controller.dpi,
                                   min: AutoCropBounds.dpiMin,
                                   max: AutoCropBounds.dpiMax,
                                   onChanged: (v) => controller.dpi = v,
                                 ),
+                                const SizedBox(height: 16),
+                                _AccuracySettingsPanel(controller: controller),
                               ],
                             ),
                           ],
@@ -468,10 +474,9 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Material(
-      color: palette?.panel ?? theme.colorScheme.surface,
+      color: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: palette?.border ?? theme.dividerColor),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
@@ -481,10 +486,9 @@ class _SectionCard extends StatelessWidget {
             Text(
               title,
               style: TextStyle(
-                fontSize: 11.5,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
                 color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                letterSpacing: 0.8,
               ),
             ),
             const SizedBox(height: 14),
@@ -768,6 +772,232 @@ class _BoundedSlider extends StatelessWidget {
           divisions: max - min,
           label: '$clamped',
           onChanged: (v) => onChanged(v.round()),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccuracySettingsPanel extends StatelessWidget {
+  const _AccuracySettingsPanel({required this.controller});
+
+  final ManualCropController controller;
+
+  Future<void> _openEnhancementPreview(BuildContext context) async {
+    final client = controller.apiClient;
+    if (client == null) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final jobId = await controller.stashForPreview();
+      if (!context.mounted) return;
+      Navigator.of(context).pop(); // Dismiss spinner
+
+      if (jobId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to stash PDF for preview.')),
+        );
+        return;
+      }
+
+      // Open the preview dialog
+      await showDialog(
+        context: context,
+        builder: (context) => EnhancementPreviewDialog(
+          apiClient: client,
+          jobId: jobId,
+          totalPages: controller.review.pages.isNotEmpty
+              ? controller.review.pages.length
+              : 1,
+          initialContrast: controller.contrast,
+          initialBrightness: controller.brightness,
+          initialWatermarkThreshold: controller.watermarkThreshold,
+          initialBinarize: controller.binarize,
+          initialDeskew: controller.deskew,
+          onApply: (contrast, brightness, watermark, binarize, deskew) {
+            controller.contrast = contrast;
+            controller.brightness = brightness;
+            controller.watermarkThreshold = watermark;
+            controller.binarize = binarize;
+            controller.deskew = deskew;
+          },
+        ),
+      );
+    } catch (e) {
+      Navigator.of(context).pop(); // Dismiss spinner
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+
+    return Theme(
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        key: const ValueKey<String>('manual-crop-accuracy-settings-tile'),
+        title: Text(
+          'Enhancement / Accuracy Settings',
+          style: TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w700,
+            color: palette?.text ?? theme.colorScheme.onSurface,
+          ),
+        ),
+        leading: Icon(Icons.tune_rounded, color: brand, size: 20),
+        childrenPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        children: <Widget>[
+          if (controller.hasFile)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16.0),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.preview_rounded, size: 16),
+                  label: const Text('Live Enhancement Preview'),
+                  onPressed: () => _openEnhancementPreview(context),
+                ),
+              ),
+            ),
+          _SliderField(
+            label: 'Contrast Scale',
+            subtitle: 'Scale text contrast to improve OCR detection.',
+            value: controller.contrast,
+            min: 0.5,
+            max: 3.0,
+            divisions: 25,
+            displayValue: controller.contrast.toStringAsFixed(2),
+            onChanged: (val) => controller.contrast = val,
+          ),
+          const SizedBox(height: 16),
+          _SliderField(
+            label: 'Brightness Scale',
+            subtitle: 'Scale brightness to correct over/under-exposed scans.',
+            value: controller.brightness,
+            min: 0.5,
+            max: 2.0,
+            divisions: 15,
+            displayValue: controller.brightness.toStringAsFixed(2),
+            onChanged: (val) => controller.brightness = val,
+          ),
+          const SizedBox(height: 16),
+          _SliderField(
+            label: 'Watermark Filter',
+            subtitle: 'Filter light gray backgrounds / watermark artifacts.',
+            value: controller.watermarkThreshold.toDouble(),
+            min: 0,
+            max: 255,
+            divisions: 255,
+            displayValue: controller.watermarkThreshold == 255
+                ? 'Off'
+                : '${controller.watermarkThreshold}',
+            onChanged: (val) => controller.watermarkThreshold = val.round(),
+          ),
+          const SizedBox(height: 16),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Binarize (Pure B&W)',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            subtitle: const Text('Render page to high-contrast monochrome',
+                style: TextStyle(fontSize: 11.5)),
+            value: controller.binarize,
+            onChanged: (val) => controller.binarize = val,
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Deskew Pages',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+            subtitle: const Text('Detect and straighten scan skew tilt',
+                style: TextStyle(fontSize: 11.5)),
+            value: controller.deskew,
+            onChanged: (val) => controller.deskew = val,
+          ),
+          const SizedBox(height: 16),
+          _SliderField(
+            label: 'Snapping Margin',
+            subtitle: 'Margin percentage for snapping content detection.',
+            value: controller.snappingMargin,
+            min: 0.1,
+            max: 2.0,
+            divisions: 19,
+            displayValue: controller.snappingMargin.toStringAsFixed(2),
+            onChanged: (val) => controller.snappingMargin = val,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SliderField extends StatelessWidget {
+  const _SliderField({
+    required this.label,
+    required this.subtitle,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.displayValue,
+    required this.onChanged,
+  });
+
+  final String label;
+  final String subtitle;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final String displayValue;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w700)),
+                Text(subtitle,
+                    style: TextStyle(fontSize: 11, color: palette?.muted)),
+              ],
+            ),
+            Text(
+              displayValue,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: palette?.brand ?? theme.colorScheme.primary,
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: value,
+          min: min,
+          max: max,
+          divisions: divisions,
+          onChanged: onChanged,
         ),
       ],
     );

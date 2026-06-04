@@ -23,7 +23,8 @@ class ThemeSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final palette = theme.extension<QpicPalette>();
-    final fieldColor = palette?.field ?? theme.colorScheme.surfaceContainerHighest;
+    final fieldColor =
+        palette?.field ?? theme.colorScheme.surfaceContainerHighest;
     final borderColor = palette?.borderSoft ?? theme.dividerColor;
 
     // Rebuild whenever the selected mode changes so the highlighted option

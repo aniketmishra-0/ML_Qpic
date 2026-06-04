@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:dio/dio.dart';
+import 'package:qpic_desktop/core/api_client.dart';
 import 'package:qpic_desktop/features/review/review_canvas_controller.dart';
 import 'package:qpic_desktop/features/review/review_controller.dart';
 import 'package:qpic_desktop/models/analyze.dart';
@@ -386,4 +388,67 @@ void main() {
       canvas.dispose();
     });
   });
+
+  group('bilingual layout preview matching', () {
+    test('side-by-side layout uses xStartPct to match English/Hindi', () async {
+      final client = FakeApiClient();
+      final c = ReviewController(apiClient: client);
+      addTearDown(c.dispose);
+
+      c.bilingualMode = 'english';
+      c.loadFromAnalyze(_analyze(
+        items: <AnalyzedItem>[
+          _item(qNum: '1', segments: <QuestionSegment>[_seg(x0: 55, x1: 95, y0: 10, y1: 20)]), // Right/Hindi
+          _item(qNum: '1', segments: <QuestionSegment>[_seg(x0: 10, x1: 45, y0: 10, y1: 20)]), // Left/English
+        ],
+      ));
+
+      // Preview English: should select the Left item (segments start at 10)
+      await c.previewItem(0);
+      expect(client.lastPreviewRequest, isNotNull);
+      expect(client.lastPreviewRequest!.segments.first.xStartPct, 10.0);
+    });
+
+    test('vertically-stacked layout uses yStartPct to match English/Hindi', () async {
+      final client = FakeApiClient();
+      final c = ReviewController(apiClient: client);
+      addTearDown(c.dispose);
+
+      c.bilingualMode = 'english';
+      c.loadFromAnalyze(_analyze(
+        items: <AnalyzedItem>[
+          _item(qNum: '1', segments: <QuestionSegment>[_seg(x0: 10, x1: 90, y0: 40, y1: 60)]), // Bottom/Hindi
+          _item(qNum: '1', segments: <QuestionSegment>[_seg(x0: 12, x1: 92, y0: 10, y1: 30)]), // Top/English
+        ],
+      ));
+
+      // Preview English: should select the Top item (segments start at y0 = 10)
+      await c.previewItem(0);
+      expect(client.lastPreviewRequest, isNotNull);
+      expect(client.lastPreviewRequest!.segments.first.yStartPct, 10.0);
+    });
+  });
+}
+
+class FakeApiClient implements ApiClient {
+  FakeApiClient() : dio = Dio();
+
+  @override
+  final Dio dio;
+
+  CropPreviewRequest? lastPreviewRequest;
+
+  @override
+  Future<List<int>> cropPreview(CropPreviewRequest request) async {
+    lastPreviewRequest = request;
+    return <int>[];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    if (invocation.memberName == #cropPreview) {
+      return cropPreview(invocation.positionalArguments[0] as CropPreviewRequest);
+    }
+    return null;
+  }
 }

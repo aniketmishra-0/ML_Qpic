@@ -44,6 +44,7 @@ def snap_region(
     x_end_pct: float,
     y_start_pct: float,
     y_end_pct: float,
+    margin_pct: float = 0.8,
 ) -> dict:
     """Return a content-tightened region for a drawn box.
 
@@ -120,11 +121,11 @@ def snap_region(
     # below). Clamp each edge back to the original drawn bounds.
     new_y_start = max(
         original["y_start_pct"],
-        original["y_start_pct"] + (r_top / h) * box_h_pct - _MARGIN_PCT,
+        original["y_start_pct"] + (r_top / h) * box_h_pct - margin_pct,
     )
     new_y_end = min(
         original["y_end_pct"],
-        original["y_start_pct"] + ((r_bot + 1) / h) * box_h_pct + _MARGIN_PCT,
+        original["y_start_pct"] + ((r_bot + 1) / h) * box_h_pct + margin_pct,
     )
 
     # Horizontal: KEEP the left edge exactly where the user drew it. That drawn
@@ -139,7 +140,7 @@ def snap_region(
     # past the drawn right edge.
     new_x_end = min(
         original["x_end_pct"],
-        original["x_start_pct"] + ((c_right + 1) / w) * box_w_pct + _MARGIN_PCT,
+        original["x_start_pct"] + ((c_right + 1) / w) * box_w_pct + margin_pct,
     )
 
     snapped = {

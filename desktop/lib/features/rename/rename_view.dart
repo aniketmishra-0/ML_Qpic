@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/theme_controller.dart';
+import '../../widgets/qpic_dropdown.dart';
 import 'rename_controller.dart';
 
 /// Stateless form surface for the Rename Batch tool.
@@ -382,24 +383,15 @@ class _FilePickerRow extends StatelessWidget {
                     ? (palette?.panelAlt ?? theme.colorScheme.surface)
                     : (palette?.field ??
                         theme.colorScheme.surfaceContainerHighest)),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: active
                   ? brand
                   : (hasItems
-                      ? successColor.withValues(alpha: 0.5)
-                      : (palette?.border ?? theme.dividerColor)),
-              width: 1.5,
+                      ? successColor.withValues(alpha: 0.3)
+                      : (palette?.borderSoft ?? theme.dividerColor).withValues(alpha: 0.5)),
+              width: 1.0,
             ),
-            boxShadow: active
-                ? [
-                    BoxShadow(
-                      color: brand.withValues(alpha: 0.15),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    )
-                  ]
-                : [],
           ),
           child: Row(
             children: <Widget>[
@@ -594,27 +586,23 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
     return Material(
-      color: palette?.panel ?? theme.colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: palette?.border ?? theme.dividerColor),
-      ),
+      color: Colors.transparent,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Text(
               title,
               style: TextStyle(
-                fontSize: 11.5,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
                 color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
-                letterSpacing: 0.8,
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             ...children,
           ],
         ),
@@ -675,27 +663,22 @@ class _PatternFieldState extends State<_PatternField> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        DropdownButtonFormField<String>(
+        QpicDropdownField<String>(
           key: const ValueKey<String>('rename-pattern-preset'),
-          initialValue: selectedValue,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            labelText: 'Pattern Preset',
-            isDense: true,
-            border: OutlineInputBorder(),
-          ),
+          value: selectedValue,
+          prefixIcon: const Icon(Icons.tune_rounded, size: 18),
           items: [
-            ..._predefinedPatterns.entries.map((e) => DropdownMenuItem(
+            ..._predefinedPatterns.entries.map((e) => QpicDropdownItem<String>(
                   value: e.key,
-                  child: Text(e.value),
+                  label: e.value,
                 )),
-            const DropdownMenuItem(
+            const QpicDropdownItem<String>(
               value: 'custom',
-              child: Text('Custom Pattern...'),
+              label: 'Custom Pattern...',
             ),
           ],
           onChanged: (val) {
-            if (val != null && val != 'custom') {
+            if (val != 'custom') {
               widget.controller.pattern = val;
             }
           },
@@ -856,23 +839,18 @@ class _OutputFormatSelector extends StatelessWidget {
       children: <Widget>[
         Text('Output format', style: theme.textTheme.bodyMedium),
         const SizedBox(height: 8),
-        DropdownButtonFormField<RenameOutputFormat>(
+        QpicDropdownField<RenameOutputFormat>(
           key: const ValueKey<String>('rename-output-format'),
-          initialValue: controller.outputFormat,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            isDense: true,
-            border: OutlineInputBorder(),
-          ),
-          items: <DropdownMenuItem<RenameOutputFormat>>[
-            for (final format in RenameOutputFormat.values)
-              DropdownMenuItem<RenameOutputFormat>(
-                value: format,
-                child: Text(format.label),
-              ),
-          ],
+          value: controller.outputFormat,
+          prefixIcon: const Icon(Icons.insert_drive_file_rounded, size: 18),
+          items: RenameOutputFormat.values.map((format) {
+            return QpicDropdownItem<RenameOutputFormat>(
+              value: format,
+              label: format.label,
+            );
+          }).toList(),
           onChanged: (format) {
-            if (format != null) controller.outputFormat = format;
+            controller.outputFormat = format;
           },
         ),
       ],
@@ -951,10 +929,14 @@ class _PreviewSection extends StatelessWidget {
     }
 
     return Material(
+      elevation: 0,
       color: palette?.panel ?? theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: palette?.border ?? theme.dividerColor),
+        side: BorderSide(
+          color: palette?.border ?? theme.dividerColor,
+          width: 1.0,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1027,10 +1009,14 @@ class _EmptyPreviewCard extends StatelessWidget {
     final brand = palette?.brand ?? theme.colorScheme.primary;
 
     return Material(
+      elevation: 0,
       color: palette?.panel ?? theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: palette?.border ?? theme.dividerColor),
+        side: BorderSide(
+          color: palette?.border ?? theme.dividerColor,
+          width: 1.0,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 44),
@@ -1139,10 +1125,6 @@ class _PreviewCard extends StatelessWidget {
         color: palette?.field ??
             theme.colorScheme.surfaceContainerHighest.withAlpha(120),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: palette?.border ?? theme.dividerColor,
-          width: 1.5,
-        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -1361,7 +1343,6 @@ class _ImageGalleryRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: palette?.panel ?? theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1467,10 +1448,6 @@ class _GalleryThumbnail extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: palette?.border ?? theme.dividerColor,
-              width: 1.5,
-            ),
           ),
           clipBehavior: Clip.antiAlias,
           child: Stack(
@@ -1616,11 +1593,7 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
                       const BoxConstraints(maxWidth: 800, maxHeight: 700),
                   decoration: BoxDecoration(
                     color: widget.palette?.panel ?? theme.colorScheme.surface,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: widget.palette?.border ?? theme.dividerColor,
-                      width: 1.5,
-                    ),
+                    borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withAlpha(80),
@@ -1836,27 +1809,21 @@ class _DpiSelector extends StatelessWidget {
       children: <Widget>[
         Text('PDF Render DPI', style: theme.textTheme.bodyMedium),
         const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
+        QpicDropdownField<String>(
           key: const ValueKey<String>('rename-pdf-dpi'),
-          initialValue: controller.pdfDpi,
-          isExpanded: true,
-          decoration: const InputDecoration(
-            isDense: true,
-            border: OutlineInputBorder(),
-          ),
+          value: controller.pdfDpi,
+          prefixIcon: const Icon(Icons.hdr_auto_rounded, size: 18),
           items: const [
-            DropdownMenuItem(value: 'Original', child: Text('Original')),
-            DropdownMenuItem(value: '72', child: Text('72')),
-            DropdownMenuItem(value: '150', child: Text('150')),
-            DropdownMenuItem(value: '200', child: Text('200')),
-            DropdownMenuItem(value: '300', child: Text('300')),
-            DropdownMenuItem(value: '400', child: Text('400')),
-            DropdownMenuItem(value: '600', child: Text('600')),
+            QpicDropdownItem(value: 'Original', label: 'Original'),
+            QpicDropdownItem(value: '72', label: '72'),
+            QpicDropdownItem(value: '150', label: '150'),
+            QpicDropdownItem(value: '200', label: '200'),
+            QpicDropdownItem(value: '300', label: '300'),
+            QpicDropdownItem(value: '400', label: '400'),
+            QpicDropdownItem(value: '600', label: '600'),
           ],
           onChanged: (val) {
-            if (val != null) {
-              controller.pdfDpi = val;
-            }
+            controller.pdfDpi = val;
           },
         ),
       ],
