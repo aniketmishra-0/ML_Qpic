@@ -4,10 +4,12 @@ import '../../core/api_client.dart';
 import '../../core/download_service.dart';
 import '../../core/file_picker_service.dart';
 import '../../core/theme_controller.dart';
+import '../shell/app_shell.dart';
 import 'compress/compress_controller.dart';
 import 'compress/compress_view.dart';
 import 'edit/edit_controller.dart';
 import 'edit/edit_view.dart';
+import 'image_enhancement_view.dart';
 import 'preflight/preflight_controller.dart';
 import 'preflight/preflight_view.dart';
 
@@ -23,12 +25,14 @@ class PdfToolsView extends StatefulWidget {
     required this.downloadService,
     this.subTab,
     this.onSubTabChanged,
+    this.onSelectTool,
   });
 
   final ApiClient? apiClient;
   final DownloadService? downloadService;
   final int? subTab;
   final ValueChanged<int>? onSubTabChanged;
+  final ValueChanged<QpicTool>? onSelectTool;
 
   @override
   State<PdfToolsView> createState() => _PdfToolsViewState();
@@ -288,6 +292,15 @@ class _PdfToolsViewState extends State<PdfToolsView> {
                           palette: palette,
                           isSoon: true,
                         ),
+                        _buildToolCard(
+                          context,
+                          index: 4,
+                          title: 'Image Enhancement Pipeline',
+                          description:
+                              'Apply brightness, contrast, watermark threshold, and binarization to improve scanned document quality.',
+                          icon: Icons.auto_awesome_rounded,
+                          palette: palette,
+                        ),
                       ],
                     );
                   },
@@ -308,6 +321,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
     required IconData icon,
     required QpicPalette? palette,
     bool isSoon = false,
+    VoidCallback? onTap,
   }) {
     final theme = Theme.of(context);
     final brand = palette?.brand ?? theme.colorScheme.primary;
@@ -318,7 +332,7 @@ class _PdfToolsViewState extends State<PdfToolsView> {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () {
+        onTap: onTap ?? () {
           setState(() {
             _currentSubTab = index;
             _errorText = null;
@@ -499,6 +513,14 @@ class _PdfToolsViewState extends State<PdfToolsView> {
         );
         break;
       case 3:
+        subView = _buildComingSoon(context, palette);
+        break;
+      case 4:
+        subView = ImageEnhancementView(
+          apiClient: widget.apiClient!,
+          downloadService: widget.downloadService!,
+        );
+        break;
       default:
         subView = _buildComingSoon(context, palette);
         break;

@@ -15,6 +15,7 @@ from ...models.schemas import DetectedQuestion
 from .base import (
     ContentLine,
     QuestionStart,
+    is_answer_key_header,
     match_question_start_ex,
     match_solution_header,
     starts_to_questions,
@@ -78,6 +79,7 @@ class TextDetector:
             with doc:
                 total_pages = doc.page_count
                 in_solutions = False
+                in_answer_key = False
                 for page_idx in range(total_pages):
                     page = doc.load_page(page_idx)
                     page_num = page_idx + 1
@@ -132,8 +134,13 @@ class TextDetector:
                         # The header line itself is not real content, so we skip
                         # it (otherwise the preceding question's crop would bleed
                         # down into the solutions header).
-                        if not in_solutions and match_solution_header(text):
-                            in_solutions = True
+                        if match_solution_header(text):
+                            if is_answer_key_header(text):
+                                in_answer_key = True
+                                in_solutions = False
+                            else:
+                                in_solutions = True
+                                in_answer_key = False
                             continue
 
                         content_lines.append(
@@ -147,7 +154,7 @@ class TextDetector:
                             )
                         )
 
-                        q_info = self._match_question_start(text)
+                        q_info = None if in_answer_key else self._match_question_start(text)
                         if q_info is None:
                             continue
                         q_num, is_strong = q_info

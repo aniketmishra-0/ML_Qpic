@@ -770,6 +770,105 @@ class ApiClient {
     });
   }
 
+  /// `POST /api/tools/enhance-image` — enhance an image and return raw PNG bytes.
+  Future<List<int>> enhanceImage({
+    required List<int> fileBytes,
+    required String filename,
+    bool binarize = false,
+    int binarizeThreshold = 185,
+    double contrast = 1.0,
+    double brightness = 1.0,
+    int watermarkThreshold = 255,
+    int denoise = 0,
+    bool deskew = false,
+  }) {
+    return _guard(() async {
+      final form = FormData();
+      form.fields
+        ..add(MapEntry('binarize', binarize.toString()))
+        ..add(MapEntry('binarize_threshold', binarizeThreshold.toString()))
+        ..add(MapEntry('contrast', contrast.toString()))
+        ..add(MapEntry('brightness', brightness.toString()))
+        ..add(MapEntry('watermark_threshold', watermarkThreshold.toString()))
+        ..add(MapEntry('denoise', denoise.toString()))
+        ..add(MapEntry('deskew', deskew.toString()));
+
+      final isJpeg = filename.toLowerCase().endsWith('.jpg') ||
+          filename.toLowerCase().endsWith('.jpeg');
+      form.files.add(
+        MapEntry(
+          'file',
+          MultipartFile.fromBytes(
+            fileBytes,
+            filename: filename,
+            contentType: isJpeg
+                ? DioMediaType('image', 'jpeg')
+                : DioMediaType('image', 'png'),
+          ),
+        ),
+      );
+
+      final res = await _dio.post<dynamic>(
+        '$_api/tools/enhance-image',
+        data: form,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final data = res.data;
+      if (data is List<int>) return data;
+      if (data is List) return data.cast<int>();
+      return const <int>[];
+    });
+  }
+
+  /// `POST /api/tools/ai-enhance-image` — AI-powered Remini-like enhancement.
+  Future<List<int>> aiEnhanceImage({
+    required List<int> fileBytes,
+    required String filename,
+    int strength = 3,
+    bool faceEnhance = true,
+    int sharpen = 3,
+    int upscale = 1,
+    bool colorFix = true,
+    bool onlineSr = false,
+  }) {
+    return _guard(() async {
+      final form = FormData();
+      form.fields
+        ..add(MapEntry('strength', strength.toString()))
+        ..add(MapEntry('face_enhance', faceEnhance.toString()))
+        ..add(MapEntry('sharpen', sharpen.toString()))
+        ..add(MapEntry('upscale', upscale.toString()))
+        ..add(MapEntry('color_fix', colorFix.toString()))
+        ..add(MapEntry('online_sr', onlineSr.toString()));
+
+      final isJpeg = filename.toLowerCase().endsWith('.jpg') ||
+          filename.toLowerCase().endsWith('.jpeg');
+      form.files.add(
+        MapEntry(
+          'file',
+          MultipartFile.fromBytes(
+            fileBytes,
+            filename: filename,
+            contentType: isJpeg
+                ? DioMediaType('image', 'jpeg')
+                : DioMediaType('image', 'png'),
+          ),
+        ),
+      );
+
+      final res = await _dio.post<dynamic>(
+        '$_api/tools/ai-enhance-image',
+        data: form,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final data = res.data;
+      if (data is List<int>) return data;
+      if (data is List) return data.cast<int>();
+      return const <int>[];
+    });
+  }
+
+
   // ===========================================================================
   //  Download / preview URL builders (binary endpoints)
   // ===========================================================================

@@ -63,6 +63,15 @@ def build_ai_detector(
         return None
 
     provider = settings.resolved_ai_provider()
+    if provider == "huggingface":
+        from .services.detector.huggingface_detector import HuggingFaceDetector
+
+        return HuggingFaceDetector(
+            settings.HUGGINGFACE_API_URL,
+            settings.HUGGINGFACE_API_TOKEN,
+            confidence=settings.HUGGINGFACE_CONFIDENCE,
+            timeout_seconds=settings.API_TIMEOUT_SECONDS,
+        )
     if provider == "openrouter":
         # Imported lazily to avoid a hard dependency when unused.
         from .services.detector.openrouter_detector import OpenRouterDetector

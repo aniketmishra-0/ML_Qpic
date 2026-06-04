@@ -46,6 +46,11 @@ class DetectedQuestion(BaseModel):
     captured. It is informational only (default empty) and lets the review step
     flag a crop that probably lost its right-hand options. Detectors that don't
     track options (the AI tier, manual items) leave it empty.
+
+    ``other_segments`` carries the translation column's segments for bilingual
+    PDFs (e.g. the Hindi side of a JEE Main solution). When present, the
+    bilingual export modes can stitch or select between the primary (English)
+    and the other (Hindi) segments without doubling the question count.
     """
 
     q_num: str
@@ -58,6 +63,11 @@ class DetectedQuestion(BaseModel):
     # the choice. Set from the review "Align parts" toggle and carried verbatim
     # so a finalized crop matches the preview the user approved.
     align: Optional[bool] = None
+    # Segments from the bilingual translation column (e.g. Hindi). When set,
+    # the primary ``segments`` carry the English (left) column and this field
+    # carries the Hindi (right) column. The bilingual export modes use this
+    # to stitch or select the language without doubling detected questions.
+    other_segments: Optional[list[QuestionSegment]] = None
 
 class CropResponse(BaseModel):
     """Response after creating a crop job.
@@ -111,6 +121,10 @@ class AnalyzedItem(BaseModel):
     source: Literal["auto", "manual"] = "auto"
     flagged: bool = False
     flag_reason: Optional[str] = None
+    # Bilingual translation segments (e.g. Hindi column). Set when the
+    # detector merged a bilingual pair, so the frontend can render
+    # bilingual previews without needing duplicate items.
+    other_segments: Optional[list[QuestionSegment]] = None
 
 
 class ReviewNote(BaseModel):
@@ -138,6 +152,10 @@ class AnalyzeResponse(BaseModel):
     # found). Lets the review UI tell the user up front whether the finalized
     # download will include an answer sheet.
     answer_key_count: int = 0
+    # True when the detector found a bilingual side-by-side layout (e.g.
+    # English left / Hindi right on the same page). The frontend can
+    # auto-enable bilingual mode when this is set.
+    bilingual_detected: bool = False
 
 
 class SnapRequest(BaseModel):

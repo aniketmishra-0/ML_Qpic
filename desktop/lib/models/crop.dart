@@ -237,6 +237,7 @@ class AnalyzedItem {
     this.flagged = false,
     this.flagReason,
     this.align,
+    this.otherSegments,
   });
 
   final String qNum;
@@ -253,6 +254,11 @@ class AnalyzedItem {
   /// keeps the engine's per-source default (align manual items only).
   final bool? align;
 
+  /// Bilingual translation segments (e.g. Hindi column). Set when the backend
+  /// merged a bilingual pair, so the frontend can render bilingual previews
+  /// without needing duplicate items in the list.
+  final List<QuestionSegment>? otherSegments;
+
   /// Returns a copy with [align] set, preserving all other fields.
   AnalyzedItem copyWithAlign(bool? align) => AnalyzedItem(
         qNum: qNum,
@@ -262,6 +268,7 @@ class AnalyzedItem {
         flagged: flagged,
         flagReason: flagReason,
         align: align,
+        otherSegments: otherSegments,
       );
 
   factory AnalyzedItem.fromJson(Map<String, dynamic> json) {
@@ -274,6 +281,11 @@ class AnalyzedItem {
       source: json['source'] as String? ?? 'auto',
       flagged: json['flagged'] as bool? ?? false,
       flagReason: json['flag_reason'] as String?,
+      otherSegments: json['other_segments'] != null
+          ? (json['other_segments'] as List<dynamic>)
+              .map((e) => QuestionSegment.fromJson(e as Map<String, dynamic>))
+              .toList()
+          : null,
     );
   }
 
@@ -285,6 +297,7 @@ class AnalyzedItem {
       'source': source,
       'flagged': flagged,
       'flag_reason': flagReason,
+      'other_segments': otherSegments?.map((e) => e.toJson()).toList(),
     };
   }
 }

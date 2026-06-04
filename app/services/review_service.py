@@ -72,7 +72,8 @@ _TALL_VS_MEDIAN_FRAC = 1.9
 # ...but only once the crop is genuinely large in absolute terms. In a paper of
 # small crops (median ~6%) a normal 12% question is 2x the median yet perfectly
 # fine, so we don't want to cry "merged" on it. A real two-question merge is big.
-_TALL_MIN_EXTENT_PCT = 45.0
+_TALL_MIN_EXTENT_PCT = 55.0
+
 
 # A single-segment crop whose bottom sits at/below this % of the page height
 # very likely continues onto the next page (it was cut at the page edge and not
@@ -559,12 +560,16 @@ def _cutoff_reason(
         and extent < _SHORT_VS_MEDIAN_FRAC * median_extent
         and extent < 10.0
     ):
-        return "Looks shorter than the other items — it may be only half the question. Re-select the full region."
+        labels = getattr(item, "option_labels", "") or ""
+        seen = {c for c in labels if c in "ABCD"}
+        if len(seen) < 4:
+            return "Looks shorter than the other items — it may be only half the question. Re-select the full region."
 
     # Much taller than its neighbours AND large in absolute terms -> likely two
     # items merged into one box (or a crop that overran into the next question).
     if (
-        median_extent > 0
+        len(item.segments) == 1
+        and median_extent > 0
         and extent > _TALL_VS_MEDIAN_FRAC * median_extent
         and extent >= _TALL_MIN_EXTENT_PCT
     ):
@@ -589,6 +594,9 @@ def _missing_options_reason(item: DetectedQuestion | AnalyzedItem) -> str | None
     ``option_labels`` is only populated by the text/OCR tiers; AI/manual items
     leave it empty and are never flagged here.
     """
+
+    if getattr(item, "is_solution", False):
+        return None
 
     labels = getattr(item, "option_labels", "") or ""
     seen = {c for c in labels if c in "ABCD"}
@@ -681,6 +689,7 @@ def build_analyzed_items(
                 source="auto",
                 flagged=flagged,
                 flag_reason=reason,
+                other_segments=list(q.other_segments) if q.other_segments else None,
             )
         )
 

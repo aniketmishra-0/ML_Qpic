@@ -142,3 +142,23 @@ def test_strict_keeps_only_listed_question_and_answer_pages():
     assert set(by_page) == {1, 7}
     assert by_page[1] is False
     assert by_page[7] is True
+
+
+def test_apply_page_ranges_filters_segments():
+    # A question starts on Page 4 (question page) but has segments on Page 5 and 6 (answer pages)
+    question = DetectedQuestion(
+        q_num="20",
+        is_solution=False,
+        segments=[
+            QuestionSegment(page=4, y_start_pct=10.0, y_end_pct=20.0),
+            QuestionSegment(page=5, y_start_pct=10.0, y_end_pct=20.0),
+            QuestionSegment(page=6, y_start_pct=10.0, y_end_pct=20.0),
+        ]
+    )
+    out = apply_page_ranges([question], question_pages={1, 2, 3, 4}, answer_pages={5, 6, 7, 8})
+    assert len(out) == 1
+    q20 = out[0]
+    assert q20.q_num == "20"
+    assert q20.is_solution is False
+    assert [s.page for s in q20.segments] == [4]
+

@@ -166,9 +166,9 @@ void main() {
     test('dark palette matches the web :root dark block', () {
       const p = QpicPalette.dark;
       // Brand duo-tone (theme-independent).
-      expect(p.brand, const Color(0xFF7C6CFF)); // --accent
-      expect(p.brandMagenta, const Color(0xFFB14EFF)); // --accent-2
-      expect(p.brandBlue, const Color(0xFF4B8DFF)); // --accent-3
+      expect(p.brand, const Color(0xFF2DD4BF)); // --accent
+      expect(p.brandMagenta, const Color(0xFF06B6D4)); // --accent-2
+      expect(p.brandBlue, const Color(0xFF38BDF8)); // --accent-3
       // Status accents used by box outlines + note chips.
       expect(p.success, const Color(0xFF2DD4BF)); // --success
       expect(p.warn, const Color(0xFFFBBF24)); // --warn
@@ -180,7 +180,7 @@ void main() {
 
     test('light palette matches the web :root[data-theme="light"] block', () {
       const p = QpicPalette.light;
-      expect(p.brand, const Color(0xFF7C6CFF)); // --accent (shared)
+      expect(p.brand, const Color(0xFF0D9488)); // --accent (shared)
       expect(p.success, const Color(0xFF0D9488)); // --success
       expect(p.warn, const Color(0xFFD97706)); // --warn
       expect(p.danger, const Color(0xFFE11D48)); // --danger

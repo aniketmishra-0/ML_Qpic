@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # huge default max_tokens triggers a 402 "requires more credits").
     AI_MAX_TOKENS: int = 1500
 
+    # Hugging Face ML Model detection
+    HUGGINGFACE_API_URL: Optional[str] = None
+    HUGGINGFACE_API_TOKEN: Optional[str] = None
+    HUGGINGFACE_CONFIDENCE: float = 0.40
+
+
     # PDF rendering
     PDF_RENDER_DPI: int = 200
 
@@ -121,23 +127,28 @@ class Settings(BaseSettings):
     model_config = ConfigDict(env_file=".env")
 
     def resolved_ai_provider(self) -> Optional[str]:
-        """Return the active AI provider ("openrouter"/"anthropic") or None.
+        """Return the active AI provider ("huggingface"/"openrouter"/"anthropic") or None.
 
-        Honours ``AI_PROVIDER`` when it names a provider whose key is present.
-        In "auto" mode OpenRouter wins when its key is set, otherwise Anthropic.
-        Returns None when no usable key is configured (AI tier stays off).
+        Honours ``AI_PROVIDER`` when it names a provider whose key/URL is present.
+        In "auto" mode Hugging Face wins if HUGGINGFACE_API_URL is set, then OpenRouter, then Anthropic.
+        Returns None when no usable key/URL is configured (AI/online tier stays off).
         """
 
         provider = (self.AI_PROVIDER or "auto").strip().lower()
+        has_hf = bool(self.HUGGINGFACE_API_URL and self.HUGGINGFACE_API_URL.strip())
         has_or = bool(self.OPENROUTER_API_KEY and self.OPENROUTER_API_KEY.strip())
         has_anthropic = bool(self.ANTHROPIC_API_KEY and self.ANTHROPIC_API_KEY.strip())
 
+        if provider == "huggingface" or provider == "hf":
+            return "huggingface" if has_hf else None
         if provider == "openrouter":
             return "openrouter" if has_or else None
         if provider == "anthropic":
             return "anthropic" if has_anthropic else None
 
         # auto
+        if has_hf:
+            return "huggingface"
         if has_or:
             return "openrouter"
         if has_anthropic:
@@ -145,6 +156,6 @@ class Settings(BaseSettings):
         return None
 
     def ai_is_configured(self) -> bool:
-        """True when some AI vision provider has a usable key."""
+        """True when some AI vision or online ML provider is configured."""
 
         return self.resolved_ai_provider() is not None

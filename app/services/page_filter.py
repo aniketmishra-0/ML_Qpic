@@ -130,12 +130,34 @@ def apply_page_ranges(
             # auto-detected label so the unspecified side still works.
             is_solution = question.is_solution
 
+        # Filter segments to only keep those that match the page ranges.
+        filtered_segs = []
+        for seg in question.segments:
+            if is_solution:
+                if answer_pages and seg.page not in answer_pages:
+                    continue
+                if not answer_pages and question_pages and seg.page in question_pages:
+                    continue
+            else:
+                if question_pages and seg.page not in question_pages:
+                    continue
+                if not question_pages and answer_pages and seg.page in answer_pages:
+                    continue
+            filtered_segs.append(seg)
+
+        if not filtered_segs:
+            continue
+
         result.append(
             DetectedQuestion(
                 q_num=question.q_num,
-                segments=question.segments,
+                segments=filtered_segs,
                 is_solution=is_solution,
+                option_labels=question.option_labels,
+                source=question.source,
+                align=question.align,
             )
         )
 
     return result
+

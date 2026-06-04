@@ -19,6 +19,7 @@ class AnalyzeResponse {
     required this.notes,
     required this.needsReview,
     this.answerKeyCount = 0,
+    this.bilingualDetected = false,
   });
 
   final String jobId;
@@ -33,6 +34,9 @@ class AnalyzeResponse {
 
   /// Number of answers parsed from the paper's answer key (0 when none found).
   final int answerKeyCount;
+
+  /// True when the detector found a bilingual side-by-side layout (English/Hindi).
+  final bool bilingualDetected;
 
   factory AnalyzeResponse.fromJson(Map<String, dynamic> json) {
     return AnalyzeResponse(
@@ -50,6 +54,7 @@ class AnalyzeResponse {
           .toList(),
       needsReview: json['needs_review'] as bool,
       answerKeyCount: (json['answer_key_count'] as num?)?.toInt() ?? 0,
+      bilingualDetected: json['bilingual_detected'] as bool? ?? false,
     );
   }
 
@@ -63,6 +68,7 @@ class AnalyzeResponse {
       'notes': notes.map((e) => e.toJson()).toList(),
       'needs_review': needsReview,
       'answer_key_count': answerKeyCount,
+      'bilingual_detected': bilingualDetected,
     };
   }
 }
