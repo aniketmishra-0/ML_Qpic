@@ -77,7 +77,7 @@ each question is, before cropping:
 | `pipeline.py` | — | Orchestrates the 3 tiers and decides when to escalate. |
 | `text_detector.py` | 1. Text | Reads the PDF's text layer (free, fast, for searchable PDFs). |
 | `ocr_detector.py` / `tesseract_locator.py` | 2. OCR | Tesseract OCR for scanned PDFs (deskew + denoise + threshold). |
-| `local_ml_detector.py` | 2.5. Local ML | Optional offline detector for bundled/fine-tuned question-region models. |
+| `local_ml_detector.py` | 2.5. Local ML | Optional offline detector — detects question/solution **regions** (bounding box coordinates only, does not read document content). |
 | `ai_detector.py` / `openrouter_detector.py` | 3. AI | Vision-model fallback for hard layouts (Anthropic or OpenRouter). |
 | `answer_key.py` / `ai_answer_key.py` | — | Reads the answer key (text layer, or AI on scans). |
 | `figure_detector.py` / `furniture.py` | — | Detects figures and strips page furniture (headers/dividers). |
@@ -217,6 +217,23 @@ without sending anything to the network.
 
 Turn Smart mode off to keep the original "type page ranges → straight to ZIP"
 behaviour.
+
+### Bilingual PDF support
+
+Qpic automatically detects **side-by-side bilingual layouts** (e.g. English left,
+Hindi right — common in competitive exam papers like JEE Main). When detected:
+
+- Duplicate question numbers in the two columns are **merged** into a single
+  item — no more doubled detection counts.
+- The **Bilingual Stitcher** in the review sidebar lets you choose:
+  - **English Only** — crops only the English (left) column.
+  - **Hindi Only** — crops only the Hindi (right) column.
+  - **Bilingual Horizontal** — stitches both columns side by side.
+  - **Bilingual Vertical** — stitches both columns top-to-bottom.
+  - **Standard** — uses the full detected region as-is.
+- Math-only solutions (no translation pair) automatically expand to full page
+  width.
+- The app auto-enables bilingual mode when a bilingual layout is detected.
 
 ## Tech stack summary
 

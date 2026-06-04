@@ -289,6 +289,7 @@ class ReviewController extends ChangeNotifier {
   set bilingualModeActive(bool value) {
     if (_bilingualModeActive == value) return;
     _bilingualModeActive = value;
+    _canvas.bilingualModeActive = value;
     notifyListeners();
   }
 
@@ -485,6 +486,7 @@ class ReviewController extends ChangeNotifier {
     _activeFinalizeBilingualMode = null;
     _refinalizing = false;
     _bilingualModeActive = false;
+    _canvas.bilingualModeActive = false;
   }
 
   // ---- Canvas operation forwarding (page nav / zoom / draw kind) ---------

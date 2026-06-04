@@ -211,4 +211,44 @@ void main() {
       expect(nextAutoNumber(false, items), '1');
     });
   });
+
+  group('nextAutoNumber — bilingual mode manual crop pairing', () {
+    test('empty list yields "1"', () {
+      expect(nextAutoNumber(false, const <AnalyzedItem>[], bilingualModeActive: true), '1');
+    });
+
+    test('first box drawn gets "1", second box drawn gets "1" to pair, third box gets "2"', () {
+      final items1 = const <AnalyzedItem>[];
+      expect(nextAutoNumber(false, items1, bilingualModeActive: true), '1');
+
+      final items2 = <AnalyzedItem>[
+        _item('1', isSolution: false),
+      ];
+      expect(nextAutoNumber(false, items2, bilingualModeActive: true), '1'); // second box gets same number
+
+      final items3 = <AnalyzedItem>[
+        _item('1', isSolution: false),
+        _item('1', isSolution: false),
+      ];
+      expect(nextAutoNumber(false, items3, bilingualModeActive: true), '2'); // third box increments
+
+      final items4 = <AnalyzedItem>[
+        _item('1', isSolution: false),
+        _item('1', isSolution: false),
+        _item('2', isSolution: false),
+      ];
+      expect(nextAutoNumber(false, items4, bilingualModeActive: true), '2'); // fourth box completes pair
+    });
+
+    test('ignores other type items when determining pairs', () {
+      final items = <AnalyzedItem>[
+        _item('1', isSolution: false), // Question 1
+        _item('1', isSolution: true),  // Solution 1
+      ];
+      // Question 1 has only 1 item of its type (the solution is ignored), so next question is still 1
+      expect(nextAutoNumber(false, items, bilingualModeActive: true), '1');
+      // Solution 1 has only 1 item of its type (the question is ignored), so next solution is still 1
+      expect(nextAutoNumber(true, items, bilingualModeActive: true), '1');
+    });
+  });
 }

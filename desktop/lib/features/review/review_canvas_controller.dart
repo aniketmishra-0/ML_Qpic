@@ -77,6 +77,7 @@ class ReviewCanvasController extends ChangeNotifier {
 
   bool _drawAsSolution = false;
   String _pendingNumber = '';
+  bool _bilingualModeActive = false;
 
   /// Optional snap seam (task 12.2). When null, drawn segments are committed
   /// as-is.
@@ -138,6 +139,15 @@ class ReviewCanvasController extends ChangeNotifier {
 
   /// The user-entered number for the next drawn box, or '' to auto-number.
   String get pendingNumber => _pendingNumber;
+
+  /// Whether bilingual mode is currently active.
+  bool get bilingualModeActive => _bilingualModeActive;
+  set bilingualModeActive(bool val) {
+    if (_bilingualModeActive != val) {
+      _bilingualModeActive = val;
+      _bump();
+    }
+  }
 
   /// True at the first page (used to disable the "previous" affordance).
   bool get isFirstPage => _currentPageIndex == 0;
@@ -513,8 +523,13 @@ class ReviewCanvasController extends ChangeNotifier {
       return;
     }
 
-    final String number =
-        numInput.isNotEmpty ? numInput : nextAutoNumber(isSolution, _items);
+    final String number = numInput.isNotEmpty
+        ? numInput
+        : nextAutoNumber(
+            isSolution,
+            _items,
+            bilingualModeActive: _bilingualModeActive,
+          );
     _items.add(
       AnalyzedItem(
         qNum: number,

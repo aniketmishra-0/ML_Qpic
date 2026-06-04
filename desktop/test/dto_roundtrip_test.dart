@@ -499,6 +499,7 @@ _JsonMap _genAnalyzedItem(math.Random r) => <String, dynamic>{
       'source': _pick(r, _sources),
       'flagged': _b(r),
       'flag_reason': _nstr(r),
+      'other_segments': r.nextBool() ? null : _segList(r),
     };
 
 _JsonMap _genReviewNote(math.Random r) => <String, dynamic>{
@@ -521,6 +522,7 @@ _JsonMap _genAnalyzeResponse(math.Random r) => <String, dynamic>{
       'notes': List.generate(r.nextInt(4), (_) => _genReviewNote(r)),
       'needs_review': _b(r),
       'answer_key_count': _int(r, max: 200),
+      'bilingual_detected': _b(r),
     };
 
 _JsonMap _genSnapRequest(math.Random r) => <String, dynamic>{
@@ -559,7 +561,7 @@ _JsonMap _genCropPreviewRequest(math.Random r) => <String, dynamic>{
       'padding': _int(r, max: 200),
       'image_format': _pick(r, _imageFormats),
       'jpg_quality': _int(r, min: 1, max: 100),
-      'bilingual_mode': _pick(r, const [null, 'english', 'hindi', 'bilingual_horizontal', 'bilingual_vertical']),
+      'bilingual_mode': _pick(r, const [null, 'english', 'hindi', 'bilingual_horizontal', 'bilingual_vertical', 'bilingual_separate']),
       'other_segments': r.nextBool() ? null : _segList(r),
     };
 
@@ -574,7 +576,7 @@ _JsonMap _genFinalizeRequest(math.Random r) => <String, dynamic>{
       'image_format': _pick(r, _imageFormats),
       'jpg_quality': _int(r, min: 1, max: 100),
       'answer_sheet': _b(r),
-      'bilingual_mode': _pick(r, const [null, 'english', 'hindi', 'bilingual_horizontal', 'bilingual_vertical']),
+      'bilingual_mode': _pick(r, const [null, 'english', 'hindi', 'bilingual_horizontal', 'bilingual_vertical', 'bilingual_separate']),
     };
 
 _JsonMap _genHealthResponse(math.Random r) => <String, dynamic>{
@@ -841,6 +843,7 @@ const Set<String> _kAnalyzedItem = {
   'source',
   'flagged',
   'flag_reason',
+  'other_segments',
 };
 
 const Set<String> _kReviewNote = {
@@ -861,6 +864,7 @@ const Set<String> _kAnalyzeResponse = {
   'notes',
   'needs_review',
   'answer_key_count',
+  'bilingual_detected',
 };
 
 const Set<String> _kSnapRequest = {

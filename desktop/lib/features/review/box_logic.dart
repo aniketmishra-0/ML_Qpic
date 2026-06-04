@@ -86,13 +86,33 @@ int findOverlappingItem(
 /// numbered independently; the first leading run of digits in each same-type
 /// `qNum` is parsed, and items of the other type are ignored. With no existing
 /// same-type items the result is `"1"` (Req 8.13).
-String nextAutoNumber(bool isSolution, List<AnalyzedItem> items) {
+String nextAutoNumber(
+  bool isSolution,
+  List<AnalyzedItem> items, {
+  bool bilingualModeActive = false,
+}) {
   int max = 0;
   for (final it in items) {
     if (it.isSolution != isSolution) continue;
     final match = RegExp(r'\d+').firstMatch(it.qNum);
     if (match != null) {
       max = math.max(max, int.parse(match.group(0)!));
+    }
+  }
+  if (max == 0) {
+    return '1';
+  }
+  if (bilingualModeActive) {
+    int countMax = 0;
+    for (final it in items) {
+      if (it.isSolution != isSolution) continue;
+      final match = RegExp(r'\d+').firstMatch(it.qNum);
+      if (match != null && int.parse(match.group(0)!) == max) {
+        countMax++;
+      }
+    }
+    if (countMax == 1) {
+      return max.toString();
     }
   }
   return (max + 1).toString();

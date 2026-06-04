@@ -632,7 +632,7 @@ class _FinalizeDownloadBar extends StatelessWidget {
                     size: 14, color: palette.brandBlue),
                 const SizedBox(width: 6),
                 Text(
-                  'Select Language for Download (द्विभाषी डाउनलोड योजक):',
+                  'Select Language for Download:', 
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -661,13 +661,18 @@ class _FinalizeDownloadBar extends StatelessWidget {
                   icon: Icon(Icons.border_horizontal_rounded, size: 14),
                 ),
                 ButtonSegment<String>(
+                  value: 'bilingual_separate',
+                  label: Text('Bilingual (Sep)'),
+                  icon: Icon(Icons.splitscreen_rounded, size: 14),
+                ),
+                ButtonSegment<String>(
                   value: 'english',
                   label: Text('English'),
                   icon: Icon(Icons.text_fields_rounded, size: 14),
                 ),
                 ButtonSegment<String>(
                   value: 'hindi',
-                  label: Text('Hindi (हिन्दी)'),
+                  label: Text('Hindi'),
                   icon: Icon(Icons.translate_rounded, size: 14),
                 ),
               ],
@@ -716,6 +721,8 @@ class _FinalizeDownloadBar extends StatelessWidget {
                       return 'Crops are ready (Bilingual Horizontal stitched).';
                     if (mode == 'bilingual_vertical')
                       return 'Crops are ready (Bilingual Vertical stitched).';
+                    if (mode == 'bilingual_separate')
+                      return 'Crops are ready (Bilingual Separate Files).';
                     return 'Crops are ready.';
                   }(),
                   style: TextStyle(color: palette.text, fontSize: 13),
@@ -993,9 +1000,10 @@ class _BilingualStitcherCard extends StatelessWidget {
                 items: const [
                   QpicDropdownItem(value: 'none', label: 'Standard (Default)'),
                   QpicDropdownItem(value: 'english', label: 'English Only'),
-                  QpicDropdownItem(value: 'hindi', label: 'Hindi Only (हिन्दी)'),
+                  QpicDropdownItem(value: 'hindi', label: 'Hindi Only'),
                   QpicDropdownItem(value: 'bilingual_horizontal', label: 'Bilingual (Horizontal)'),
                   QpicDropdownItem(value: 'bilingual_vertical', label: 'Bilingual (Vertical)'),
+                  QpicDropdownItem(value: 'bilingual_separate', label: 'Bilingual (Separate Files)'),
                 ],
                 onChanged: (value) {
                   controller.bilingualMode = value == 'none' ? null : value;
