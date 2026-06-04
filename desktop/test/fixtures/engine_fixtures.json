@@ -57,7 +57,8 @@
     ],
     "source": "auto",
     "flagged": true,
-    "flag_reason": "cut-off: continues on next page"
+    "flag_reason": "cut-off: continues on next page",
+    "other_segments": null
   },
 
   "ReviewNote": {
@@ -104,7 +105,8 @@
         ],
         "source": "auto",
         "flagged": false,
-        "flag_reason": null
+        "flag_reason": null,
+        "other_segments": null
       }
     ],
     "notes": [
@@ -118,7 +120,8 @@
       }
     ],
     "needs_review": true,
-    "answer_key_count": 24
+    "answer_key_count": 24,
+    "bilingual_detected": false
   },
 
   "SnapRequest": {

@@ -121,7 +121,7 @@ def _items_overlap(a: Any, b: Any) -> bool:
     return any(_seg_iou(sa, sb) >= _OVERLAP_IOU for sa in a.segments for sb in b.segments)
 
 
-def _dedupe_by_output_file(detected: list[Any]) -> list[Any]:
+def _dedupe_by_output_file(detected: list[Any], bilingual_mode: Optional[str] = None) -> list[Any]:
     """Collapse items that would be written to the same output file.
 
     The output filename is derived only from (is_solution, number), so a paper
@@ -131,23 +131,70 @@ def _dedupe_by_output_file(detected: list[Any]) -> list[Any]:
     the reported count. Here we keep a single item per output file, preferring
     the one with the largest vertical extent (the detailed write-up over the
     one-line grid cell).
+
+    When bilingual mode is active, we expect up to two items (English and Hindi)
+    for each question/solution number. In this case, we allow up to 2 items (first
+    two sorted left-to-right) per key, rather than discarding down to one.
     """
 
     def _key(q: Any) -> tuple[bool, int]:
         digits = re.findall(r"\d+", q.q_num)
         return (bool(q.is_solution), int(digits[0]) if digits else 0)
 
-    best: dict[tuple[bool, int], Any] = {}
-    order: list[tuple[bool, int]] = []
-    for q in detected:
-        k = _key(q)
-        if k not in best:
-            best[k] = q
-            order.append(k)
-        elif _item_extent(q) > _item_extent(best[k]):
-            best[k] = q
+    if not bilingual_mode or bilingual_mode == "none":
+        best: dict[tuple[bool, int], Any] = {}
+        order: list[tuple[bool, int]] = []
+        for q in detected:
+            k = _key(q)
+            if k not in best:
+                best[k] = q
+                order.append(k)
+            elif _item_extent(q) > _item_extent(best[k]):
+                best[k] = q
+        return [best[k] for k in order]
+    else:
+        grouped: dict[tuple[bool, int], list[Any]] = {}
+        order: list[tuple[bool, int]] = []
+        for q in detected:
+            k = _key(q)
+            if k not in grouped:
+                grouped[k] = []
+                order.append(k)
+            grouped[k].append(q)
 
-    return [best[k] for k in order]
+        filtered = []
+        for k in order:
+            items = grouped[k]
+            if len(items) == 1:
+                filtered.append(items[0])
+            else:
+                import functools
+
+                def compare_items(it1, it2):
+                    p1 = it1.segments[0].page if it1.segments else 0
+                    p2 = it2.segments[0].page if it2.segments else 0
+                    if p1 != p2:
+                        return -1 if p1 < p2 else 1
+
+                    s1 = it1.segments[0] if it1.segments else None
+                    s2 = it2.segments[0] if it2.segments else None
+                    if not s1 or not s2:
+                        return 0
+
+                    c1 = (s1.x_start_pct + s1.x_end_pct) / 2.0
+                    c2 = (s2.x_start_pct + s2.x_end_pct) / 2.0
+                    is_side_by_side = (abs(s1.x_start_pct - s2.x_start_pct) > 15.0) or (abs(c1 - c2) > 15.0)
+
+                    if is_side_by_side:
+                        return -1 if s1.x_start_pct < s2.x_start_pct else (1 if s1.x_start_pct > s2.x_start_pct else 0)
+                    else:
+                        return -1 if s1.y_start_pct < s2.y_start_pct else (1 if s1.y_start_pct > s2.y_start_pct else 0)
+
+                items.sort(key=functools.cmp_to_key(compare_items))
+                # Keep up to 2 items (English/left and Hindi/right)
+                filtered.append(items[0])
+                filtered.append(items[1])
+        return filtered
 
 
 def _dedupe_by_overlap(detected: list[Any]) -> list[Any]:
@@ -586,6 +633,10 @@ async def crop_pdf(
             answer_page_set = (
                 parse_page_ranges(answer_pages, max_page=total_pages) if has_answers else set()
             )
+            if has_questions and not question_page_set and not has_answers:
+                question_page_set = set(range(1, total_pages + 1))
+            if has_answers and not answer_page_set and not has_questions:
+                answer_page_set = set(range(1, total_pages + 1))
             skip_page_set = (
                 parse_page_ranges(skip_pages, max_page=total_pages) if skip_pages else set()
             )
@@ -915,6 +966,10 @@ async def analyze_pdf(
             answer_page_set = (
                 parse_page_ranges(answer_pages, max_page=total_pages) if has_answers else set()
             )
+            if has_questions and not question_page_set and not has_answers:
+                question_page_set = set(range(1, total_pages + 1))
+            if has_answers and not answer_page_set and not has_questions:
+                answer_page_set = set(range(1, total_pages + 1))
             skip_page_set = (
                 parse_page_ranges(skip_pages, max_page=total_pages) if skip_pages else set()
             )
@@ -1593,7 +1648,7 @@ async def crop_preview(
                 deskew=enh.get("deskew", False),
             )
 
-            if payload.bilingual_mode in ("bilingual_horizontal", "bilingual_vertical") and payload.other_segments:
+            if payload.bilingual_mode in ("bilingual_horizontal", "bilingual_vertical", "bilingual_separate") and payload.other_segments:
                 other_q = DetectedQuestion(
                     q_num=question.q_num,
                     is_solution=question.is_solution,
@@ -1617,7 +1672,7 @@ async def crop_preview(
                 )
 
                 gap = 20
-                if payload.bilingual_mode == "bilingual_horizontal":
+                if payload.bilingual_mode in ("bilingual_horizontal", "bilingual_separate"):
                     w = img.width + other_img.width + gap
                     h = max(img.height, other_img.height)
                     bilingual_img = Image.new("RGB", (w, h), (255, 255, 255))
@@ -1703,7 +1758,7 @@ async def finalize_crop(
     # duplicates" case from the review flow.
     detected = _analyzed_to_detected(payload.items)
     detected = _dedupe_by_overlap(detected)
-    detected = _dedupe_by_output_file(detected)
+    detected = _dedupe_by_output_file(detected, payload.bilingual_mode)
     if not detected:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=ERR_NO_QUESTIONS)
 
@@ -1729,7 +1784,7 @@ async def finalize_crop(
         crop_dpi = max(dpi, settings.CROP_RENDER_DPI)
 
         # Partition questions for bilingual export if requested
-        if payload.bilingual_mode in ("english", "hindi", "bilingual_horizontal", "bilingual_vertical"):
+        if payload.bilingual_mode in ("english", "hindi", "bilingual_horizontal", "bilingual_vertical", "bilingual_separate"):
             grouped = {}
             for item in detected:
                 key = (item.is_solution, item.q_num)
@@ -1742,6 +1797,7 @@ async def finalize_crop(
                 if len(items) == 1 and getattr(items[0], "other_segments", None):
                     en_item = items[0]
                     if payload.bilingual_mode == "english":
+                        setattr(en_item, "_bilingual_lang", "english")
                         filtered_items.append(en_item)
                     elif payload.bilingual_mode == "hindi":
                         # Build a DetectedQuestion using the other_segments as
@@ -1751,6 +1807,17 @@ async def finalize_crop(
                             is_solution=en_item.is_solution,
                             segments=en_item.other_segments,
                         )
+                        setattr(hi_item, "_bilingual_lang", "hindi")
+                        filtered_items.append(hi_item)
+                    elif payload.bilingual_mode == "bilingual_separate":
+                        hi_item = DetectedQuestion(
+                            q_num=en_item.q_num,
+                            is_solution=en_item.is_solution,
+                            segments=en_item.other_segments,
+                        )
+                        setattr(en_item, "_bilingual_lang", "english")
+                        setattr(hi_item, "_bilingual_lang", "hindi")
+                        filtered_items.append(en_item)
                         filtered_items.append(hi_item)
                     else:  # bilingual_horizontal or bilingual_vertical
                         hi_item = DetectedQuestion(
@@ -1790,14 +1857,32 @@ async def finalize_crop(
                     hi_item = items[1]
 
                     if payload.bilingual_mode == "english":
+                        setattr(en_item, "_bilingual_lang", "english")
                         filtered_items.append(en_item)
                     elif payload.bilingual_mode == "hindi":
+                        setattr(hi_item, "_bilingual_lang", "hindi")
+                        filtered_items.append(hi_item)
+                    elif payload.bilingual_mode == "bilingual_separate":
+                        setattr(en_item, "_bilingual_lang", "english")
+                        setattr(hi_item, "_bilingual_lang", "hindi")
+                        filtered_items.append(en_item)
                         filtered_items.append(hi_item)
                     else: # bilingual_horizontal or bilingual_vertical
                         setattr(en_item, "_bilingual_other", hi_item)
                         filtered_items.append(en_item)
                 else:
-                    filtered_items.append(items[0])
+                    item = items[0]
+                    if payload.bilingual_mode == "english":
+                        setattr(item, "_bilingual_lang", "english")
+                    elif payload.bilingual_mode == "hindi":
+                        setattr(item, "_bilingual_lang", "hindi")
+                    elif payload.bilingual_mode == "bilingual_separate":
+                        s = item.segments[0] if item.segments else None
+                        if s and s.x_start_pct > 50.0:
+                            setattr(item, "_bilingual_lang", "hindi")
+                        else:
+                            setattr(item, "_bilingual_lang", "english")
+                    filtered_items.append(item)
             items_to_crop = filtered_items
         else:
             items_to_crop = detected
@@ -1860,13 +1945,23 @@ async def finalize_crop(
                         bilingual_img.paste(other_img, (0, img.height + gap))
                         img = bilingual_img
 
+                lang = getattr(question, "_bilingual_lang", None)
+                curr_q_prefix = q_prefix
+                curr_s_prefix = s_prefix
+                if lang == "english":
+                    curr_q_prefix = "EQ"
+                    curr_s_prefix = "ES"
+                elif lang == "hindi":
+                    curr_q_prefix = "HQ"
+                    curr_s_prefix = "HS"
+
                 saved = save_question_image(
                     image=img,
                     q_num=question.q_num,
                     output_dir=job_dir,
                     is_solution=question.is_solution,
-                    question_prefix=q_prefix,
-                    solution_prefix=s_prefix,
+                    question_prefix=curr_q_prefix,
+                    solution_prefix=curr_s_prefix,
                     start_number=start_number,
                     image_format=out_format,
                     jpg_quality=jpg_quality,

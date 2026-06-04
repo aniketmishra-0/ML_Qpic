@@ -223,7 +223,7 @@ class CropPreviewRequest(BaseModel):
     padding: int = 20
     image_format: Literal["png", "jpg", "jpeg"] = "png"
     jpg_quality: int = 90
-    bilingual_mode: Optional[Literal["english", "hindi", "bilingual_horizontal", "bilingual_vertical"]] = None
+    bilingual_mode: Optional[Literal["english", "hindi", "bilingual_horizontal", "bilingual_vertical", "bilingual_separate"]] = None
     other_segments: Optional[list[QuestionSegment]] = None
 
 
@@ -242,7 +242,7 @@ class FinalizeRequest(BaseModel):
     # When False, skip the answer-sheet (answers.csv/json) even if a key was
     # found at analyze time. Defaults True so the sheet ships by default.
     answer_sheet: bool = True
-    bilingual_mode: Optional[Literal["english", "hindi", "bilingual_horizontal", "bilingual_vertical"]] = None
+    bilingual_mode: Optional[Literal["english", "hindi", "bilingual_horizontal", "bilingual_vertical", "bilingual_separate"]] = None
 
 
 class HealthResponse(BaseModel):

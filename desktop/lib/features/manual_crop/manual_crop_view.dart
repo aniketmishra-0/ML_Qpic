@@ -556,6 +556,18 @@ class _OutputConfig extends StatelessWidget {
             onChanged: (v) => controller.jpgQuality = v,
           ),
         ],
+        const SizedBox(height: 16),
+        SwitchListTile(
+          key: const ValueKey<String>('manual-crop-bilingual-mode'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Bilingual Mode',
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+          subtitle: const Text(
+              'Enable side-by-side bilingual question stitching and download options',
+              style: TextStyle(fontSize: 11.5)),
+          value: controller.bilingualModeActive,
+          onChanged: (val) => controller.bilingualModeActive = val,
+        ),
       ],
     );
   }

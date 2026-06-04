@@ -144,6 +144,7 @@ class ManualCropController extends ChangeNotifier {
   CropImageFormat _imageFormat = CropImageFormat.png;
   int _jpgQuality = AutoCropBounds.jpgQualityDefault;
   int _dpi = AutoCropBounds.dpiDefault;
+  bool _bilingualModeActive = false;
 
   bool _binarize = false;
   double _contrast = 1.0;
@@ -183,6 +184,14 @@ class ManualCropController extends ChangeNotifier {
   set deskew(bool value) {
     if (_deskew == value) return;
     _deskew = value;
+    notifyListeners();
+  }
+
+  bool get bilingualModeActive => _bilingualModeActive;
+  set bilingualModeActive(bool value) {
+    if (_bilingualModeActive == value) return;
+    _bilingualModeActive = value;
+    review.bilingualModeActive = value;
     notifyListeners();
   }
 
@@ -347,6 +356,10 @@ class ManualCropController extends ChangeNotifier {
       );
       // Load the page previews with an empty item list — every crop is drawn by
       // hand in the canvas (Req 7.2).
+      review.bilingualModeActive = _bilingualModeActive;
+      if (_bilingualModeActive) {
+        review.bilingualMode = 'english';
+      }
       review.loadFromManual(response);
       // Keep the per-item crop preview in step with this tool's output config so
       // a preview renders exactly as the finalized download will (Req 7.4).
@@ -407,6 +420,7 @@ class ManualCropController extends ChangeNotifier {
     _fileName = null;
     _errorText = null;
     _enhancePreviewJobId = null;
+    _bilingualModeActive = false;
 
     // Independent output configuration.
     _questionPrefix = defaults?.defaultQuestionPrefix ?? 'Q';
