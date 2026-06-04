@@ -19,6 +19,7 @@ from .base import (
     ContentLine,
     QuestionStart,
     detect_columns,
+    is_answer_key_header,
     match_question_start_ex,
     match_solution_header,
     starts_to_questions,
@@ -74,6 +75,7 @@ class OCRDetector:
         page_confidence: dict[int, float] = {}
 
         in_solutions = False
+        in_answer_key = False
         for page_index, img in enumerate(page_images, start=1):
             processed = self._preprocess_for_ocr(img, render_dpi=effective_dpi)
             page_heights[page_index] = float(processed.height)
@@ -93,8 +95,8 @@ class OCRDetector:
 
             page_confidence[page_index] = self._mean_confidence(data)
 
-            page_starts, page_lines, in_solutions = self._ocr_data_to_starts(
-                data=data, page_num=page_index, in_solutions=in_solutions
+            page_starts, page_lines, in_solutions, in_answer_key = self._ocr_data_to_starts(
+                data=data, page_num=page_index, in_solutions=in_solutions, in_answer_key=in_answer_key
             )
             starts.extend(page_starts)
             content_lines.extend(page_lines)
@@ -265,8 +267,8 @@ class OCRDetector:
 
 
     def _ocr_data_to_starts(
-        self, data: dict[str, Any], page_num: int, in_solutions: bool = False
-    ) -> tuple[list[QuestionStart], list[ContentLine], bool]:
+        self, data: dict[str, Any], page_num: int, in_solutions: bool = False, in_answer_key: bool = False
+    ) -> tuple[list[QuestionStart], list[ContentLine], bool, bool]:
         """Reconstruct text lines from Tesseract word boxes and find markers.
 
         Words are grouped using Tesseract's own structural keys
@@ -362,6 +364,7 @@ class OCRDetector:
         starts: list[QuestionStart] = []
         content_lines: list[ContentLine] = []
         solutions_started = in_solutions
+        answer_key_started = in_answer_key
 
         # Emit lines in reading order (top-to-bottom, then left-to-right).
         ordered_keys = sorted(
@@ -387,8 +390,13 @@ class OCRDetector:
             # item after it is a solution, not a question. The header line
             # itself is not real content, so we skip it (otherwise the preceding
             # question's crop would bleed down into the solutions header).
-            if not solutions_started and match_solution_header(line_text):
-                solutions_started = True
+            if match_solution_header(line_text):
+                if is_answer_key_header(line_text):
+                    answer_key_started = True
+                    solutions_started = False
+                else:
+                    solutions_started = True
+                    answer_key_started = False
                 continue
 
             # Drop app/website branding ("Android App | iOS App | PW Website")
@@ -408,7 +416,7 @@ class OCRDetector:
                 )
             )
 
-            q_info = match_question_start_ex(
+            q_info = None if answer_key_started else match_question_start_ex(
                 line_text,
                 getattr(self, "_marker_style", "auto"),
                 custom_regex=getattr(self, "_custom_regex", None),
@@ -427,7 +435,7 @@ class OCRDetector:
                     )
                 )
 
-        return starts, content_lines, solutions_started
+        return starts, content_lines, solutions_started, answer_key_started
 
     # Minimum words on a page before we trust a word-box column split. Below
     # this a "gutter" is just sampling noise, so we keep the single-column path.

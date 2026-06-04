@@ -20,7 +20,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
 
 from ..config import Settings
@@ -48,7 +48,7 @@ from ..services.pdf_tools.edit_service import (
     extract_text_spans,
     ocr_pdf,
 )
-from ..services.pdf_tools.enhance_service import enhance_pdf, enhance_page_to_png
+from ..services.pdf_tools.enhance_service import enhance_pdf, enhance_page_to_png, enhance_image, ai_enhance_image, hf_super_resolve
 from ..services.pdf_tools.preflight_service import normalize_page_sizes, preflight_pdf
 from ..utils.file_utils import create_job_dir, generate_job_id, get_job_dir, safe_cleanup_job
 from ..utils.image_utils import ensure_rgb
@@ -877,3 +877,94 @@ async def enhance_page_preview(
     except IndexError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Page out of range.")
     return Response(content=png, media_type="image/png")
+
+
+@router.post("/enhance-image")
+async def enhance_image_endpoint(
+    file: UploadFile = File(..., description="The image to enhance."),
+    binarize: bool = Form(False, description="Convert to pure high-contrast B&W."),
+    binarize_threshold: int = Form(185, ge=0, le=255, description="Binarization threshold."),
+    contrast: float = Form(1.0, description="Contrast factor."),
+    brightness: float = Form(1.0, description="Brightness factor."),
+    watermark_threshold: int = Form(255, ge=0, le=255, description="Watermark background threshold."),
+    denoise: int = Form(0, ge=0, le=5, description="Noise reduction level."),
+    deskew: bool = Form(False, description="Straighten scanned tilt."),
+) -> Response:
+    """Enhance an uploaded JPEG/PNG image and return the processed PNG image directly."""
+    try:
+        from PIL import Image
+        contents = await file.read()
+        img = Image.open(io.BytesIO(contents))
+        
+        enhanced = await asyncio.to_thread(
+            enhance_image,
+            img,
+            binarize=binarize,
+            binarize_threshold=binarize_threshold,
+            contrast=contrast,
+            brightness=brightness,
+            watermark_threshold=watermark_threshold,
+            denoise=denoise,
+            deskew=deskew,
+        )
+        
+        out = io.BytesIO()
+        enhanced.save(out, format="PNG")
+        return Response(content=out.getvalue(), media_type="image/png")
+    except Exception as exc:
+        logger.exception("Failed to enhance image: %s", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Couldn't enhance that image: {str(exc)}",
+        )
+
+
+@router.post("/ai-enhance-image")
+async def ai_enhance_image_endpoint(
+    file: UploadFile = File(..., description="The image to enhance."),
+    strength: int = Form(3, ge=1, le=5, description="Enhancement strength (1=subtle, 5=aggressive)."),
+    face_enhance: bool = Form(True, description="Detail-preserving mode for faces/text."),
+    sharpen: int = Form(3, ge=0, le=5, description="Sharpening passes (0=off, 5=max)."),
+    upscale: int = Form(1, ge=1, le=2, description="1=keep size, 2=2× upscale (local)."),
+    color_fix: bool = Form(True, description="Auto white-balance / color correction."),
+    online_sr: bool = Form(False, description="Use Hugging Face super-resolution (requires token)."),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """AI-powered image enhancement (Remini-like) using local OpenCV algorithms.
+
+    Applies Non-Local Means denoising, CLAHE adaptive contrast, detail enhancement,
+    multi-pass Unsharp Mask sharpening, and auto color correction. Optionally
+    sends the result to HF Inference API for 2× AI super-resolution.
+    """
+    try:
+        from PIL import Image
+        contents = await file.read()
+        img = Image.open(io.BytesIO(contents))
+
+        # Step 1: Local AI-like enhancement (always runs)
+        enhanced = await asyncio.to_thread(
+            ai_enhance_image,
+            img,
+            strength=strength,
+            face_enhance=face_enhance,
+            sharpen=sharpen,
+            upscale=upscale,
+            color_fix=color_fix,
+        )
+
+        # Step 2: Optional online super-resolution via HF
+        if online_sr and settings.HUGGINGFACE_API_TOKEN:
+            enhanced = await hf_super_resolve(
+                enhanced,
+                api_token=settings.HUGGINGFACE_API_TOKEN,
+            )
+
+        out = io.BytesIO()
+        enhanced.save(out, format="PNG")
+        return Response(content=out.getvalue(), media_type="image/png")
+    except Exception as exc:
+        logger.exception("Failed to AI-enhance image: %s", str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Couldn't AI-enhance that image: {str(exc)}",
+        )

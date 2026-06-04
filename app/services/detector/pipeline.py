@@ -13,6 +13,7 @@ from PIL import Image
 
 from ...config import Settings
 from ...models.schemas import DetectedQuestion
+from .base import merge_bilingual_pairs
 from .ai_detector import AIDetector
 from .ocr_detector import OCRDetector
 from .text_detector import TextDetector
@@ -62,7 +63,12 @@ class DetectionPipeline:
             confidence=confidence,
             custom_regex=custom_regex,
         )
-        return resolve_vertical_overlaps(questions), method
+        questions = resolve_vertical_overlaps(questions)
+        # Merge bilingual duplicate pairs (e.g. English left + Hindi right)
+        # into single items with other_segments. This runs as a post-processing
+        # step on every detector's output so local_ml, AI, OCR all benefit.
+        questions = merge_bilingual_pairs(questions)
+        return questions, method
 
     async def _detect_raw(
         self,

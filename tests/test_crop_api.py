@@ -206,3 +206,35 @@ def test_bilingual_layout_sorting() -> None:
     assert items[0] == item_top
     assert items[1] == item_bottom
 
+
+@pytest.mark.asyncio
+async def test_enhance_image_endpoint() -> None:
+    from PIL import Image
+    import io
+    # Create a simple 10x10 test image
+    img = Image.new("RGB", (10, 10), color="red")
+    img_byte_arr = io.BytesIO()
+    img.save(img_byte_arr, format='PNG')
+    img_bytes = img_byte_arr.getvalue()
+
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            files = {"file": ("test.png", img_bytes, "image/png")}
+            data = {
+                "binarize": "true",
+                "binarize_threshold": "128",
+                "contrast": "1.2",
+                "brightness": "1.1",
+                "watermark_threshold": "240",
+                "denoise": "1",
+                "deskew": "false",
+            }
+            resp = await client.post("/api/tools/enhance-image", files=files, data=data)
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "image/png"
+            # Read the output image and make sure it has the same size
+            out_img = Image.open(io.BytesIO(resp.content))
+            assert out_img.size == (10, 10)
+
+

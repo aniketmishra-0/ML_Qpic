@@ -51,6 +51,7 @@ from ..services.detector.answer_key import (
 )
 from ..services.detector.furniture import collect_document_furniture
 from ..services.detector.ocr_detector import OCRDetector
+from ..services.detector.base import has_bilingual_items
 from ..services.detector.pipeline import DetectionPipeline
 from ..services.detector.training_data import write_training_example
 from ..services.page_filter import PageRangeError, apply_page_ranges, parse_page_ranges
@@ -1137,6 +1138,7 @@ async def analyze_pdf(
             notes=notes,
             needs_review=needs_review,
             answer_key_count=len(answer_key),
+            bilingual_detected=has_bilingual_items(detected),
         )
     except HTTPException:
         if job_dir is not None:
@@ -1735,7 +1737,32 @@ async def finalize_crop(
 
             filtered_items = []
             for (is_sol, q_num), items in grouped.items():
-                if len(items) >= 2:
+                # New path: the bilingual merge pass already paired the English
+                # and Hindi segments into a single item with other_segments.
+                if len(items) == 1 and getattr(items[0], "other_segments", None):
+                    en_item = items[0]
+                    if payload.bilingual_mode == "english":
+                        filtered_items.append(en_item)
+                    elif payload.bilingual_mode == "hindi":
+                        # Build a DetectedQuestion using the other_segments as
+                        # its primary segments (the Hindi column).
+                        hi_item = DetectedQuestion(
+                            q_num=en_item.q_num,
+                            is_solution=en_item.is_solution,
+                            segments=en_item.other_segments,
+                        )
+                        filtered_items.append(hi_item)
+                    else:  # bilingual_horizontal or bilingual_vertical
+                        hi_item = DetectedQuestion(
+                            q_num=en_item.q_num,
+                            is_solution=en_item.is_solution,
+                            segments=en_item.other_segments,
+                        )
+                        setattr(en_item, "_bilingual_other", hi_item)
+                        filtered_items.append(en_item)
+                elif len(items) >= 2:
+                    # Legacy path: duplicate q_nums from two columns (e.g. when
+                    # the bilingual merge didn't run, or manual items).
                     import functools
 
                     def compare_items(it1, it2):

@@ -278,8 +278,16 @@ class _QpicAppState extends State<QpicApp> {
   /// drives the canvas's answer-sheet advisory (Req 6.4, 6.5).
   void _openAutoCropReview(AnalyzeResponse analysis) {
     _autoCropReview.loadFromAnalyze(analysis);
-    _autoCropReview.bilingualModeActive =
-        _autoCropController.bilingualModeActive;
+    // Auto-enable bilingual mode when the backend detected a bilingual layout
+    // (e.g. English left / Hindi right on the same page). Default to English
+    // only, which is the most common use case for exam prep.
+    if (analysis.bilingualDetected) {
+      _autoCropReview.bilingualModeActive = true;
+      _autoCropReview.bilingualMode = 'english';
+    } else {
+      _autoCropReview.bilingualModeActive =
+          _autoCropController.bilingualModeActive;
+    }
     // Keep the per-item crop preview in step with the Auto Crop output config
     // so a preview renders exactly as the finalized download will (Req 6.6).
     _autoCropReview.setPreviewOutput(

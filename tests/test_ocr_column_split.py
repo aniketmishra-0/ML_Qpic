@@ -104,7 +104,7 @@ def test_cross_gutter_lines_split_per_column() -> None:
     """A merged left+right row is split into two lines, one per column."""
 
     detector = OCRDetector()
-    starts, lines, _ = detector._ocr_data_to_starts(
+    starts, lines, _, _ = detector._ocr_data_to_starts(
         data=_two_column_merged_data(), page_num=1
     )
 
@@ -121,7 +121,7 @@ def test_all_eight_markers_recovered() -> None:
     """Both columns' markers survive — none are buried mid-merged-line."""
 
     detector = OCRDetector()
-    starts, _, _ = detector._ocr_data_to_starts(
+    starts, _, _, _ = detector._ocr_data_to_starts(
         data=_two_column_merged_data(), page_num=1
     )
     nums = sorted(s.q_num for s in starts)
@@ -133,7 +133,7 @@ def test_left_markers_keep_left_column_extent() -> None:
     cause). Their x-extent stays in the left half."""
 
     detector = OCRDetector()
-    starts, _, _ = detector._ocr_data_to_starts(
+    starts, _, _, _ = detector._ocr_data_to_starts(
         data=_two_column_merged_data(), page_num=1
     )
     mid = PAGE_W / 2.0
@@ -162,7 +162,7 @@ def test_single_column_grouping_unchanged() -> None:
         "word_num": [0, 1, 2, 3],
     }
     detector = OCRDetector()
-    starts, lines, _ = detector._ocr_data_to_starts(data=data, page_num=1)
+    starts, lines, _, _ = detector._ocr_data_to_starts(data=data, page_num=1)
 
     assert len(lines) == 1
     assert lines[0].text == "1. Question one stem"

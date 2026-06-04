@@ -212,9 +212,9 @@ class QpicPalette extends ThemeExtension<QpicPalette> {
   /// Dark palette — reproduces the web `:root` / `:root[data-theme="dark"]`
   /// block (the web UI's default).
   static const QpicPalette dark = QpicPalette(
-    brand: Color(0xFF7C6CFF), // --accent
-    brandMagenta: Color(0xFFB14EFF), // --accent-2
-    brandBlue: Color(0xFF4B8DFF), // --accent-3
+    brand: Color(0xFF2DD4BF), // --accent
+    brandMagenta: Color(0xFF06B6D4), // --accent-2
+    brandBlue: Color(0xFF38BDF8), // --accent-3
     success: Color(0xFF2DD4BF), // --success
     warn: Color(0xFFFBBF24), // --warn
     danger: Color(0xFFFB7185), // --danger
@@ -235,9 +235,9 @@ class QpicPalette extends ThemeExtension<QpicPalette> {
   /// Light palette — reproduces the web `:root[data-theme="light"]` block
   /// (and the matching `prefers-color-scheme: light` system block).
   static const QpicPalette light = QpicPalette(
-    brand: Color(0xFF7C6CFF), // --accent
-    brandMagenta: Color(0xFFB14EFF), // --accent-2
-    brandBlue: Color(0xFF4B8DFF), // --accent-3
+    brand: Color(0xFF0D9488), // --accent
+    brandMagenta: Color(0xFF0891B2), // --accent-2
+    brandBlue: Color(0xFF0284C7), // --accent-3
     success: Color(0xFF0D9488), // --success
     warn: Color(0xFFD97706), // --warn
     danger: Color(0xFFE11D48), // --danger

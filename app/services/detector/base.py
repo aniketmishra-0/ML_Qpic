@@ -126,6 +126,18 @@ def match_solution_header(text: str) -> bool:
     return normalized in SOLUTION_HEADERS
 
 
+def is_answer_key_header(text: str) -> bool:
+    """Return True if a line is an answer key header."""
+
+    candidate = (text or "").strip()
+    if not candidate or len(candidate) > 40:
+        return False
+
+    normalized = re.sub(r"[^a-z0-9]", "", candidate.lower())
+    return normalized in {"answerkey", "answerskey", "key", "solutionkey", "keysolution", "keysolutions"}
+
+
+
 # Section dividers separate groups of questions in a paper ("PART-II
 # (CHEMISTRY)", "SECTION-1", "This section contains FOUR (04) questions").
 # These lines, and the marking-scheme instructions that follow them, sit
@@ -1019,6 +1031,21 @@ _HEADER_MARKER_MAX_PCT = 25.0
 _HEADER_MAX_LINES = 4
 
 
+def _is_question_line(text: str) -> bool:
+    """True if a line starts with an MCQ option label or statement list number."""
+    candidate = (text or "").strip()
+    if not candidate:
+        return False
+    if _OPTION_START_RE.match(candidate):
+        return True
+    for pattern in WEAK_QUESTION_PATTERNS:
+        if pattern.match(candidate):
+            return True
+    if STRONG_QUESTION_PATTERN.match(candidate):
+        return True
+    return False
+
+
 def _find_banner_headers(
     lines: list[ContentLine],
     starts: list[QuestionStart],
@@ -1106,6 +1133,9 @@ def _find_banner_headers(
         ]
         # Empty → nothing to strip. Too many → dense continuation content.
         if not pre or len(pre) > _HEADER_MAX_LINES:
+            return []
+        # If any line is probable question content, do not strip any of them.
+        if any(_is_question_line(ln.text) for ln in pre):
             return []
         return pre
 
@@ -1778,6 +1808,26 @@ def starts_to_questions(
                 max(existing[1], ln.x_right),
             )
 
+    # On multi-column pages, add a small margin inside the gutter boundary to
+    # prevent edge-clipping. Content sitting very close to the column divider
+    # (common in bilingual PDFs) can be cut off by the tight bounds.
+    for (page, col), (cb_left, cb_right) in list(col_content_bounds.items()):
+        cols = _cols_for(page)
+        if len(cols) <= 1:
+            continue
+        pw = float(widths.get(page) or 0.0)
+        if pw <= 0:
+            continue
+        # 0.5% of page width as margin inside the column boundary.
+        margin = pw * 0.005
+        col_tile = cols[col] if col < len(cols) else (0.0, pw)
+        # Expand the content bounds outward by margin, but don't exceed the
+        # column tile (the gutter center). This ensures we don't bleed into
+        # the adjacent column while still giving a comfortable margin.
+        expanded_left = max(col_tile[0], cb_left - margin)
+        expanded_right = min(col_tile[1], cb_right + margin)
+        col_content_bounds[(page, col)] = (expanded_left, expanded_right)
+
     def _x_range(page: int, col: int) -> tuple[float, float]:
         """Horizontal crop range for a (page, column): tight content bounds when
         known, otherwise the column tile."""
@@ -1788,6 +1838,7 @@ def starts_to_questions(
         cols = _cols_for(page)
         page_width = float(widths.get(page) or 0.0)
         return cols[col] if col < len(cols) else (0.0, page_width)
+
 
     # Snap each marker's effective top to the top of its own text row. A question
     # number ("20.") is frequently rendered in its own text block whose y_top
@@ -1992,6 +2043,25 @@ def starts_to_questions(
             )
         )
 
+    # ---- Bilingual merge pass ------------------------------------------------
+    #
+    # A bilingual side-by-side paper (e.g. JEE Main: English left, Hindi right)
+    # produces two DetectedQuestion objects for every real question — one from
+    # each column. Both share the same q_num and is_solution flag, but their
+    # segments occupy different columns on the same page.
+    #
+    # We merge each pair into a single DetectedQuestion whose primary segments
+    # are the English (left) column and whose other_segments carry the Hindi
+    # (right) column. This halves the question count and lets the bilingual
+    # export modes (english / hindi / bilingual_horizontal / bilingual_vertical)
+    # work without the user manually pairing them.
+    #
+    # When a bilingual page has items that appear in only ONE column (e.g.
+    # a math-heavy solution with no Hindi translation), the item's segments
+    # are expanded to full page width since the content naturally spans the
+    # area that would otherwise hold the missing translation.
+    questions = merge_bilingual_pairs(questions)
+
     # Sort questions numerically when possible.
     # Questions come first (is_solution=False), then solutions (is_solution=True),
     # each group ordered by its number.
@@ -2001,3 +2071,149 @@ def starts_to_questions(
 
     questions.sort(key=_q_key)
     return questions
+
+
+def merge_bilingual_pairs(
+    questions: list[DetectedQuestion],
+) -> list[DetectedQuestion]:
+    """Merge bilingual duplicate pairs into single items with ``other_segments``.
+
+    A bilingual page has identical question numbers in two side-by-side columns.
+    We detect this pattern and merge each pair: the left-column item becomes the
+    primary (English) and the right-column item becomes ``other_segments``
+    (Hindi).
+
+    This function works with percentage-based coordinates so it can be called
+    as a post-processing step on any detector's output (text, OCR, local_ml, AI).
+
+    Returns the merged question list (or the original list unchanged if no
+    bilingual pattern is found).
+    """
+
+    # Group questions by (is_solution, q_num) to find duplicates.
+    from collections import defaultdict
+    groups: dict[tuple[bool, str], list[DetectedQuestion]] = defaultdict(list)
+    for q in questions:
+        groups[(q.is_solution, q.q_num)].append(q)
+
+    # Count how many groups have exactly 2 items on the same page in different
+    # horizontal regions — the signature of a bilingual side-by-side layout.
+    bilingual_pair_count = 0
+    single_item_count = 0
+    for key, items in groups.items():
+        if len(items) == 2:
+            s1 = items[0].segments[0] if items[0].segments else None
+            s2 = items[1].segments[0] if items[1].segments else None
+            if s1 and s2 and s1.page == s2.page:
+                c1 = (s1.x_start_pct + s1.x_end_pct) / 2.0
+                c2 = (s2.x_start_pct + s2.x_end_pct) / 2.0
+                if abs(c1 - c2) > 15.0:
+                    bilingual_pair_count += 1
+        elif len(items) == 1:
+            single_item_count += 1
+
+    # If we don't have a clear bilingual pattern (need at least 2 bilingual
+    # pairs to be confident, or at least 1 pair when total items are few),
+    # return unchanged.
+    total_groups = len(groups)
+    if bilingual_pair_count == 0:
+        return questions
+    if bilingual_pair_count < 2 and total_groups > 4:
+        return questions
+
+    # Identify which pages are bilingual (have column-paired duplicates).
+    bilingual_pages: set[int] = set()
+    for key, items in groups.items():
+        if len(items) == 2:
+            s1 = items[0].segments[0] if items[0].segments else None
+            s2 = items[1].segments[0] if items[1].segments else None
+            if s1 and s2 and s1.page == s2.page:
+                c1 = (s1.x_start_pct + s1.x_end_pct) / 2.0
+                c2 = (s2.x_start_pct + s2.x_end_pct) / 2.0
+                if abs(c1 - c2) > 15.0:
+                    bilingual_pages.add(s1.page)
+
+    merged: list[DetectedQuestion] = []
+    seen: set[tuple[bool, str]] = set()
+
+    for q in questions:
+        key = (q.is_solution, q.q_num)
+        if key in seen:
+            continue
+
+        items = groups[key]
+
+        if len(items) == 2:
+            s1 = items[0].segments[0] if items[0].segments else None
+            s2 = items[1].segments[0] if items[1].segments else None
+
+            is_side_by_side = False
+            if s1 and s2 and s1.page == s2.page:
+                c1 = (s1.x_start_pct + s1.x_end_pct) / 2.0
+                c2 = (s2.x_start_pct + s2.x_end_pct) / 2.0
+                is_side_by_side = abs(c1 - c2) > 15.0
+
+            if is_side_by_side:
+                # Determine left (English) vs right (Hindi).
+                if s1.x_start_pct <= s2.x_start_pct:
+                    en_item, hi_item = items[0], items[1]
+                else:
+                    en_item, hi_item = items[1], items[0]
+
+                merged.append(
+                    DetectedQuestion(
+                        q_num=en_item.q_num,
+                        is_solution=en_item.is_solution,
+                        segments=en_item.segments,
+                        option_labels=en_item.option_labels,
+                        other_segments=hi_item.segments,
+                    )
+                )
+                seen.add(key)
+                continue
+
+        if len(items) == 1:
+            item = items[0]
+            # Check if this item is on a bilingual page but has no pair.
+            # This means it's a single-language item (e.g. math-only solution
+            # with no Hindi translation). Expand its width to full page since
+            # there's no translation column occupying the other half.
+            # Segments use percentage coordinates so 0.0 to 100.0 = full page.
+            first_seg = item.segments[0] if item.segments else None
+            if first_seg and first_seg.page in bilingual_pages:
+                expanded_segments = []
+                for seg in item.segments:
+                    expanded_segments.append(
+                        QuestionSegment(
+                            page=seg.page,
+                            y_start_pct=seg.y_start_pct,
+                            y_end_pct=seg.y_end_pct,
+                            x_start_pct=0.0,
+                            x_end_pct=100.0,
+                        )
+                    )
+                merged.append(
+                    DetectedQuestion(
+                        q_num=item.q_num,
+                        is_solution=item.is_solution,
+                        segments=expanded_segments,
+                        option_labels=item.option_labels,
+                    )
+                )
+                seen.add(key)
+                continue
+
+        # Default: keep all items from this group unchanged.
+        for item in items:
+            merged.append(item)
+        seen.add(key)
+
+    return merged
+
+
+def has_bilingual_items(questions: list[DetectedQuestion]) -> bool:
+    """Return True when any question carries bilingual ``other_segments``."""
+
+    return any(q.other_segments for q in questions)
+
+

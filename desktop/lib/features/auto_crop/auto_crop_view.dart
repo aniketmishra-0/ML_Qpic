@@ -898,15 +898,15 @@ class _SectionCard extends StatelessWidget {
   Color _getAccentColor(QpicPalette? palette) {
     switch (title) {
       case 'Pages':
-        return palette?.brand ?? const Color(0xFF7C6CFF);
+        return palette?.brand ?? const Color(0xFF2DD4BF);
       case 'Detection':
-        return palette?.brandMagenta ?? const Color(0xFFB14EFF);
+        return palette?.brandMagenta ?? const Color(0xFF06B6D4);
       case 'Output':
-        return palette?.brandBlue ?? const Color(0xFF4B8DFF);
+        return palette?.brandBlue ?? const Color(0xFF38BDF8);
       case 'Render':
         return palette?.warn ?? const Color(0xFFFBBF24);
       default:
-        return palette?.brand ?? const Color(0xFF7C6CFF);
+        return palette?.brand ?? const Color(0xFF2DD4BF);
     }
   }
 
@@ -1244,10 +1244,10 @@ class _ModeToggles extends StatelessWidget {
         _buildToggleItem(
           key: const ValueKey<String>('auto-crop-online-mode'),
           icon: Icons.cloud_outlined,
-          title: 'Online Mode (Coming Soon)',
-          subtitle: 'Allow the AI vision tier when configured.',
-          value: false,
-          onChanged: null,
+          title: 'Online Mode',
+          subtitle: 'Use Hugging Face ML Model for online detection.',
+          value: controller.onlineMode,
+          onChanged: (value) => controller.onlineMode = value,
           brandColor: brand,
           palette: palette,
           theme: theme,
@@ -1864,7 +1864,7 @@ class _SubmitButton extends StatelessWidget {
               smartMode ? Icons.travel_explore_rounded : Icons.crop_rounded),
       label: Text(label),
       style: FilledButton.styleFrom(
-        backgroundColor: palette?.brand ?? const Color(0xFF7C6CFF),
+        backgroundColor: palette?.brand ?? const Color(0xFF2DD4BF),
         foregroundColor: Colors.white,
         disabledBackgroundColor: palette?.border ?? theme.dividerColor,
         disabledForegroundColor: palette?.mutedAlt,

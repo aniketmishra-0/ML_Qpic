@@ -71,3 +71,14 @@ def test_build_review_notes_includes_option_note() -> None:
         n.kind == "incomplete" and n.q_num == "3" and "option" in n.message.lower()
         for n in notes
     ), [(n.kind, n.message) for n in notes]
+
+
+def test_solution_never_flagged_for_missing_options() -> None:
+    q = DetectedQuestion(
+        q_num="12",
+        is_solution=True,
+        segments=[QuestionSegment(page=6, y_start_pct=5.0, y_end_pct=20.0)],
+        option_labels="AC",
+    )
+    assert _missing_options_reason(q) is None
+

@@ -680,47 +680,62 @@ class ReviewController extends ChangeNotifier {
     List<QuestionSegment>? otherSegs;
 
     if (_bilingualMode != null && _bilingualMode != 'none') {
-      try {
-        final pairItem = current.firstWhere(
-          (element) =>
-              element.qNum == it.qNum &&
-              element.isSolution == it.isSolution &&
-              element != it,
-        );
-        final s1 = it.segments.isNotEmpty ? it.segments.first : null;
-        final s2 =
-            pairItem.segments.isNotEmpty ? pairItem.segments.first : null;
-        bool isItFirst = true;
-        if (s1 != null && s2 != null) {
-          if (s1.page != s2.page) {
-            isItFirst = s1.page < s2.page;
-          } else {
-            final double c1 = (s1.xStartPct + s1.xEndPct) / 2.0;
-            final double c2 = (s2.xStartPct + s2.xEndPct) / 2.0;
-            final bool isSideBySide =
-                (s1.xStartPct - s2.xStartPct).abs() > 15.0 ||
-                    (c1 - c2).abs() > 15.0;
-            if (isSideBySide) {
-              isItFirst = s1.xStartPct <= s2.xStartPct;
-            } else {
-              isItFirst = s1.yStartPct <= s2.yStartPct;
-            }
-          }
-        }
-        final enItem = isItFirst ? it : pairItem;
-        final hiItem = isItFirst ? pairItem : it;
-
+      // New path: the backend merged bilingual pairs and stored the Hindi
+      // segments as otherSegments on the item itself.
+      if (it.otherSegments != null && it.otherSegments!.isNotEmpty) {
         if (_bilingualMode == 'english') {
-          finalSegs = enItem.segments;
+          finalSegs = it.segments;
         } else if (_bilingualMode == 'hindi') {
-          finalSegs = hiItem.segments;
+          finalSegs = it.otherSegments!;
         } else if (_bilingualMode == 'bilingual_horizontal' ||
             _bilingualMode == 'bilingual_vertical') {
-          finalSegs = enItem.segments;
-          otherSegs = hiItem.segments;
+          finalSegs = it.segments;
+          otherSegs = it.otherSegments;
         }
-      } catch (_) {
-        // No pair found, use item's own segments as fallback
+      } else {
+        // Legacy fallback: find a pair item with the same qNum in the list.
+        try {
+          final pairItem = current.firstWhere(
+            (element) =>
+                element.qNum == it.qNum &&
+                element.isSolution == it.isSolution &&
+                element != it,
+          );
+          final s1 = it.segments.isNotEmpty ? it.segments.first : null;
+          final s2 =
+              pairItem.segments.isNotEmpty ? pairItem.segments.first : null;
+          bool isItFirst = true;
+          if (s1 != null && s2 != null) {
+            if (s1.page != s2.page) {
+              isItFirst = s1.page < s2.page;
+            } else {
+              final double c1 = (s1.xStartPct + s1.xEndPct) / 2.0;
+              final double c2 = (s2.xStartPct + s2.xEndPct) / 2.0;
+              final bool isSideBySide =
+                  (s1.xStartPct - s2.xStartPct).abs() > 15.0 ||
+                      (c1 - c2).abs() > 15.0;
+              if (isSideBySide) {
+                isItFirst = s1.xStartPct <= s2.xStartPct;
+              } else {
+                isItFirst = s1.yStartPct <= s2.yStartPct;
+              }
+            }
+          }
+          final enItem = isItFirst ? it : pairItem;
+          final hiItem = isItFirst ? pairItem : it;
+
+          if (_bilingualMode == 'english') {
+            finalSegs = enItem.segments;
+          } else if (_bilingualMode == 'hindi') {
+            finalSegs = hiItem.segments;
+          } else if (_bilingualMode == 'bilingual_horizontal' ||
+              _bilingualMode == 'bilingual_vertical') {
+            finalSegs = enItem.segments;
+            otherSegs = hiItem.segments;
+          }
+        } catch (_) {
+          // No pair found, use item's own segments as fallback
+        }
       }
     }
 
