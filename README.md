@@ -232,6 +232,27 @@ Qpic automatically detects **side-by-side bilingual layouts** (e.g. English left
 - Math-only solutions (no translation pair) automatically expand to full page width.
 - The app auto-enables bilingual mode when a bilingual layout is detected.
 
+### Pipeline Architecture (14 Stages)
+
+The auto-detection engine operates across a structured 14-stage pipeline:
+
+```mermaid
+flowchart TD
+    A["① PDF Inspect\n(metadata, page count, encryption)"] --> B["② Native Text Probe\n(searchable vs scanned decision)"]
+    B --> C["③ Page Render\n(lazy, on-demand rasterization)"]
+    C --> D["④ Orientation + Deskew"]
+    D --> E["⑤ Denoise + Binarize + DPI Normalize"]
+    E --> F["⑥ Layout Detect + Column Split"]
+    F --> G["⑦ Furniture Strip\n(headers, footers, logos, page numbers)"]
+    G --> H["⑧ Reading Order Fix"]
+    H --> I["⑨ Question Starts Detect\n(regex + OCR fixup + gap recovery)"]
+    I --> J["⑩ Content Region Build + Figure Fold"]
+    J --> K["⑪ Multi-page Merge + Bilingual Pair"]
+    K --> L["⑫ OCR by Block/Script\n(only for scanned pages)"]
+    L --> M["⑬ Confidence + Validation + Review Flags"]
+    M --> N["⑭ Export\n(crop, stitch, save)"]
+```
+
 ### Bilingual & Hybrid PDF Detection Pipeline (Step-by-Step)
 
 The auto-detection engine operates in a multi-tier pipeline to process bilingual layouts and hybrid scanned/searchable PDFs:
