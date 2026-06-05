@@ -263,7 +263,6 @@ def match_question_start_ex(
 
     if custom_regex:
         try:
-            import re
             pat = re.compile(custom_regex, re.IGNORECASE)
             match = pat.match(candidate)
             if match:
@@ -279,9 +278,17 @@ def match_question_start_ex(
         strong = STRONG_QUESTION_PATTERN.match(candidate)
         if strong:
             match_str = strong.group(0).strip()
-            # Reject lowercase 'q' immediately followed by a digit (no separator)
-            # like 'q2' or 'q12', as it is highly likely to be a math variable.
-            if match_str.startswith('q') and not match_str.startswith('Q') and len(match_str) > 1 and match_str[1].isdigit():
+            # Reject Q/q followed immediately by a digit without a separator
+            # when it is likely a math variable (e.g. Q1 = 5C, q2 = -16C).
+            # Question starts are usually Q1. / Q1) / Q1: / Q1 [space] / Q.1.
+            # If there's no separator and it is followed by '=' or other math symbols, reject it.
+            is_math_var = False
+            first_word = candidate.split()[0] if candidate.split() else ""
+            if re.match(r"^[Qq]\d+$", first_word):
+                if "=" in candidate or "+" in candidate or "-" in candidate or "*" in candidate:
+                    is_math_var = True
+            
+            if (match_str.startswith('q') and not match_str.startswith('Q') and len(match_str) > 1 and match_str[1].isdigit()) or is_math_var:
                 pass
             else:
                 q_num = strong.group(1).lstrip("0") or "0"
@@ -293,6 +300,13 @@ def match_question_start_ex(
         for pattern in WEAK_QUESTION_PATTERNS:
             match = pattern.match(candidate)
             if match:
+                # Reject weak markers that contain parenthesis (like "6)") but
+                # have no letters on the line to avoid false-positive math symbols
+                # from splitting the layout.
+                matched_text = match.group(0)
+                if ')' in matched_text:
+                    if not any(c.isalpha() for c in candidate):
+                        continue
                 q_num = match.group(1).lstrip("0") or "0"
                 return (q_num, False)
     return None
@@ -1622,6 +1636,7 @@ def starts_to_questions(
     page_widths: Optional[dict[int, float]] = None,
     figures: Optional[list[FigureRegion]] = None,
     layout_columns: Optional[int] = None,
+    _disable_bilingual: bool = False,
 ) -> list[DetectedQuestion]:
     """Convert question-start markers + content lines into DetectedQuestion objects.
 
@@ -1645,6 +1660,88 @@ def starts_to_questions(
     if total_pages <= 0:
         return []
 
+    # 1. Determine if document has a bilingual side-by-side layout.
+    is_bilingual = False
+    if not _disable_bilingual and page_widths and len(starts) >= 2:
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for s in starts:
+            groups[(s.is_solution, s.q_num)].append(s)
+
+        bilingual_pairs = 0
+        for key, items in groups.items():
+            if len(items) == 2:
+                s1, s2 = items[0], items[1]
+                pw = float(page_widths.get(s1.page_num) or 0.0)
+                if pw > 0:
+                    c1 = (s1.x_left + s1.x_right) / 2.0
+                    c2 = (s2.x_left + s2.x_right) / 2.0
+                    if abs(c1 - c2) / pw > 0.15:
+                        bilingual_pairs += 1
+
+        is_bilingual = bilingual_pairs >= 2 or (bilingual_pairs >= 1 and len(groups) <= 4)
+
+    if is_bilingual:
+        widths = dict(page_widths or {})
+        lines = list(content_lines or [])
+        figure_list = list(figures or [])
+
+        # Detect columns for each page
+        page_columns = {}
+        for page_num, page_width in widths.items():
+            pw = float(page_width)
+            intervals = [
+                (ln.x_left, ln.x_right)
+                for ln in lines
+                if ln.page_num == page_num and ln.x_right > ln.x_left
+            ]
+            cols = detect_columns(intervals, pw)
+            cols = _validate_columns_with_markers(cols, starts, page_num, pw, lines)
+            if len(cols) <= 1:
+                page_starts = [s for s in starts if s.page_num == page_num]
+                marker_cols = columns_from_markers(page_starts, pw)
+                if marker_cols is not None:
+                    cols = marker_cols
+            page_columns[page_num] = cols
+
+        def _cols_for(page_num: int) -> list[tuple[float, float]]:
+            cols = page_columns.get(page_num)
+            if cols:
+                return cols
+            return [(0.0, float(widths.get(page_num) or 0.0) or 1.0)]
+
+        def _col_of_starts(page_num: int, x_left: float, x_right: float) -> int:
+            return _column_index(_cols_for(page_num), x_left, x_right)
+
+        all_questions = []
+        for col_idx in [0, 1]:
+            col_starts = [s for s in starts if _col_of_starts(s.page_num, s.x_left, s.x_right) == col_idx]
+            col_lines = [ln for ln in lines if _col_of_starts(ln.page_num, ln.x_left, ln.x_right) == col_idx]
+            col_figures = [f for f in figure_list if _col_of_starts(f.page_num, f.x_left, f.x_right) == col_idx]
+
+            col_qs = starts_to_questions(
+                starts=col_starts,
+                page_heights=page_heights,
+                total_pages=total_pages,
+                content_lines=col_lines,
+                page_widths=page_widths,
+                figures=col_figures,
+                layout_columns=layout_columns,
+                _disable_bilingual=True,
+            )
+            all_questions.extend(col_qs)
+
+        # Merge the bilingual column pairs on the combined list
+        merged_questions = merge_bilingual_pairs(all_questions)
+
+        # Sort final list numerically
+        def _q_key(q: DetectedQuestion) -> tuple[int, int, str]:
+            digits = re.findall(r"\d+", q.q_num)
+            return (1 if q.is_solution else 0, int(digits[0]) if digits else 10**9, q.q_num)
+        merged_questions.sort(key=_q_key)
+        return merged_questions
+
+
     # If the document uses explicit "Q" markers anywhere in a section, bare
     # numbered lines in that section are sub-statements ("1. ... 2. ...") rather
     # than new questions. Drop the weak markers so they don't fragment a
@@ -1659,11 +1756,11 @@ def starts_to_questions(
     # discarding all weak markers in the document.
     total_q_starts = sum(1 for s in starts if not s.is_solution)
     strong_q_starts = sum(1 for s in starts if not s.is_solution and s.is_strong)
-    has_strong_q = (strong_q_starts >= 2) or (total_q_starts > 0 and strong_q_starts > 0.5 * total_q_starts)
+    has_strong_q = (strong_q_starts >= 2 and strong_q_starts > 0.15 * total_q_starts) or (total_q_starts > 0 and strong_q_starts > 0.5 * total_q_starts)
 
     total_s_starts = sum(1 for s in starts if s.is_solution)
     strong_s_starts = sum(1 for s in starts if s.is_solution and s.is_strong)
-    has_strong_s = (strong_s_starts >= 2) or (total_s_starts > 0 and strong_s_starts > 0.5 * total_s_starts)
+    has_strong_s = (strong_s_starts >= 2 and strong_s_starts > 0.15 * total_s_starts) or (total_s_starts > 0 and strong_s_starts > 0.5 * total_s_starts)
     filtered_starts: list[QuestionStart] = []
     for s in starts:
         section_has_strong = has_strong_s if s.is_solution else has_strong_q
@@ -2089,6 +2186,29 @@ def starts_to_questions(
     return questions
 
 
+def _detect_primary_script(text: str) -> str:
+    """Classify *text* as ``'devanagari'``, ``'latin'``, or ``'mixed'`` by Unicode block.
+
+    Counts characters in the Devanagari block (U+0900–U+097F) versus ASCII
+    Latin letters and returns whichever dominates. Used as a lightweight
+    heuristic when the full PDF text layer is unavailable (e.g. inside
+    :func:`merge_bilingual_pairs` which only has ``DetectedQuestion`` objects).
+    """
+
+    if not text:
+        return 'mixed'
+    deva_count = sum(1 for ch in text if '\u0900' <= ch <= '\u097F')
+    latin_count = sum(1 for ch in text if ch.isascii() and ch.isalpha())
+    total = deva_count + latin_count
+    if total == 0:
+        return 'mixed'
+    if deva_count / total > 0.5:
+        return 'devanagari'
+    if latin_count / total > 0.5:
+        return 'latin'
+    return 'mixed'
+
+
 def merge_bilingual_pairs(
     questions: list[DetectedQuestion],
 ) -> list[DetectedQuestion]:
@@ -2150,79 +2270,134 @@ def merge_bilingual_pairs(
                     bilingual_pages.add(s1.page)
 
     merged: list[DetectedQuestion] = []
-    seen: set[tuple[bool, str]] = set()
+    seen_ids: set[str] = set()
 
-    for q in questions:
-        key = (q.is_solution, q.q_num)
-        if key in seen:
-            continue
+    def _qid(q: DetectedQuestion) -> str:
+        return f"{q.is_solution}_{q.q_num}_{id(q)}"
 
-        items = groups[key]
+    # First Pass: Merge exact q_num matches
+    exact_pairs: list[tuple[DetectedQuestion, DetectedQuestion]] = []
+    unpaired: list[DetectedQuestion] = []
 
+    for key, items in groups.items():
         if len(items) == 2:
             s1 = items[0].segments[0] if items[0].segments else None
             s2 = items[1].segments[0] if items[1].segments else None
-
             is_side_by_side = False
             if s1 and s2 and s1.page == s2.page:
                 c1 = (s1.x_start_pct + s1.x_end_pct) / 2.0
                 c2 = (s2.x_start_pct + s2.x_end_pct) / 2.0
                 is_side_by_side = abs(c1 - c2) > 15.0
-
+            
             if is_side_by_side:
-                # Determine left (English) vs right (Hindi).
-                if s1.x_start_pct <= s2.x_start_pct:
-                    en_item, hi_item = items[0], items[1]
-                else:
-                    en_item, hi_item = items[1], items[0]
+                exact_pairs.append((items[0], items[1]))
+            else:
+                unpaired.extend(items)
+        else:
+            unpaired.extend(items)
 
+    for q1, q2 in exact_pairs:
+        s1 = q1.segments[0]
+        s2 = q2.segments[0]
+        
+        # Determine which is English (primary) vs Hindi (secondary).
+        _LATIN_OPTS = set('ABCD')
+        opts1 = set((q1.option_labels or '').upper())
+        opts2 = set((q2.option_labels or '').upper())
+        has_latin_1 = bool(opts1 & _LATIN_OPTS)
+        has_latin_2 = bool(opts2 & _LATIN_OPTS)
+
+        if has_latin_1 and not has_latin_2:
+            en_item, hi_item = q1, q2
+        elif has_latin_2 and not has_latin_1:
+            en_item, hi_item = q2, q1
+        else:
+            if s1.x_start_pct <= s2.x_start_pct:
+                en_item, hi_item = q1, q2
+            else:
+                en_item, hi_item = q2, q1
+
+        merged.append(
+            DetectedQuestion(
+                q_num=en_item.q_num,
+                is_solution=en_item.is_solution,
+                segments=en_item.segments,
+                option_labels=en_item.option_labels,
+                other_segments=hi_item.segments,
+            )
+        )
+        seen_ids.add(_qid(q1))
+        seen_ids.add(_qid(q2))
+
+    # Second Pass: Merge unpaired items on bilingual pages by vertical alignment
+    unpaired_by_page: dict[tuple[int, bool], list[DetectedQuestion]] = defaultdict(list)
+    for q in unpaired:
+        first_seg = q.segments[0] if q.segments else None
+        if first_seg and first_seg.page in bilingual_pages:
+            unpaired_by_page[(first_seg.page, q.is_solution)].append(q)
+        else:
+            merged.append(q)
+            seen_ids.add(_qid(q))
+
+    for (page, is_solution), page_items in unpaired_by_page.items():
+        left_items = []
+        right_items = []
+        for q in page_items:
+            s = q.segments[0]
+            center_x = (s.x_start_pct + s.x_end_pct) / 2.0
+            if center_x < 48.0:
+                left_items.append(q)
+            elif center_x > 52.0:
+                right_items.append(q)
+            else:
+                merged.append(q)
+                seen_ids.add(_qid(q))
+
+        left_items.sort(key=lambda q: q.segments[0].y_start_pct)
+        right_items.sort(key=lambda q: q.segments[0].y_start_pct)
+
+        paired_right_ids = set()
+
+        for l_item in left_items:
+            l_y = l_item.segments[0].y_start_pct
+            best_r_item = None
+            best_diff = 6.0  # Max 6% vertical start difference
+
+            for r_item in right_items:
+                r_id = _qid(r_item)
+                if r_id in paired_right_ids:
+                    continue
+                r_y = r_item.segments[0].y_start_pct
+                diff = abs(l_y - r_y)
+                if diff < best_diff:
+                    best_diff = diff
+                    best_r_item = r_item
+
+            if best_r_item:
                 merged.append(
                     DetectedQuestion(
-                        q_num=en_item.q_num,
-                        is_solution=en_item.is_solution,
-                        segments=en_item.segments,
-                        option_labels=en_item.option_labels,
-                        other_segments=hi_item.segments,
+                        q_num=l_item.q_num,
+                        is_solution=l_item.is_solution,
+                        segments=l_item.segments,
+                        option_labels=l_item.option_labels,
+                        other_segments=best_r_item.segments,
                     )
                 )
-                seen.add(key)
-                continue
+                seen_ids.add(_qid(l_item))
+                seen_ids.add(_qid(best_r_item))
+                paired_right_ids.add(_qid(best_r_item))
+            else:
+                merged.append(l_item)
+                seen_ids.add(_qid(l_item))
 
-        if len(items) == 1:
-            item = items[0]
-            # Check if this item is on a bilingual page but has no pair.
-            # This means it's a single-language item (e.g. math-only solution
-            # with no Hindi translation). Expand its width to full page since
-            # there's no translation column occupying the other half.
-            # Segments use percentage coordinates so 0.0 to 100.0 = full page.
-            first_seg = item.segments[0] if item.segments else None
-            if first_seg and first_seg.page in bilingual_pages:
-                expanded_segments = []
-                for seg in item.segments:
-                    expanded_segments.append(
-                        QuestionSegment(
-                            page=seg.page,
-                            y_start_pct=seg.y_start_pct,
-                            y_end_pct=seg.y_end_pct,
-                            x_start_pct=0.0,
-                            x_end_pct=100.0,
-                        )
-                    )
-                merged.append(
-                    DetectedQuestion(
-                        q_num=item.q_num,
-                        is_solution=item.is_solution,
-                        segments=expanded_segments,
-                        option_labels=item.option_labels,
-                    )
-                )
-                seen.add(key)
-                continue
+        for r_item in right_items:
+            if _qid(r_item) not in seen_ids:
+                merged.append(r_item)
+                seen_ids.add(_qid(r_item))
 
-        # Default: keep all items from this group unchanged.
-        for item in items:
-            merged.append(item)
-        seen.add(key)
+    for q in questions:
+        if _qid(q) not in seen_ids:
+            merged.append(q)
 
     return merged
 

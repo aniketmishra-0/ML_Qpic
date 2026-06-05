@@ -80,9 +80,9 @@ class GoogleOCRDetector:
         page_lines_pct: dict[int, list[tuple[float, float, float, float]]] = {}
 
         in_solutions = False
-        in_answer_key = False
 
         for page_index, img in enumerate(page_images, start=1):
+            in_answer_key = False
             page_heights[page_index] = float(img.height)
             page_widths[page_index] = float(img.width)
 

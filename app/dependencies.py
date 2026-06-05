@@ -108,3 +108,12 @@ def build_local_ml_detector(settings: Settings):
     from .services.detector.local_ml_detector import LocalMLDetector
 
     return LocalMLDetector.from_settings(settings)
+
+
+def build_paddle_ocr_detector(settings: Settings):
+    """Return the optional offline PaddleOCR detector."""
+
+    from .services.detector.paddle_ocr_detector import PaddleOCRDetector
+
+    return PaddleOCRDetector()
+

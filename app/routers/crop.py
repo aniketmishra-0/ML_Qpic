@@ -18,6 +18,7 @@ from ..config import Settings
 from ..dependencies import (
     build_ai_detector,
     build_local_ml_detector,
+    build_paddle_ocr_detector,
     get_anthropic_client_optional,
     get_settings,
 )
@@ -543,6 +544,10 @@ async def crop_pdf(
         False,
         description="Use Google Cloud Vision OCR instead of Tesseract.",
     ),
+    use_paddle_ocr: bool = Query(
+        False,
+        description="Use PaddleOCR instead of Tesseract.",
+    ),
     answer_sheet: bool = Query(
         True,
         description="Bundle an answer sheet (answers.csv + answers.json mapping each "
@@ -672,6 +677,7 @@ async def crop_pdf(
         pipeline = DetectionPipeline(
             ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client),
             local_ml_detector=build_local_ml_detector(settings),
+            paddle_ocr_detector=build_paddle_ocr_detector(settings),
         )
         layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
@@ -681,6 +687,7 @@ async def crop_pdf(
             render_dpi=dpi,
             prefer_ai=use_ai,
             use_google_ocr=use_google_ocr,
+            use_paddle_ocr=use_paddle_ocr,
             marker_style=style,
             layout_columns=layout_val,
             confidence=confidence,
@@ -898,6 +905,10 @@ async def analyze_pdf(
         False,
         description="Use Google Cloud Vision OCR instead of Tesseract.",
     ),
+    use_paddle_ocr: bool = Query(
+        False,
+        description="Use PaddleOCR instead of Tesseract.",
+    ),
     answer_sheet: bool = Query(
         True,
         description="Read the paper's answer key during analysis and cache it so "
@@ -1000,6 +1011,7 @@ async def analyze_pdf(
         pipeline = DetectionPipeline(
             ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client),
             local_ml_detector=build_local_ml_detector(settings),
+            paddle_ocr_detector=build_paddle_ocr_detector(settings),
         )
         layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
@@ -1010,6 +1022,7 @@ async def analyze_pdf(
             smart=True,
             prefer_ai=use_ai,
             use_google_ocr=use_google_ocr,
+            use_paddle_ocr=use_paddle_ocr,
             marker_style=(marker_style or "auto").strip().lower()
             if (marker_style or "auto").strip().lower() in ("auto", "q", "numbered")
             else "auto",
@@ -1356,6 +1369,7 @@ async def auto_detect_job_page(
     page: Optional[int] = Query(None, description="1-indexed page. If null, run on all pages."),
     use_ai: bool = Query(False),
     use_google_ocr: bool = Query(False),
+    use_paddle_ocr: bool = Query(False),
     marker_style: str = Query("auto"),
     layout_columns: str = Query("auto", description="Force page layout columns: 'auto', '1', '2', or '3'."),
     binarize: bool = Query(False),
@@ -1435,6 +1449,7 @@ async def auto_detect_job_page(
         pipeline = DetectionPipeline(
             ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client),
             local_ml_detector=build_local_ml_detector(settings),
+            paddle_ocr_detector=build_paddle_ocr_detector(settings),
         )
         style = (marker_style or "auto").strip().lower()
         if style not in ("auto", "q", "numbered"):
@@ -1449,6 +1464,7 @@ async def auto_detect_job_page(
             smart=True,
             prefer_ai=use_ai,
             use_google_ocr=use_google_ocr,
+            use_paddle_ocr=use_paddle_ocr,
             marker_style=style,
             layout_columns=layout_val,
             confidence=confidence,

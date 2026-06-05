@@ -122,6 +122,11 @@ class AnalyzedItem(BaseModel):
     source: Literal["auto", "manual"] = "auto"
     flagged: bool = False
     flag_reason: Optional[str] = None
+    # Numerical confidence in this crop's correctness (0.0 = almost certainly
+    # wrong, 1.0 = high confidence). Computed by the review heuristics from
+    # extent, overlap, missing-option, and coverage signals. ``None`` when the
+    # item was added manually or when confidence was not computed.
+    confidence: Optional[float] = None
     # Bilingual translation segments (e.g. Hindi column). Set when the
     # detector merged a bilingual pair, so the frontend can render
     # bilingual previews without needing duplicate items.

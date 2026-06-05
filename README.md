@@ -220,20 +220,45 @@ behaviour.
 
 ### Bilingual PDF support
 
-Qpic automatically detects **side-by-side bilingual layouts** (e.g. English left,
-Hindi right — common in competitive exam papers like JEE Main). When detected:
+Qpic automatically detects **side-by-side bilingual layouts** (e.g. English left, Hindi right — common in competitive exam papers like JEE Main). When detected:
 
-- Duplicate question numbers in the two columns are **merged** into a single
-  item — no more doubled detection counts.
+- Duplicate question numbers in the two columns are **merged** into a single item — no more doubled detection counts.
 - The **Bilingual Stitcher** in the review sidebar lets you choose:
   - **English Only** — crops only the English (left) column.
   - **Hindi Only** — crops only the Hindi (right) column.
   - **Bilingual Horizontal** — stitches both columns side by side.
   - **Bilingual Vertical** — stitches both columns top-to-bottom.
   - **Standard** — uses the full detected region as-is.
-- Math-only solutions (no translation pair) automatically expand to full page
-  width.
+- Math-only solutions (no translation pair) automatically expand to full page width.
 - The app auto-enables bilingual mode when a bilingual layout is detected.
+
+### Bilingual & Hybrid PDF Detection Pipeline (Step-by-Step)
+
+The auto-detection engine operates in a multi-tier pipeline to process bilingual layouts and hybrid scanned/searchable PDFs:
+
+1. **Per-Page Classification**: 
+   The pipeline (`_classify_pages`) first checks the native text layer and image objects of every page in the PDF. Each page is categorized as `"text"` (clean, native searchable text), `"ocr"` (image/scan page), or `"text_then_ocr"` (mixed content page).
+2. **Page-Level Hybrid Routing**: 
+   Instead of choosing a single detector for the entire document, the pipeline routes each page dynamically. It uses fast vector text extraction for `"text"` pages and automatically escalates to image-based OCR detectors (Tesseract or PaddleOCR) for `"ocr"` and `"text_then_ocr"` pages.
+3. **Scan Pre-processing (Rotation & Thresholding Fallbacks)**:
+   When running OCR on a scanned page:
+   - **Tesseract OSD**: Orientation and Script Detection (`--psm 0`) determines if the page is rotated (90°, 180°, or 270°) and rotates it back upright.
+   - **Deskew & Median Blur**: Corrects slight paper tilts and removes scanner speckles.
+   - **Otsu Binarization**: Automatically calculates local thresholds to isolate text glyphs.
+   - **Adaptive Gaussian Fallback**: If Otsu results in a mostly blank white or black image (low contrast), it falls back to `cv2.adaptiveThreshold` to retrieve clean character edges.
+4. **Bilingual Column-Wise Starts Grouping**:
+   If a bilingual layout is present, sequential grouping across columns can cause bottom-of-page crossover. The pipeline splits the question starts, content lines, and figures independently by column index (`Column 0` vs `Column 1`), groups them recursively using a recursion-safe parameter (`_disable_bilingual=True`), and then merges the column pairs together.
+5. **Script-Aware Column Mapping**:
+   The engine analyzes the character scripts (checking Devanagari code range `\u0900-\u097F` vs Latin characters) and option label styles (Latin MCQ option labels) to determine which column is the primary (English) language and which is the translation (Hindi). This ensures correct left/right assignment even when Hindi appears on the left.
+6. **Reference-Based Deduplication**:
+   For questions spanning page boundaries, the hybrid loop might yield duplicate object references. The engine deduplicates the questions by Python object ID (`id(q)`). This avoids duplicate crop rendering and prevents `resolve_vertical_overlaps` from comparing a question to itself and incorrectly shrinking its height to zero.
+7. **Numerical Confidence Scoring**:
+   A numerical confidence score (`0.0` to `1.0`) is calculated for each question segment using multiple indicators:
+   - Crop height compared to neighboring crops (flagging abnormally short or tall crops)
+   - Overlap with other crops on the page
+   - Completeness of MCQ option labels (checking if options A-D are present)
+   - Boundary checks (continuation onto the next page)
+   - Uncovered body text left above or below the crop
 
 ## Tech stack summary
 

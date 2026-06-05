@@ -79,8 +79,8 @@ class TextDetector:
             with doc:
                 total_pages = doc.page_count
                 in_solutions = False
-                in_answer_key = False
                 for page_idx in range(total_pages):
+                    in_answer_key = False
                     page = doc.load_page(page_idx)
                     page_num = page_idx + 1
                     page_heights[page_num] = float(page.rect.height)
