@@ -164,6 +164,7 @@ class LocalMLDetector:
         *,
         marker_style: str = "auto",
         confidence: Optional[float] = None,
+        layout_columns: Optional[int] = None,
     ) -> list[DetectedQuestion]:
         """Run the local detector and return whole question/solution regions."""
 
@@ -177,16 +178,16 @@ class LocalMLDetector:
         try:
             if self.command:
                 return await asyncio.to_thread(
-                    self._detect_with_command, page_images, marker_style
+                    self._detect_with_command, page_images, marker_style, layout_columns
                 )
             if self.model_path and self.model_path.suffix.lower() == ".pt":
-                return await asyncio.to_thread(self._detect_with_ultralytics, page_images)
-            return await asyncio.to_thread(self._detect_with_onnx, page_images)
+                return await asyncio.to_thread(self._detect_with_ultralytics, page_images, layout_columns)
+            return await asyncio.to_thread(self._detect_with_onnx, page_images, layout_columns)
         finally:
             self.confidence = old_confidence
 
     def _detect_with_ultralytics(
-        self, page_images: list[Image.Image]
+        self, page_images: list[Image.Image], layout_columns: Optional[int] = None
     ) -> list[DetectedQuestion]:
         """Run an Ultralytics YOLO detector trained on question-paper regions."""
 
@@ -264,10 +265,10 @@ class LocalMLDetector:
                 )
 
         kept = self._nms(boxes)
-        return self._questions_from_boxes(kept, page_images=page_images)
+        return self._questions_from_boxes(kept, page_images=page_images, layout_columns=layout_columns)
 
     def _detect_with_command(
-        self, page_images: list[Image.Image], marker_style: str
+        self, page_images: list[Image.Image], marker_style: str, layout_columns: Optional[int] = None
     ) -> list[DetectedQuestion]:
         """Run an external local adapter command.
 
@@ -342,9 +343,9 @@ class LocalMLDetector:
                 logger.warning("local_ml_command_bad_json error=%s", str(exc))
                 return []
 
-        return self._coerce_output(data, page_count=len(page_images), page_images=page_images)
+        return self._coerce_output(data, page_count=len(page_images), page_images=page_images, layout_columns=layout_columns)
 
-    def _detect_with_onnx(self, page_images: list[Image.Image]) -> list[DetectedQuestion]:
+    def _detect_with_onnx(self, page_images: list[Image.Image], layout_columns: Optional[int] = None) -> list[DetectedQuestion]:
         """Run a simple ONNX object detector with question/solution labels."""
 
         if not self.model_path:
@@ -392,7 +393,7 @@ class LocalMLDetector:
             )
 
         kept = self._nms(boxes)
-        return self._questions_from_boxes(kept, page_images=page_images)
+        return self._questions_from_boxes(kept, page_images=page_images, layout_columns=layout_columns)
 
     def _letterbox(self, image: Image.Image) -> tuple[Image.Image, float, float, float]:
         """Resize like YOLO training: preserve aspect ratio and pad to a square."""
@@ -568,6 +569,7 @@ class LocalMLDetector:
         *,
         page_count: int,
         page_images: list[Image.Image],
+        layout_columns: Optional[int] = None,
     ) -> list[DetectedQuestion]:
         if isinstance(data, dict) and isinstance(data.get("boxes"), list):
             boxes = []
@@ -575,7 +577,7 @@ class LocalMLDetector:
                 box = self._coerce_box(raw, page_images=page_images)
                 if box is not None:
                     boxes.append(box)
-            return self._questions_from_boxes(self._nms(boxes), page_images=page_images)
+            return self._questions_from_boxes(self._nms(boxes), page_images=page_images, layout_columns=layout_columns)
 
         if isinstance(data, list):
             raw_questions = data
@@ -665,38 +667,162 @@ class LocalMLDetector:
         return _Box(page, x1, y1, x2, y2, score, label, str(raw.get("q_num") or "").strip() or None)
 
     def _questions_from_boxes(
-        self, boxes: list[_Box], *, page_images: list[Image.Image]
+        self, boxes: list[_Box], *, page_images: list[Image.Image], layout_columns: Optional[int] = None
     ) -> list[DetectedQuestion]:
-        ordered = sorted(boxes, key=lambda b: (b.page, b.y1, b.x1))
+        from collections import defaultdict
+        from .base import detect_columns, _column_index
+
+        page_to_boxes = defaultdict(list)
+        for box in boxes:
+            page_to_boxes[box.page].append(box)
+
+        questions: list[DetectedQuestion] = []
         q_count = 0
         s_count = 0
-        questions: list[DetectedQuestion] = []
-        for box in ordered:
-            is_solution = box.label in SOLUTION_LABELS
-            if is_solution:
-                s_count += 1
-                q_num = box.q_num or str(s_count)
-            else:
-                q_count += 1
-                q_num = box.q_num or str(q_count)
-            img = page_images[box.page - 1]
+
+        pages = sorted(page_to_boxes.keys())
+        for page in pages:
+            page_boxes = page_to_boxes[page]
+            img = page_images[page - 1]
             w, h = img.size
-            questions.append(
-                DetectedQuestion(
-                    q_num=q_num,
-                    is_solution=is_solution,
-                    segments=[
-                        QuestionSegment(
-                            page=box.page,
-                            x_start_pct=self._clamp_pct((box.x1 / w) * 100.0),
-                            x_end_pct=self._clamp_pct((box.x2 / w) * 100.0),
-                            y_start_pct=self._clamp_pct((box.y1 / h) * 100.0),
-                            y_end_pct=self._clamp_pct((box.y2 / h) * 100.0),
+
+            intervals = [(b.x1, b.x2) for b in page_boxes]
+            if layout_columns is not None:
+                if layout_columns == 1:
+                    cols = [(0.0, w)]
+                elif layout_columns == 2:
+                    cols = [(0.0, w * 0.5), (w * 0.5, w)]
+                else:
+                    cols = [(0.0, w / 3.0), (w / 3.0, 2.0 * w / 3.0), (2.0 * w / 3.0, w)]
+            else:
+                cols = detect_columns(intervals, w)
+                if len(cols) != 2 and page_boxes:
+                    has_left = any((b.x1 + b.x2) / 2.0 < w * 0.48 for b in page_boxes)
+                    has_right = any((b.x1 + b.x2) / 2.0 > w * 0.52 for b in page_boxes)
+                    if has_left and has_right:
+                        cols = [(0.0, w * 0.5), (w * 0.5, w)]
+
+            is_bilingual = False
+            left_by_type = {False: [], True: []}
+            right_by_type = {False: [], True: []}
+
+            if len(cols) == 2:
+                for b in page_boxes:
+                    is_sol = b.label in SOLUTION_LABELS
+                    col_idx = _column_index(cols, b.x1, b.x2)
+                    if col_idx == 0:
+                        left_by_type[is_sol].append(b)
+                    else:
+                        right_by_type[is_sol].append(b)
+
+                total_pairs = 0
+                for is_sol in (False, True):
+                    left_sorted = sorted(left_by_type[is_sol], key=lambda b: b.y1)
+                    right_sorted = sorted(right_by_type[is_sol], key=lambda b: b.y1)
+                    
+                    paired_right = set()
+                    for l in left_sorted:
+                        l_cy = (l.y1 + l.y2) / 2.0
+                        for r in right_sorted:
+                            if r in paired_right:
+                                continue
+                            r_cy = (r.y1 + r.y2) / 2.0
+                            if abs(l_cy - r_cy) < h * 0.10:
+                                total_pairs += 1
+                                paired_right.add(r)
+                                break
+                
+                if total_pairs >= 2 or (total_pairs >= 1 and len(page_boxes) <= 4):
+                    is_bilingual = True
+
+            if is_bilingual:
+                for is_sol in (False, True):
+                    left_sorted = sorted(left_by_type[is_sol], key=lambda b: b.y1)
+                    right_sorted = sorted(right_by_type[is_sol], key=lambda b: b.y1)
+
+                    paired_r_to_l = {}
+                    paired_right = set()
+                    for l in left_sorted:
+                        l_cy = (l.y1 + l.y2) / 2.0
+                        for r in right_sorted:
+                            if r in paired_right:
+                                continue
+                            r_cy = (r.y1 + r.y2) / 2.0
+                            if abs(l_cy - r_cy) < h * 0.10:
+                                paired_r_to_l[r] = l
+                                paired_right.add(r)
+                                break
+
+                    box_to_num = {}
+
+                    for l in left_sorted:
+                        if is_sol:
+                            s_count += 1
+                            box_to_num[l] = l.q_num or str(s_count)
+                        else:
+                            q_count += 1
+                            box_to_num[l] = l.q_num or str(q_count)
+
+                    for r in right_sorted:
+                        if r in paired_r_to_l:
+                            box_to_num[r] = paired_r_to_l[r].q_num or box_to_num[paired_r_to_l[r]]
+                        else:
+                            if is_sol:
+                                s_count += 1
+                                box_to_num[r] = r.q_num or str(s_count)
+                            else:
+                                q_count += 1
+                                box_to_num[r] = r.q_num or str(q_count)
+
+                    for b in left_sorted + right_sorted:
+                        questions.append(
+                            DetectedQuestion(
+                                q_num=box_to_num[b],
+                                is_solution=is_sol,
+                                segments=[
+                                    QuestionSegment(
+                                        page=b.page,
+                                        x_start_pct=self._clamp_pct((b.x1 / w) * 100.0),
+                                        x_end_pct=self._clamp_pct((b.x2 / w) * 100.0),
+                                        y_start_pct=self._clamp_pct((b.y1 / h) * 100.0),
+                                        y_end_pct=self._clamp_pct((b.y2 / h) * 100.0),
+                                    )
+                                ],
+                            )
                         )
-                    ],
+            else:
+                page_boxes_sorted = sorted(
+                    page_boxes,
+                    key=lambda b: (_column_index(cols, b.x1, b.x2), b.y1, b.x1)
                 )
-            )
+
+                for b in page_boxes_sorted:
+                    is_sol = b.label in SOLUTION_LABELS
+                    if is_sol:
+                        s_count += 1
+                        q_num = b.q_num or str(s_count)
+                    else:
+                        q_count += 1
+                        q_num = b.q_num or str(q_count)
+
+                    questions.append(
+                        DetectedQuestion(
+                            q_num=q_num,
+                            is_solution=is_sol,
+                            segments=[
+                                QuestionSegment(
+                                    page=b.page,
+                                    x_start_pct=self._clamp_pct((b.x1 / w) * 100.0),
+                                    x_end_pct=self._clamp_pct((b.x2 / w) * 100.0),
+                                    y_start_pct=self._clamp_pct((b.y1 / h) * 100.0),
+                                    y_end_pct=self._clamp_pct((b.y2 / h) * 100.0),
+                                )
+                            ],
+                        )
+                    )
+
         return questions
+
 
     def _nms(self, boxes: list[_Box], threshold: float = 0.5) -> list[_Box]:
         kept: list[_Box] = []

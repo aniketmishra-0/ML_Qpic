@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     # degrades to whatever is available instead of erroring.
     OCR_LANGUAGES: str = "eng+hin"
 
+    # Set to True to use PaddleOCR instead of Tesseract for offline OCR.
+    # Falls back to Tesseract if the paddleocr package is not installed.
+    USE_PADDLE_OCR: bool = False
+
     # Mean OCR word confidence (0-100) below which a page is considered "weak"
     # and, in smart mode with an AI key configured, re-detected by the AI tier on
     # its own instead of trusting OCR's garbled read. Lower = escalate less.
@@ -123,6 +127,8 @@ class Settings(BaseSettings):
     # hitting "Combine & Download", or finalize would 404 on a cleaned-up job.
     CLEANUP_AFTER_SECONDS: int = 1800
     API_TIMEOUT_SECONDS: int = 120
+
+    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
 
     model_config = ConfigDict(env_file=".env")
 

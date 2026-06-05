@@ -75,8 +75,8 @@ class OCRDetector:
         page_confidence: dict[int, float] = {}
 
         in_solutions = False
-        in_answer_key = False
         for page_index, img in enumerate(page_images, start=1):
+            in_answer_key = False
             processed = self._preprocess_for_ocr(img, render_dpi=effective_dpi)
             page_heights[page_index] = float(processed.height)
             page_widths[page_index] = float(processed.width)
@@ -179,9 +179,12 @@ class OCRDetector:
 
         1. Convert to grayscale
         2. Resize towards ~300 DPI if rendered below that
-        3. Deskew a tilted scan (small rotation) so text rows are horizontal
-        4. Denoise speckle
-        5. Apply an Otsu binary threshold (adapts to the page's brightness)
+        3. Detect and correct 90°/180°/270° rotation via Tesseract OSD
+        4. Deskew a tilted scan (small rotation) so text rows are horizontal
+        5. Denoise speckle
+        6. Apply an Otsu binary threshold (adapts to the page's brightness),
+           with an adaptive-threshold fallback when Otsu yields a mostly
+           uniform (>90% white or black) result
 
         Deskew matters most: a scan tilted even 1-2° smears Tesseract's line
         grouping, so question numbers and option labels get misread or merged —
@@ -201,6 +204,9 @@ class OCRDetector:
                     resample=Image.Resampling.LANCZOS,
                 )
 
+        # Correct large rotations (90°/180°/270°) before deskew.
+        gray = self._detect_orientation(gray)
+
         try:
             import cv2
             import numpy as np
@@ -215,10 +221,51 @@ class OCRDetector:
                 pass
             # Otsu picks the threshold from the page's own histogram.
             _, thresh = cv2.threshold(arr, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            # If Otsu produced a mostly-uniform image (>90% white or >90%
+            # black), the page is probably low-contrast or unevenly lit and
+            # Otsu's single global cut-off failed.  Fall back to an adaptive
+            # Gaussian threshold which handles local brightness variation.
+            white_frac = np.mean(thresh == 255)
+            if white_frac < 0.1 or white_frac > 0.9:
+                logger.warning(
+                    "otsu_threshold_fallback white_frac=%.2f, switching to adaptive",
+                    white_frac,
+                )
+                thresh = cv2.adaptiveThreshold(
+                    arr, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                    cv2.THRESH_BINARY, 31, 10,
+                )
             return Image.fromarray(thresh).convert("L")
         except Exception:
             # Fallback to simple PIL thresholding.
             return gray.point(lambda p: 0 if p < 128 else 255, mode="L")
+
+    def _detect_orientation(self, gray: Image.Image) -> Image.Image:
+        """Detect and correct 90°/180°/270° page rotation via Tesseract OSD.
+
+        Uses ``--psm 0`` (orientation and script detection only).  Returns the
+        corrected image, or the original unchanged on any failure or when no
+        rotation is needed.
+        """
+
+        w, h = gray.size
+        if w < 100 or h < 100:
+            return gray
+
+        try:
+            import re
+
+            osd_output = pytesseract.image_to_osd(gray, config="--psm 0")
+            match = re.search(r"Rotate:\s*(\d+)", osd_output)
+            if match:
+                angle = int(match.group(1))
+                if angle in (90, 180, 270):
+                    logger.info("orientation_detected rotation=%d", angle)
+                    gray = gray.rotate(angle, expand=True)
+        except Exception:
+            pass
+
+        return gray
 
     def _deskew(self, arr: "Any") -> "Any":
         """Rotate a grayscale page array to make its text rows horizontal.

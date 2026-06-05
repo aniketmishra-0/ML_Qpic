@@ -68,6 +68,7 @@ class DetectedQuestion(BaseModel):
     # carries the Hindi (right) column. The bilingual export modes use this
     # to stitch or select the language without doubling detected questions.
     other_segments: Optional[list[QuestionSegment]] = None
+    is_hindi: Optional[bool] = None
 
 class CropResponse(BaseModel):
     """Response after creating a crop job.
@@ -121,10 +122,16 @@ class AnalyzedItem(BaseModel):
     source: Literal["auto", "manual"] = "auto"
     flagged: bool = False
     flag_reason: Optional[str] = None
+    # Numerical confidence in this crop's correctness (0.0 = almost certainly
+    # wrong, 1.0 = high confidence). Computed by the review heuristics from
+    # extent, overlap, missing-option, and coverage signals. ``None`` when the
+    # item was added manually or when confidence was not computed.
+    confidence: Optional[float] = None
     # Bilingual translation segments (e.g. Hindi column). Set when the
     # detector merged a bilingual pair, so the frontend can render
     # bilingual previews without needing duplicate items.
     other_segments: Optional[list[QuestionSegment]] = None
+    is_hindi: Optional[bool] = None
 
 
 class ReviewNote(BaseModel):
@@ -200,6 +207,7 @@ class FinalizeItem(BaseModel):
     segments: list[QuestionSegment]
     source: Literal["auto", "manual"] = "auto"
     align: Optional[bool] = None
+    is_hindi: Optional[bool] = None
 
 
 class CropPreviewRequest(BaseModel):
@@ -225,6 +233,7 @@ class CropPreviewRequest(BaseModel):
     jpg_quality: int = 90
     bilingual_mode: Optional[Literal["english", "hindi", "bilingual_horizontal", "bilingual_vertical", "bilingual_separate"]] = None
     other_segments: Optional[list[QuestionSegment]] = None
+    is_hindi: Optional[bool] = None
 
 
 class FinalizeRequest(BaseModel):
@@ -243,6 +252,10 @@ class FinalizeRequest(BaseModel):
     # found at analyze time. Defaults True so the sheet ships by default.
     answer_sheet: bool = True
     bilingual_mode: Optional[Literal["english", "hindi", "bilingual_horizontal", "bilingual_vertical", "bilingual_separate"]] = None
+    english_question_prefix: Optional[str] = None
+    english_solution_prefix: Optional[str] = None
+    hindi_question_prefix: Optional[str] = None
+    hindi_solution_prefix: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -254,6 +267,7 @@ class HealthResponse(BaseModel):
     ai_model: Optional[str] = None
     local_ml_available: bool = False
     local_ml_model: Optional[str] = None
+    google_ocr_available: bool = False
 
 
 # --- Batch rename tool -------------------------------------------------------
@@ -295,6 +309,40 @@ class PdfToImagesResponse(BaseModel):
     images: list[PdfImageItem]
 
 
+class PdfPageItem(BaseModel):
+    """One PDF page saved to disk as JPEG; served via a per-page URL."""
+
+    name: str
+    page_url: str
+    width: int
+    height: int
+    size: int
+
+
+class PdfToSessionResponse(BaseModel):
+    """PDF uploaded and rendered to per-page images on disk."""
+
+    job_id: str
+    count: int
+    pages: list[PdfPageItem]
+
+
+class PdfFinalizeItem(BaseModel):
+    """Refers to one PDF page image on disk and its target stem."""
+
+    original: str
+    new_stem: str
+
+
+class PdfFinalizeRequest(BaseModel):
+    """Selects, renames, and packs PDF pages directly on the server."""
+
+    items: list[PdfFinalizeItem]
+    output_format: Optional[str] = None
+    jpg_quality: Optional[int] = None
+
+
+
 class RenameSessionResponse(BaseModel):
     """A freshly created upload session for a large rename batch."""
 
@@ -315,6 +363,7 @@ class RenameFinalizeResponse(BaseModel):
     session_id: str
     count: int
     download_url: str
+    excel_download_url: Optional[str] = None
 
 
 # --- PDF power tools: Compress / Edit / Preflight ----------------------------

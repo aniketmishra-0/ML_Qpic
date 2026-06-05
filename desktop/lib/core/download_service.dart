@@ -178,6 +178,27 @@ class DownloadService {
     }
   }
 
+  /// Downloads the engine file at [engineUrl] directly to the specified [savePath]
+  /// without popping any file picker dialog.
+  Future<void> downloadToPath({
+    required String engineUrl,
+    required String savePath,
+    CancelToken? cancelToken,
+  }) async {
+    final Uri uri = apiClient.resolveUri(engineUrl);
+    try {
+      await _downloader(
+        uri,
+        savePath,
+        cancelToken: cancelToken,
+      );
+    } on DioException catch (e) {
+      throw _toDownloadException(e);
+    } catch (e) {
+      throw DownloadException('Could not save the file: $e', cause: e);
+    }
+  }
+
   // ===========================================================================
   //  Defaults
   // ===========================================================================

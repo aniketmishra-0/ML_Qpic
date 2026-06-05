@@ -43,7 +43,11 @@ class ManualCropView extends StatelessWidget {
     this.onPickFile,
     this.onClear,
     this.previewUrlResolver,
+    this.title,
   });
+
+  /// The custom title of this view.
+  final String? title;
 
   /// Backing tool state. The view never mutates anything other than this.
   final ManualCropController controller;
@@ -81,6 +85,10 @@ class ManualCropView extends StatelessWidget {
             previewUrlResolver: previewUrlResolver,
             questionPrefix: controller.questionPrefix,
             solutionPrefix: controller.solutionPrefix,
+            englishQuestionPrefix: controller.englishQuestionPrefix,
+            englishSolutionPrefix: controller.englishSolutionPrefix,
+            hindiQuestionPrefix: controller.hindiQuestionPrefix,
+            hindiSolutionPrefix: controller.hindiSolutionPrefix,
             onClose: controller.closeCanvas,
             onFinalize:
                 controller.engineReady ? () => controller.finalize() : null,
@@ -90,6 +98,7 @@ class ManualCropView extends StatelessWidget {
           controller: controller,
           onPickFile: onPickFile,
           onClear: onClear,
+          title: title,
         );
       },
     );
@@ -102,11 +111,13 @@ class _OpenForm extends StatelessWidget {
     required this.controller,
     required this.onPickFile,
     required this.onClear,
+    this.title,
   });
 
   final ManualCropController controller;
   final VoidCallback? onPickFile;
   final VoidCallback? onClear;
+  final String? title;
 
   @override
   Widget build(BuildContext context) {
@@ -130,6 +141,7 @@ class _OpenForm extends StatelessWidget {
                 palette: palette,
                 onClear: onClear,
                 busy: controller.busy,
+                title: title ?? 'Manual Crop',
               ),
               const SizedBox(height: 16),
               _FilePickerRow(
@@ -225,11 +237,13 @@ class _HeaderBar extends StatelessWidget {
     required this.palette,
     required this.onClear,
     required this.busy,
+    required this.title,
   });
 
   final QpicPalette? palette;
   final VoidCallback? onClear;
   final bool busy;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -242,7 +256,7 @@ class _HeaderBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                'Manual Crop',
+                title,
                 key: const ValueKey<String>('manual-crop-title'),
                 style: TextStyle(
                   fontSize: 22,
@@ -513,27 +527,73 @@ class _OutputConfig extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: _PrefixField(
-                fieldKey: const ValueKey<String>('manual-crop-question-prefix'),
-                label: 'Question prefix',
-                value: controller.questionPrefix,
-                onChanged: (v) => controller.questionPrefix = v,
+        if (controller.bilingualModeActive) ...<Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('manual-crop-english-question-prefix'),
+                  label: 'English Question prefix',
+                  value: controller.englishQuestionPrefix,
+                  onChanged: (v) => controller.englishQuestionPrefix = v,
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _PrefixField(
-                fieldKey: const ValueKey<String>('manual-crop-solution-prefix'),
-                label: 'Solution prefix',
-                value: controller.solutionPrefix,
-                onChanged: (v) => controller.solutionPrefix = v,
+              const SizedBox(width: 12),
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('manual-crop-english-solution-prefix'),
+                  label: 'English Solution prefix',
+                  value: controller.englishSolutionPrefix,
+                  onChanged: (v) => controller.englishSolutionPrefix = v,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('manual-crop-hindi-question-prefix'),
+                  label: 'Hindi Question prefix',
+                  value: controller.hindiQuestionPrefix,
+                  onChanged: (v) => controller.hindiQuestionPrefix = v,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('manual-crop-hindi-solution-prefix'),
+                  label: 'Hindi Solution prefix',
+                  value: controller.hindiSolutionPrefix,
+                  onChanged: (v) => controller.hindiSolutionPrefix = v,
+                ),
+              ),
+            ],
+          ),
+        ] else ...<Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('manual-crop-question-prefix'),
+                  label: 'Question prefix',
+                  value: controller.questionPrefix,
+                  onChanged: (v) => controller.questionPrefix = v,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('manual-crop-solution-prefix'),
+                  label: 'Solution prefix',
+                  value: controller.solutionPrefix,
+                  onChanged: (v) => controller.solutionPrefix = v,
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         _BoundedIntField(
           fieldKey: const ValueKey<String>('manual-crop-start-number'),
@@ -556,18 +616,6 @@ class _OutputConfig extends StatelessWidget {
             onChanged: (v) => controller.jpgQuality = v,
           ),
         ],
-        const SizedBox(height: 16),
-        SwitchListTile(
-          key: const ValueKey<String>('manual-crop-bilingual-mode'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Bilingual Mode',
-              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
-          subtitle: const Text(
-              'Enable side-by-side bilingual question stitching and download options',
-              style: TextStyle(fontSize: 11.5)),
-          value: controller.bilingualModeActive,
-          onChanged: (val) => controller.bilingualModeActive = val,
-        ),
       ],
     );
   }

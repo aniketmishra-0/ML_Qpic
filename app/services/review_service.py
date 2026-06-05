@@ -110,6 +110,64 @@ def _ends_at_page_bottom(item: DetectedQuestion | AnalyzedItem) -> bool:
     return item.segments[0].y_end_pct >= _PAGE_BOTTOM_PCT
 
 
+def question_confidence(
+    item: DetectedQuestion | AnalyzedItem,
+    median_extent: float,
+    overlapping: set[tuple[bool, str]],
+    undercovered: dict[tuple[bool, str], list] | None = None,
+    uncovered_head: dict[tuple[bool, str], list] | None = None,
+) -> float:
+    """Compute a 0.0\u20131.0 confidence score for a detected crop.
+
+    Combines multiple signals \u2014 crop extent vs neighbours, physical overlap
+    with siblings, missing MCQ options, page-bottom continuation risk, and
+    uncovered body text \u2014 into a single score. Higher is better.
+    """
+
+    score = 1.0
+    key = (bool(getattr(item, 'is_solution', False)), item.q_num)
+    extent = _extent_pct(item)
+
+    # Extremely small crops are almost certainly wrong.
+    if extent < _TINY_EXTENT_PCT:
+        score *= 0.2
+    elif median_extent > 0 and extent < _SHORT_VS_MEDIAN_FRAC * median_extent and extent < 10.0:
+        score *= 0.5
+
+    # Abnormally tall crops may have swallowed a neighbour.
+    if (
+        len(item.segments) == 1
+        and median_extent > 0
+        and extent > _TALL_VS_MEDIAN_FRAC * median_extent
+        and extent >= _TALL_MIN_EXTENT_PCT
+    ):
+        score *= 0.6
+
+    # Physical overlap with another item on the page.
+    if key in overlapping:
+        score *= 0.4
+
+    # Missing MCQ option labels.
+    labels = getattr(item, 'option_labels', '') or ''
+    seen = {c for c in labels if c in 'ABCD'}
+    if 2 <= len(seen) < 4:
+        score *= 0.6
+
+    # Crop stops at the page bottom \u2014 likely continues onto the next page.
+    if _ends_at_page_bottom(item) and extent <= _PAGE_BOTTOM_MAX_EXTENT_PCT:
+        score *= 0.3
+
+    # Body text below the crop left uncovered.
+    if undercovered and key in undercovered:
+        score *= 0.4
+
+    # Body text above the topmost crop left uncovered.
+    if uncovered_head and key in uncovered_head:
+        score *= 0.5
+
+    return max(0.0, min(1.0, round(score, 2)))
+
+
 def _median_extent(detected: Iterable[DetectedQuestion], is_solution: bool) -> float:
     vals = [_extent_pct(q) for q in detected if bool(q.is_solution) == is_solution]
     return float(median(vals)) if vals else 0.0
@@ -681,6 +739,10 @@ def build_analyzed_items(
                     reason = opt
 
         seen.add(key)
+        median_extent = median_s if q.is_solution else median_q
+        conf = question_confidence(
+            q, median_extent, overlapping, undercovered, uncovered_head,
+        )
         items.append(
             AnalyzedItem(
                 q_num=q.q_num,
@@ -689,6 +751,7 @@ def build_analyzed_items(
                 source="auto",
                 flagged=flagged,
                 flag_reason=reason,
+                confidence=conf,
                 other_segments=list(q.other_segments) if q.other_segments else None,
             )
         )

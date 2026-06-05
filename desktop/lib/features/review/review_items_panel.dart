@@ -40,6 +40,11 @@ class ReviewItemsPanel extends StatelessWidget {
     required this.controller,
     this.questionPrefix = 'Q',
     this.solutionPrefix = 'S',
+    this.englishQuestionPrefix = 'EQ',
+    this.englishSolutionPrefix = 'ES',
+    this.hindiQuestionPrefix = 'HQ',
+    this.hindiSolutionPrefix = 'HS',
+    this.bilingualModeActive = false,
     this.searchQuery = '',
   });
 
@@ -50,9 +55,29 @@ class ReviewItemsPanel extends StatelessWidget {
   /// Box-label prefixes carried from the active tool's output config.
   final String questionPrefix;
   final String solutionPrefix;
+  final String englishQuestionPrefix;
+  final String englishSolutionPrefix;
+  final String hindiQuestionPrefix;
+  final String hindiSolutionPrefix;
+  final bool bilingualModeActive;
 
   /// The search filter query entered by the user.
   final String searchQuery;
+
+  String _getPrefix(AnalyzedItem item) {
+    if (bilingualModeActive) {
+      final bool isHindi = item.isHindi ?? (item.segments.isNotEmpty
+          ? (item.segments.first.xStartPct + item.segments.first.xEndPct) / 2.0 > 50.0
+          : false);
+      if (isHindi) {
+        return item.isSolution ? hindiSolutionPrefix : hindiQuestionPrefix;
+      } else {
+        return item.isSolution ? englishSolutionPrefix : englishQuestionPrefix;
+      }
+    } else {
+      return item.isSolution ? solutionPrefix : questionPrefix;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,8 +94,7 @@ class ReviewItemsPanel extends StatelessWidget {
             <MapEntry<int, AnalyzedItem>>[];
         for (int i = 0; i < allItems.length; i++) {
           final AnalyzedItem item = allItems[i];
-          final String prefix =
-              item.isSolution ? solutionPrefix : questionPrefix;
+          final String prefix = _getPrefix(item);
           final String label = (prefix + item.qNum).toLowerCase();
           final String kind = item.isSolution ? 'solution' : 'question';
           final String sub = _ItemRow._subLine(
@@ -130,9 +154,9 @@ class ReviewItemsPanel extends StatelessWidget {
                     selected: controller.isSelected(indexedItems[i].key),
                     onToggleSelection: () =>
                         controller.toggleSelection(indexedItems[i].key),
-                    questionPrefix: questionPrefix,
-                    solutionPrefix: solutionPrefix,
+                    prefix: _getPrefix(indexedItems[i].value),
                     onPreview: () => _openPreview(context, indexedItems[i].key),
+                    onEditQNum: () => _editNumber(context, indexedItems[i].key),
                     onReselect: () =>
                         controller.startReselectForItem(indexedItems[i].key),
                     onDelete: () => _confirmDelete(
@@ -155,19 +179,21 @@ class ReviewItemsPanel extends StatelessWidget {
   /// preview is rendered server-side). Without an engine the action is a no-op.
   void _openPreview(BuildContext context, int index) {
     if (controller.apiClient == null) return;
+    final item = controller.items[index];
+    final prefix = _getPrefix(item);
     CropPreviewDialog.open(
       context,
       controller: controller,
       itemIndex: index,
-      questionPrefix: questionPrefix,
-      solutionPrefix: solutionPrefix,
+      questionPrefix: prefix,
+      solutionPrefix: prefix,
     );
   }
 
   /// Prompt the user with a confirmation dialog before deleting an item.
   Future<void> _confirmDelete(
       BuildContext context, AnalyzedItem item, int index) async {
-    final String prefix = item.isSolution ? solutionPrefix : questionPrefix;
+    final String prefix = _getPrefix(item);
     final String label = '$prefix${item.qNum}';
     final String itemType = item.isSolution ? 'Solution' : 'Question';
 
@@ -213,6 +239,178 @@ class ReviewItemsPanel extends StatelessWidget {
 
     if (confirm == true) {
       controller.deleteItem(index);
+    }
+  }
+
+  Future<void> _editNumber(BuildContext context, int index) async {
+    final item = controller.items[index];
+    final textController = TextEditingController(text: item.qNum);
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>() ?? QpicPalette.dark;
+
+    final result = await showDialog<({String qNum, bool isSolution, bool? isHindi})>(
+      context: context,
+      builder: (BuildContext context) {
+        bool localIsSolution = item.isSolution;
+        bool? localIsHindi = item.isHindi;
+
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return AlertDialog(
+              backgroundColor: palette.panel,
+              title: Text(
+                'Edit Item Properties',
+                style: TextStyle(
+                  color: palette.text,
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: textController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Number',
+                      labelStyle: TextStyle(color: palette.mutedAlt),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: palette.brand),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: palette.border),
+                      ),
+                    ),
+                    style: TextStyle(color: palette.text),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Type',
+                    style: TextStyle(
+                      color: palette.mutedAlt,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  SegmentedButton<bool>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment<bool>(
+                        value: false,
+                        label: Text('Question'),
+                      ),
+                      ButtonSegment<bool>(
+                        value: true,
+                        label: Text('Solution'),
+                      ),
+                    ],
+                    selected: {localIsSolution},
+                    onSelectionChanged: (Set<bool> val) {
+                      setState(() {
+                        localIsSolution = val.first;
+                      });
+                    },
+                    style: SegmentedButton.styleFrom(
+                      selectedBackgroundColor: palette.brand,
+                      selectedForegroundColor: Colors.white,
+                      backgroundColor: palette.panelAlt,
+                      foregroundColor: palette.text,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                  if (bilingualModeActive) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      'Language / Column',
+                      style: TextStyle(
+                        color: palette.mutedAlt,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    SegmentedButton<bool?>(
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment<bool?>(
+                          value: false,
+                          label: Text('English'),
+                        ),
+                        ButtonSegment<bool?>(
+                          value: true,
+                          label: Text('Hindi'),
+                        ),
+                        ButtonSegment<bool?>(
+                          value: null,
+                          label: Text('Auto'),
+                        ),
+                      ],
+                      selected: {localIsHindi},
+                      onSelectionChanged: (Set<bool?> val) {
+                        setState(() {
+                          localIsHindi = val.first;
+                        });
+                      },
+                      style: SegmentedButton.styleFrom(
+                        selectedBackgroundColor: palette.brand,
+                        selectedForegroundColor: Colors.white,
+                        backgroundColor: palette.panelAlt,
+                        foregroundColor: palette.text,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: <Widget>[
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(null),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: palette.muted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final trimmed = textController.text.trim();
+                    if (trimmed.isNotEmpty) {
+                      Navigator.of(context).pop((
+                        qNum: trimmed,
+                        isSolution: localIsSolution,
+                        isHindi: localIsHindi,
+                      ));
+                    }
+                  },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: palette.brand,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      controller.setItemProperties(
+        index,
+        qNum: result.qNum,
+        isSolution: result.isSolution,
+        isHindi: result.isHindi,
+      );
     }
   }
 }
@@ -316,9 +514,9 @@ class _ItemRow extends StatelessWidget {
     required this.editing,
     this.selected = false,
     required this.onToggleSelection,
-    required this.questionPrefix,
-    required this.solutionPrefix,
+    required this.prefix,
     required this.onPreview,
+    required this.onEditQNum,
     required this.onReselect,
     required this.onDelete,
     required this.onMoveUp,
@@ -332,9 +530,9 @@ class _ItemRow extends StatelessWidget {
   final bool editing;
   final bool selected;
   final VoidCallback onToggleSelection;
-  final String questionPrefix;
-  final String solutionPrefix;
+  final String prefix;
   final VoidCallback onPreview;
+  final VoidCallback onEditQNum;
   final VoidCallback onReselect;
   final VoidCallback onDelete;
   final ValueChanged<int> onMoveUp;
@@ -343,7 +541,6 @@ class _ItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final String prefix = item.isSolution ? solutionPrefix : questionPrefix;
     final String kind = item.isSolution ? 'Solution' : 'Question';
     final bool multi = item.segments.length > 1;
     final bool manual = item.source == 'manual';
@@ -397,12 +594,35 @@ class _ItemRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      '$prefix${item.qNum}',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: palette.text,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          Text(
+                            '$prefix${item.qNum}',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: palette.text,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          InkWell(
+                            key: ValueKey<String>('review-item-edit-qnum-$index'),
+                            onTap: onEditQNum,
+                            borderRadius: BorderRadius.circular(4),
+                            child: Padding(
+                              padding: const EdgeInsets.all(2),
+                              child: Icon(
+                                Icons.edit_rounded,
+                                size: 13,
+                                color: palette.brand.withValues(alpha: 0.8),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 1),

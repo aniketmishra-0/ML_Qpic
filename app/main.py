@@ -63,6 +63,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Application lifespan: init shared clients and background tasks."""
 
     settings = Settings()
+    if settings.GOOGLE_APPLICATION_CREDENTIALS:
+        import os
+        from pathlib import Path
+        cred_path = Path(settings.GOOGLE_APPLICATION_CREDENTIALS)
+        if not cred_path.is_absolute():
+            cred_path = (BASE_DIR / cred_path).resolve()
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(cred_path)
+
     temp_root = (BASE_DIR / settings.TEMP_DIR).resolve()
     await asyncio.to_thread(temp_root.mkdir, parents=True, exist_ok=True)
 

@@ -341,8 +341,12 @@ void main() {
     expect(find.byType(SegmentedButton<String>), findsOneWidget);
 
     // Verify English segment is present and tap it
-    expect(find.text('English'), findsOneWidget);
-    await tester.tap(find.text('English'));
+    final englishSegment = find.descendant(
+      of: find.byKey(const ValueKey('review-finalize-download-bar')),
+      matching: find.text('English'),
+    );
+    expect(englishSegment, findsOneWidget);
+    await tester.tap(englishSegment);
     await tester.pumpAndSettle();
 
     // The active finalization mode should become 'english'

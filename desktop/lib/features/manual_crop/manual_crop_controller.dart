@@ -140,6 +140,10 @@ class ManualCropController extends ChangeNotifier {
 
   String _questionPrefix = 'Q';
   String _solutionPrefix = 'S';
+  String _englishQuestionPrefix = 'EQ';
+  String _englishSolutionPrefix = 'ES';
+  String _hindiQuestionPrefix = 'HQ';
+  String _hindiSolutionPrefix = 'HS';
   int _startNumber = AutoCropBounds.startNumberDefault;
   CropImageFormat _imageFormat = CropImageFormat.png;
   int _jpgQuality = AutoCropBounds.jpgQualityDefault;
@@ -192,6 +196,10 @@ class ManualCropController extends ChangeNotifier {
     if (_bilingualModeActive == value) return;
     _bilingualModeActive = value;
     review.bilingualModeActive = value;
+    if (_bilingualModeActive) {
+      _questionPrefix = 'EQ';
+      _solutionPrefix = 'ES';
+    }
     notifyListeners();
   }
 
@@ -219,6 +227,38 @@ class ManualCropController extends ChangeNotifier {
     final next = _truncatePrefix(value);
     if (_solutionPrefix == next) return;
     _solutionPrefix = next;
+    notifyListeners();
+  }
+
+  String get englishQuestionPrefix => _englishQuestionPrefix;
+  set englishQuestionPrefix(String value) {
+    final next = _truncatePrefix(value);
+    if (_englishQuestionPrefix == next) return;
+    _englishQuestionPrefix = next;
+    notifyListeners();
+  }
+
+  String get englishSolutionPrefix => _englishSolutionPrefix;
+  set englishSolutionPrefix(String value) {
+    final next = _truncatePrefix(value);
+    if (_englishSolutionPrefix == next) return;
+    _englishSolutionPrefix = next;
+    notifyListeners();
+  }
+
+  String get hindiQuestionPrefix => _hindiQuestionPrefix;
+  set hindiQuestionPrefix(String value) {
+    final next = _truncatePrefix(value);
+    if (_hindiQuestionPrefix == next) return;
+    _hindiQuestionPrefix = next;
+    notifyListeners();
+  }
+
+  String get hindiSolutionPrefix => _hindiSolutionPrefix;
+  set hindiSolutionPrefix(String value) {
+    final next = _truncatePrefix(value);
+    if (_hindiSolutionPrefix == next) return;
+    _hindiSolutionPrefix = next;
     notifyListeners();
   }
 
@@ -356,11 +396,11 @@ class ManualCropController extends ChangeNotifier {
       );
       // Load the page previews with an empty item list — every crop is drawn by
       // hand in the canvas (Req 7.2).
+      review.loadFromManual(response);
       review.bilingualModeActive = _bilingualModeActive;
       if (_bilingualModeActive) {
-        review.bilingualMode = 'english';
+        review.bilingualMode = 'bilingual_horizontal';
       }
-      review.loadFromManual(response);
       // Keep the per-item crop preview in step with this tool's output config so
       // a preview renders exactly as the finalized download will (Req 7.4).
       review.setPreviewOutput(
@@ -420,11 +460,11 @@ class ManualCropController extends ChangeNotifier {
     _fileName = null;
     _errorText = null;
     _enhancePreviewJobId = null;
-    _bilingualModeActive = false;
+    final wasBilingual = _bilingualModeActive;
 
     // Independent output configuration.
-    _questionPrefix = defaults?.defaultQuestionPrefix ?? 'Q';
-    _solutionPrefix = defaults?.defaultSolutionPrefix ?? 'S';
+    _questionPrefix = wasBilingual ? 'EQ' : (defaults?.defaultQuestionPrefix ?? 'Q');
+    _solutionPrefix = wasBilingual ? 'ES' : (defaults?.defaultSolutionPrefix ?? 'S');
     _startNumber = AutoCropBounds.startNumberDefault;
     _imageFormat = defaults?.defaultImageFormat == 'jpg'
         ? CropImageFormat.jpg
@@ -438,13 +478,14 @@ class ManualCropController extends ChangeNotifier {
     _deskew = false;
     review.snappingMargin = 0.8;
 
+    _bilingualModeActive = wasBilingual;
     notifyListeners();
   }
 
   /// Applies default settings loaded from [ThemeController].
   void applyDefaults(ThemeController controller) {
-    _questionPrefix = controller.defaultQuestionPrefix;
-    _solutionPrefix = controller.defaultSolutionPrefix;
+    _questionPrefix = _bilingualModeActive ? 'EQ' : controller.defaultQuestionPrefix;
+    _solutionPrefix = _bilingualModeActive ? 'ES' : controller.defaultSolutionPrefix;
     _imageFormat = controller.defaultImageFormat == 'jpg'
         ? CropImageFormat.jpg
         : CropImageFormat.png;
@@ -488,6 +529,10 @@ class ManualCropController extends ChangeNotifier {
       startNumber: _startNumber,
       imageFormat: _imageFormat.value,
       jpgQuality: _jpgQuality,
+      englishQuestionPrefix: _englishQuestionPrefix,
+      englishSolutionPrefix: _englishSolutionPrefix,
+      hindiQuestionPrefix: _hindiQuestionPrefix,
+      hindiSolutionPrefix: _hindiSolutionPrefix,
     );
   }
 

@@ -112,13 +112,13 @@ class PreflightController extends ChangeNotifier {
   bool get canRun => hasFile && !_busy && !_fixing;
 
   /// Whether the fix-page-sizes action is available: a preflight result exists
-  /// with `mixed_page_sizes == true` and no operation is in flight.
+  /// and no operation is in flight. Works for both mixed and uniform page sizes
+  /// (e.g. resizing all pages from 1920×1080 to A4).
   bool get canFix =>
       hasFile &&
       !_busy &&
       !_fixing &&
-      _result != null &&
-      _result!.mixedPageSizes;
+      _result != null;
 
   /// Whether a finished fix result is available to download.
   bool get canDownload => _fixResult != null && !_busy && !_fixing;
@@ -248,7 +248,7 @@ class PreflightController extends ChangeNotifier {
     try {
       final result = await _downloadService.download(
         engineUrl: response.downloadUrl,
-        suggestedName: 'normalized.pdf',
+        suggestedName: _fileName ?? 'normalized.pdf',
         acceptedTypeGroups: const <XTypeGroup>[_pdfTypeGroup],
       );
       return result;

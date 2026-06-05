@@ -42,8 +42,14 @@ class ReviewScreen extends StatefulWidget {
     this.previewUrlResolver,
     this.questionPrefix = 'Q',
     this.solutionPrefix = 'S',
+    this.englishQuestionPrefix = 'EQ',
+    this.englishSolutionPrefix = 'ES',
+    this.hindiQuestionPrefix = 'HQ',
+    this.hindiSolutionPrefix = 'HS',
     this.onClose,
     this.onFinalize,
+    this.initialUseAi = false,
+    this.initialUseGoogleOcr = false,
   });
 
   /// The session controller exposing the pages, items, notes, view transform,
@@ -57,6 +63,10 @@ class ReviewScreen extends StatefulWidget {
   /// Box-label prefixes carried from the active tool's output config.
   final String questionPrefix;
   final String solutionPrefix;
+  final String englishQuestionPrefix;
+  final String englishSolutionPrefix;
+  final String hindiQuestionPrefix;
+  final String hindiSolutionPrefix;
 
   /// Invoked when the user leaves the review surface (e.g. a Back affordance).
   /// When null the Back control is hidden.
@@ -67,6 +77,9 @@ class ReviewScreen extends StatefulWidget {
   /// disabled.
   final VoidCallback? onFinalize;
 
+  final bool initialUseAi;
+  final bool initialUseGoogleOcr;
+
   @override
   State<ReviewScreen> createState() => _ReviewScreenState();
 }
@@ -75,7 +88,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
   /// Whether the right-hand notes panel is shown. Toggled from the toolbar so
   /// the canvas can take the full width when the user wants more room.
   bool _notesOpen = true;
-  bool _autoDetectUseAi = false;
+  late bool _autoDetectUseAi;
+  late bool _autoDetectUseGoogleOcr;
+
+  @override
+  void initState() {
+    super.initState();
+    _autoDetectUseAi = widget.initialUseAi;
+    _autoDetectUseGoogleOcr = widget.initialUseGoogleOcr;
+  }
 
   void _toggleNotes() => setState(() => _notesOpen = !_notesOpen);
 
@@ -102,6 +123,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   autoDetectUseAi: _autoDetectUseAi,
                   onToggleUseAi: (bool val) =>
                       setState(() => _autoDetectUseAi = val),
+                  autoDetectUseGoogleOcr: _autoDetectUseGoogleOcr,
+                  onToggleUseGoogleOcr: (bool val) =>
+                      setState(() => _autoDetectUseGoogleOcr = val),
                 ),
                 _AnswerSheetAdvisory(
                     controller: widget.controller, palette: palette),
@@ -126,6 +150,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
                             previewUrlResolver: widget.previewUrlResolver,
                             questionPrefix: widget.questionPrefix,
                             solutionPrefix: widget.solutionPrefix,
+                            englishQuestionPrefix: widget.englishQuestionPrefix,
+                            englishSolutionPrefix: widget.englishSolutionPrefix,
+                            hindiQuestionPrefix: widget.hindiQuestionPrefix,
+                            hindiSolutionPrefix: widget.hindiSolutionPrefix,
+                            bilingualModeActive: widget.controller.bilingualModeActive,
                           ),
                         ),
                       ),
@@ -135,6 +164,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         open: _notesOpen,
                         questionPrefix: widget.questionPrefix,
                         solutionPrefix: widget.solutionPrefix,
+                        englishQuestionPrefix: widget.englishQuestionPrefix,
+                        englishSolutionPrefix: widget.englishSolutionPrefix,
+                        hindiQuestionPrefix: widget.hindiQuestionPrefix,
+                        hindiSolutionPrefix: widget.hindiSolutionPrefix,
+                        bilingualModeActive: widget.controller.bilingualModeActive,
                       ),
                     ],
                   ),
@@ -162,6 +196,8 @@ class _ReviewToolbar extends StatelessWidget {
     required this.onToggleNotes,
     required this.autoDetectUseAi,
     required this.onToggleUseAi,
+    required this.autoDetectUseGoogleOcr,
+    required this.onToggleUseGoogleOcr,
   });
 
   final ReviewController controller;
@@ -172,6 +208,8 @@ class _ReviewToolbar extends StatelessWidget {
   final VoidCallback onToggleNotes;
   final bool autoDetectUseAi;
   final ValueChanged<bool> onToggleUseAi;
+  final bool autoDetectUseGoogleOcr;
+  final ValueChanged<bool> onToggleUseGoogleOcr;
 
   @override
   Widget build(BuildContext context) {
@@ -310,12 +348,20 @@ class _ReviewToolbar extends StatelessWidget {
               onSelected: (String value) {
                 if (value == 'toggle-ai') {
                   onToggleUseAi(!autoDetectUseAi);
+                } else if (value == 'toggle-google') {
+                  onToggleUseGoogleOcr(!autoDetectUseGoogleOcr);
                 } else if (value == 'detect-page') {
                   controller.runAutoDetect(
-                      pageOnly: true, useAi: autoDetectUseAi);
+                    pageOnly: true,
+                    useAi: autoDetectUseAi,
+                    useGoogleOcr: autoDetectUseGoogleOcr,
+                  );
                 } else if (value == 'detect-all') {
                   controller.runAutoDetect(
-                      pageOnly: false, useAi: autoDetectUseAi);
+                    pageOnly: false,
+                    useAi: autoDetectUseAi,
+                    useGoogleOcr: autoDetectUseGoogleOcr,
+                  );
                 }
               },
               itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -324,6 +370,12 @@ class _ReviewToolbar extends StatelessWidget {
                   value: 'toggle-ai',
                   checked: autoDetectUseAi,
                   child: const Text('Use AI (Online mode)'),
+                ),
+                CheckedPopupMenuItem<String>(
+                  key: const ValueKey<String>('review-auto-detect-use-google-ocr'),
+                  value: 'toggle-google',
+                  checked: autoDetectUseGoogleOcr,
+                  child: const Text('Use Google OCR'),
                 ),
                 const PopupMenuDivider(),
                 PopupMenuItem<String>(
@@ -784,6 +836,11 @@ class _NotesSidebar extends StatefulWidget {
     required this.open,
     required this.questionPrefix,
     required this.solutionPrefix,
+    required this.englishQuestionPrefix,
+    required this.englishSolutionPrefix,
+    required this.hindiQuestionPrefix,
+    required this.hindiSolutionPrefix,
+    required this.bilingualModeActive,
   });
 
   final ReviewController controller;
@@ -791,6 +848,11 @@ class _NotesSidebar extends StatefulWidget {
   final bool open;
   final String questionPrefix;
   final String solutionPrefix;
+  final String englishQuestionPrefix;
+  final String englishSolutionPrefix;
+  final String hindiQuestionPrefix;
+  final String hindiSolutionPrefix;
+  final bool bilingualModeActive;
 
   @override
   State<_NotesSidebar> createState() => _NotesSidebarState();
@@ -878,13 +940,19 @@ class _NotesSidebarState extends State<_NotesSidebar> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: <Widget>[
-                            if (widget.controller.bilingualModeActive) ...[
+                            if (widget.controller.bilingualModeActive &&
+                                widget.controller.source != ReviewSource.manualCrop) ...[
                               _BilingualStitcherCard(
                                 controller: widget.controller,
                                 palette: widget.palette,
                               ),
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12),
                             ],
+                            _DrawSettingsCard(
+                              controller: widget.controller,
+                              palette: widget.palette,
+                            ),
+                            const SizedBox(height: 16),
                             ReviewNotesPanel(
                               controller: widget.controller,
                               searchQuery: _searchQuery,
@@ -894,6 +962,11 @@ class _NotesSidebarState extends State<_NotesSidebar> {
                               controller: widget.controller,
                               questionPrefix: widget.questionPrefix,
                               solutionPrefix: widget.solutionPrefix,
+                              englishQuestionPrefix: widget.englishQuestionPrefix,
+                              englishSolutionPrefix: widget.englishSolutionPrefix,
+                              hindiQuestionPrefix: widget.hindiQuestionPrefix,
+                              hindiSolutionPrefix: widget.hindiSolutionPrefix,
+                              bilingualModeActive: widget.bilingualModeActive,
                               searchQuery: _searchQuery,
                             ),
                           ],
@@ -1009,6 +1082,111 @@ class _BilingualStitcherCard extends StatelessWidget {
                   controller.bilingualMode = value == 'none' ? null : value;
                 },
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawSettingsCard extends StatelessWidget {
+  const _DrawSettingsCard({
+    required this.controller,
+    required this.palette,
+  });
+
+  final ReviewController controller;
+  final QpicPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: palette.field,
+      elevation: 0,
+      margin: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: palette.borderSoft),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(Icons.edit_road_rounded,
+                    size: 16, color: palette.brand),
+                const SizedBox(width: 8),
+                Text(
+                  'Draw Box Type',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: palette.text,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ListenableBuilder(
+              listenable: controller,
+              builder: (context, _) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    if (controller.bilingualModeActive) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: SegmentedButton<bool>(
+                          showSelectedIcon: false,
+                          segments: const <ButtonSegment<bool>>[
+                            ButtonSegment<bool>(
+                              value: false,
+                              label: Text('English'),
+                              icon: Icon(Icons.text_fields_rounded, size: 14),
+                            ),
+                            ButtonSegment<bool>(
+                              value: true,
+                              label: Text('Hindi'),
+                              icon: Icon(Icons.translate_rounded, size: 14),
+                            ),
+                          ],
+                          selected: <bool>{controller.drawAsHindi},
+                          onSelectionChanged: (Set<bool> selection) {
+                            controller.setDrawAsHindi(selection.first);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<bool>(
+                        showSelectedIcon: false,
+                        segments: const <ButtonSegment<bool>>[
+                          ButtonSegment<bool>(
+                            value: false,
+                            label: Text('Question'),
+                            icon: Icon(Icons.help_outline_rounded, size: 14),
+                          ),
+                          ButtonSegment<bool>(
+                            value: true,
+                            label: Text('Solution'),
+                            icon: Icon(Icons.assignment_turned_in_outlined, size: 14),
+                          ),
+                        ],
+                        selected: <bool>{controller.drawAsSolution},
+                        onSelectionChanged: (Set<bool> selection) {
+                          controller.setDrawAsSolution(selection.first);
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ],
         ),

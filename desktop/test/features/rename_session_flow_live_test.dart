@@ -286,6 +286,7 @@ void main() {
           ..pattern = 'Q#'
           ..start = 5
           ..padding = 3
+          ..downloadExcel = false
           ..outputFormat = RenameOutputFormat.png
           ..addItems(<RenameItem>[
             RenameItem(
@@ -376,6 +377,7 @@ void main() {
           ..pattern = 'photo-#'
           ..start = 1
           ..padding = 0
+          ..downloadExcel = false
           ..outputFormat = RenameOutputFormat.jpg
           ..jpgQuality = 80
           ..addItems(<RenameItem>[

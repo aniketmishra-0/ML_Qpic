@@ -238,6 +238,7 @@ class AnalyzedItem {
     this.flagReason,
     this.align,
     this.otherSegments,
+    this.isHindi,
   });
 
   final String qNum;
@@ -259,6 +260,9 @@ class AnalyzedItem {
   /// without needing duplicate items in the list.
   final List<QuestionSegment>? otherSegments;
 
+  /// Manual override for language/column (true = Hindi, false = English, null = Auto).
+  final bool? isHindi;
+
   /// Returns a copy with [align] set, preserving all other fields.
   AnalyzedItem copyWithAlign(bool? align) => AnalyzedItem(
         qNum: qNum,
@@ -269,6 +273,7 @@ class AnalyzedItem {
         flagReason: flagReason,
         align: align,
         otherSegments: otherSegments,
+        isHindi: isHindi,
       );
 
   factory AnalyzedItem.fromJson(Map<String, dynamic> json) {
@@ -286,6 +291,7 @@ class AnalyzedItem {
               .map((e) => QuestionSegment.fromJson(e as Map<String, dynamic>))
               .toList()
           : null,
+      isHindi: json['is_hindi'] as bool?,
     );
   }
 
@@ -298,6 +304,7 @@ class AnalyzedItem {
       'flagged': flagged,
       'flag_reason': flagReason,
       'other_segments': otherSegments?.map((e) => e.toJson()).toList(),
+      'is_hindi': isHindi,
     };
   }
 }
@@ -434,6 +441,7 @@ class FinalizeItem {
     this.isSolution = false,
     this.source = 'auto',
     this.align,
+    this.isHindi,
   });
 
   final String qNum;
@@ -447,6 +455,9 @@ class FinalizeItem {
   /// crop matches the preview the user approved.
   final bool? align;
 
+  /// Manual override for language/column (true = Hindi, false = English, null = Auto).
+  final bool? isHindi;
+
   factory FinalizeItem.fromJson(Map<String, dynamic> json) {
     return FinalizeItem(
       qNum: json['q_num'] as String,
@@ -456,6 +467,7 @@ class FinalizeItem {
           .toList(),
       source: json['source'] as String? ?? 'auto',
       align: json['align'] as bool?,
+      isHindi: json['is_hindi'] as bool?,
     );
   }
 
@@ -466,6 +478,7 @@ class FinalizeItem {
       'segments': segments.map((e) => e.toJson()).toList(),
       'source': source,
       'align': align,
+      'is_hindi': isHindi,
     };
   }
 }
@@ -489,6 +502,7 @@ class CropPreviewRequest {
     this.jpgQuality = 90,
     this.bilingualMode,
     this.otherSegments,
+    this.isHindi,
   });
 
   final String jobId;
@@ -505,6 +519,7 @@ class CropPreviewRequest {
   final int jpgQuality;
   final String? bilingualMode;
   final List<QuestionSegment>? otherSegments;
+  final bool? isHindi;
 
   factory CropPreviewRequest.fromJson(Map<String, dynamic> json) {
     return CropPreviewRequest(
@@ -526,6 +541,7 @@ class CropPreviewRequest {
               .map((e) => QuestionSegment.fromJson(e as Map<String, dynamic>))
               .toList()
           : null,
+      isHindi: json['is_hindi'] as bool?,
     );
   }
 
@@ -543,6 +559,7 @@ class CropPreviewRequest {
       'jpg_quality': jpgQuality,
       'bilingual_mode': bilingualMode,
       'other_segments': otherSegments?.map((e) => e.toJson()).toList(),
+      'is_hindi': isHindi,
     };
   }
 }
@@ -561,6 +578,10 @@ class FinalizeRequest {
     this.jpgQuality = 90,
     this.answerSheet = true,
     this.bilingualMode,
+    this.englishQuestionPrefix,
+    this.englishSolutionPrefix,
+    this.hindiQuestionPrefix,
+    this.hindiSolutionPrefix,
   });
 
   final String jobId;
@@ -576,6 +597,10 @@ class FinalizeRequest {
   final int jpgQuality;
   final bool answerSheet;
   final String? bilingualMode;
+  final String? englishQuestionPrefix;
+  final String? englishSolutionPrefix;
+  final String? hindiQuestionPrefix;
+  final String? hindiSolutionPrefix;
 
   factory FinalizeRequest.fromJson(Map<String, dynamic> json) {
     return FinalizeRequest(
@@ -592,6 +617,10 @@ class FinalizeRequest {
       jpgQuality: (json['jpg_quality'] as num?)?.toInt() ?? 90,
       answerSheet: json['answer_sheet'] as bool? ?? true,
       bilingualMode: json['bilingual_mode'] as String?,
+      englishQuestionPrefix: json['english_question_prefix'] as String?,
+      englishSolutionPrefix: json['english_solution_prefix'] as String?,
+      hindiQuestionPrefix: json['hindi_question_prefix'] as String?,
+      hindiSolutionPrefix: json['hindi_solution_prefix'] as String?,
     );
   }
 
@@ -608,6 +637,10 @@ class FinalizeRequest {
       'jpg_quality': jpgQuality,
       'answer_sheet': answerSheet,
       'bilingual_mode': bilingualMode,
+      'english_question_prefix': englishQuestionPrefix,
+      'english_solution_prefix': englishSolutionPrefix,
+      'hindi_question_prefix': hindiQuestionPrefix,
+      'hindi_solution_prefix': hindiSolutionPrefix,
     };
   }
 }

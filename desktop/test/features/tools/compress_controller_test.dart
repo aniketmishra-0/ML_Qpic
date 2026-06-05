@@ -294,7 +294,7 @@ void main() {
 
       expect(result, isNotNull);
       expect(result!.isSaved, isTrue);
-      expect(h.seenSuggestedName, 'compressed.pdf');
+      expect(h.seenSuggestedName, 'in.pdf');
       expect(h.streamedPath, '/chosen/compressed.pdf');
       expect(
         h.streamedUri.toString(),

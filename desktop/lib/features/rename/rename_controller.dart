@@ -16,6 +16,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
+
 import 'package:file_selector/file_selector.dart' show XFile, XTypeGroup;
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
@@ -85,6 +87,7 @@ class RenameItem {
     this.fromPdf = false,
     this.dataUrl,
     this.fileBytes,
+    this.pageUrl,
   });
 
   /// Builds a batch item from a [PdfImageItem] returned by
@@ -98,6 +101,20 @@ class RenameItem {
       sizeBytes: image.size,
       fromPdf: true,
       dataUrl: image.dataUrl,
+    );
+  }
+
+  /// Builds a batch item from a [PdfPageItem] returned by
+  /// `POST /api/rename/pdf-to-session`: pages are JPEG files on disk,
+  /// referenced by URL for lazy download.
+  factory RenameItem.fromPdfPage(PdfPageItem page, String fullUrl) {
+    return RenameItem(
+      name: page.name,
+      width: page.width,
+      height: page.height,
+      sizeBytes: page.size,
+      fromPdf: true,
+      pageUrl: fullUrl,
     );
   }
 
@@ -120,6 +137,12 @@ class RenameItem {
   /// Raw file bytes for upload (from file picker / drag-drop).
   final List<int>? fileBytes;
 
+  /// URL to download the page image (from pdf-to-session flow).
+  final String? pageUrl;
+
+  /// Lazily-fetched bytes from [pageUrl].
+  List<int>? _fetchedBytes;
+
   /// Cached list of decoded bytes.
   List<int>? _decodedBytesCache;
 
@@ -137,12 +160,15 @@ class RenameItem {
   }
 
   /// The bytes to stream to the rename session, preferring the raw
-  /// [fileBytes] (picked image) and falling back to decoding the base64
-  /// payload of a PDF page's [dataUrl]. Returns an empty list when neither is
-  /// available (no engine logic — just transport plumbing).
+  /// [fileBytes] (picked image), then [_fetchedBytes] (downloaded from URL),
+  /// then falling back to decoding the base64 payload of a PDF page's [dataUrl].
+  /// Returns an empty list when none is available.
   List<int> bytesForUpload() {
     final raw = fileBytes;
     if (raw != null) return raw;
+
+    final fetched = _fetchedBytes;
+    if (fetched != null) return fetched;
 
     final cached = _decodedBytesCache;
     if (cached != null) return cached;
@@ -161,6 +187,19 @@ class RenameItem {
       }
     }
     return const <int>[];
+  }
+
+  /// Whether this item has image bytes available (either loaded or fetchable).
+  bool get hasBytesAvailable =>
+      fileBytes != null ||
+      _fetchedBytes != null ||
+      _decodedBytesCache != null ||
+      (dataUrl != null && dataUrl!.startsWith('data:'));
+
+  /// Set fetched bytes (downloaded from pageUrl).
+  void setFetchedBytes(List<int> bytes) {
+    _fetchedBytes = bytes;
+    _uint8ListCache = null;
   }
 }
 
@@ -254,13 +293,48 @@ class RenameController extends ChangeNotifier {
   int _padding = RenameBounds.paddingDefault;
   RenameOutputFormat _outputFormat = RenameOutputFormat.original;
   int _jpgQuality = RenameBounds.jpgQualityDefault;
-  String _pdfDpi = 'Original';
+  String _pdfQuality = 'Medium';
+  bool _downloadExcel = true;
 
-  /// PDF render DPI for PDF-to-images conversion ('Original', '72', '150', '200', '300', '400', '600').
-  String get pdfDpi => _pdfDpi;
-  set pdfDpi(String value) {
-    if (_pdfDpi == value) return;
-    _pdfDpi = value;
+  /// PDF render quality setting ('Low', 'Medium', 'High').
+  String get pdfQuality => _pdfQuality;
+  set pdfQuality(String value) {
+    if (_pdfQuality == value) return;
+    _pdfQuality = value;
+    notifyListeners();
+  }
+
+  /// Maps [_pdfQuality] to DPI.
+  int get pdfDpiValue {
+    switch (_pdfQuality) {
+      case 'Low':
+        return 100;
+      case 'High':
+        return 200;
+      case 'Medium':
+      default:
+        return 150;
+    }
+  }
+
+  /// Maps [_pdfQuality] to JPEG Quality.
+  int get pdfQualityValue {
+    switch (_pdfQuality) {
+      case 'Low':
+        return 60;
+      case 'High':
+        return 90;
+      case 'Medium':
+      default:
+        return 75;
+    }
+  }
+
+  /// Whether to download the companion Excel sheet alongside the ZIP.
+  bool get downloadExcel => _downloadExcel;
+  set downloadExcel(bool value) {
+    if (_downloadExcel == value) return;
+    _downloadExcel = value;
     notifyListeners();
   }
 
@@ -329,6 +403,30 @@ class RenameController extends ChangeNotifier {
   /// Number of items in the batch.
   int get itemCount => _items.length;
 
+  /// Dynamically extracts the PDF jobId if all items in the batch are from
+  /// a single PDF rendering session and no custom files were mixed in.
+  String? get currentPdfJobId {
+    if (_items.isEmpty) return null;
+    String? commonJobId;
+    for (final item in _items) {
+      if (!item.fromPdf || item.pageUrl == null) return null;
+      final url = item.pageUrl!;
+      final marker = '/api/rename/pdf-page/';
+      final index = url.indexOf(marker);
+      if (index == -1) return null;
+      final rest = url.substring(index + marker.length);
+      final slashIndex = rest.indexOf('/');
+      if (slashIndex == -1) return null;
+      final jobId = rest.substring(0, slashIndex);
+      if (commonJobId == null) {
+        commonJobId = jobId;
+      } else if (commonJobId != jobId) {
+        return null;
+      }
+    }
+    return commonJobId;
+  }
+
   /// Add items to the batch.
   void addItems(List<RenameItem> newItems) {
     _items.addAll(newItems);
@@ -384,7 +482,8 @@ class RenameController extends ChangeNotifier {
     _padding = RenameBounds.paddingDefault;
     _outputFormat = RenameOutputFormat.original;
     _jpgQuality = RenameBounds.jpgQualityDefault;
-    _pdfDpi = 'Original';
+    _pdfQuality = 'Medium';
+    _downloadExcel = true;
 
     // Messages.
     _errorText = null;
@@ -568,12 +667,12 @@ class RenameController extends ChangeNotifier {
     }
   }
 
-  /// Converts a PDF into renamable items via `POST /api/rename/pdf-to-images`
-  /// and appends one item per page (Requirement 12.3). Each page arrives as an
-  /// inline `data:` PNG that doubles as the upload source and a preview.
+  /// Converts a PDF into renamable items via `POST /api/rename/pdf-to-session`
+  /// and appends one item per page. Each page is a JPEG file on the server,
+  /// referenced by URL for lazy, progressive loading.
   ///
   /// Returns true on success; on an engine error the `{"detail": ...}` message
-  /// is stored in [errorText] and false is returned (Requirement 12.6). A no-op
+  /// is stored in [errorText] and false is returned. A no-op
   /// (returns false) when no [ApiClient] is bound or a run is in flight.
   Future<bool> addPdfBytes({
     required List<int> bytes,
@@ -588,18 +687,28 @@ class RenameController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final response = await client.renamePdfToImages(
+      final response = await client.renamePdfToSession(
         fileBytes: bytes,
         filename: filename,
-        dpi: int.tryParse(_pdfDpi),
+        dpi: pdfDpiValue,
+        quality: pdfQualityValue,
       );
-      final pages = response.images
-          .map((image) => RenameItem.fromPdfImage(image))
+      final pages = response.pages
+          .map((page) => RenameItem.fromPdfPage(
+                page,
+                client.pdfPageImageUrl(page.pageUrl),
+              ))
           .toList();
       _busy = false;
       _statusText = null;
       // addItems notifies + schedules a preview refresh.
       addItems(pages);
+
+      // Skip background downloading for pure PDF sessions, since the files
+      // are already on the server and we can finalize them directly there.
+      if (currentPdfJobId == null) {
+        _fetchPageBytesInBackground(client, pages);
+      }
       return true;
     } on ApiException catch (e) {
       _errorText = e.detail;
@@ -613,6 +722,29 @@ class RenameController extends ChangeNotifier {
       _busy = false;
       notifyListeners();
       return false;
+    }
+  }
+
+  /// Downloads page image bytes from URLs in the background so previews
+  /// load progressively and bytes are ready for the rename session upload.
+  void _fetchPageBytesInBackground(ApiClient client, List<RenameItem> pages) {
+    for (final page in pages) {
+      final url = page.pageUrl;
+      if (url == null) continue;
+      client.dio
+          .get<List<int>>(
+            url,
+            options: Options(responseType: ResponseType.bytes),
+          )
+          .then((res) {
+        final data = res.data;
+        if (data != null) {
+          page.setFetchedBytes(data);
+          notifyListeners();
+        }
+      }).catchError((_) {
+        // Silently ignore — the preview just won't load for this page.
+      });
     }
   }
 
@@ -656,43 +788,59 @@ class RenameController extends ChangeNotifier {
     final List<String> stems = planStems();
     final List<RenameItem> batch = List<RenameItem>.of(_items);
     String? sessionId;
+    final pdfJobId = currentPdfJobId;
+    final isPdfSession = pdfJobId != null;
     try {
-      // 1) Open a session.
-      final session = await client.createRenameSession();
-      sessionId = session.sessionId;
-
-      // 2) Upload files in chunks, keeping stems aligned to upload order.
-      var sent = 0;
-      for (var i = 0; i < batch.length; i += renameUploadChunk) {
-        final end = (i + renameUploadChunk < batch.length)
-            ? i + renameUploadChunk
-            : batch.length;
-        final slice = batch.sublist(i, end);
-        final files = <ApiUploadFile>[
-          for (final item in slice)
-            ApiUploadFile(
-              bytes: item.bytesForUpload(),
-              filename: item.name,
-            ),
-        ];
-        await client.uploadRenameFiles(sessionId: sessionId, files: files);
-        sent += slice.length;
-        _statusText = 'Uploading… $sent / ${batch.length}';
+      RenameFinalizeResponse finalize;
+      if (isPdfSession) {
+        sessionId = pdfJobId;
+        _statusText = 'Renaming and packing your PDF pages on server…';
         notifyListeners();
-      }
+        finalize = await client.finalizePdfSession(
+          jobId: sessionId,
+          originals: batch.map((e) => e.name).toList(),
+          names: stems,
+          outputFormat: _outputFormat.value,
+          jpgQuality: _jpgQuality,
+        );
+      } else {
+        // 1) Open a session.
+        final session = await client.createRenameSession();
+        sessionId = session.sessionId;
 
-      // 3) Finalize: the engine packs the ZIP from disk.
-      _statusText = 'Renaming and packing your images…';
-      notifyListeners();
-      final finalize = await client.finalizeRenameSession(
-        sessionId: sessionId,
-        pattern: _pattern.isEmpty ? '#' : _pattern,
-        start: _start,
-        padding: _padding,
-        names: stems,
-        outputFormat: _outputFormat.value,
-        jpgQuality: _jpgQuality,
-      );
+        // 2) Upload files in chunks, keeping stems aligned to upload order.
+        var sent = 0;
+        for (var i = 0; i < batch.length; i += renameUploadChunk) {
+          final end = (i + renameUploadChunk < batch.length)
+              ? i + renameUploadChunk
+              : batch.length;
+          final slice = batch.sublist(i, end);
+          final files = <ApiUploadFile>[
+            for (final item in slice)
+              ApiUploadFile(
+                bytes: item.bytesForUpload(),
+                filename: item.name,
+              ),
+          ];
+          await client.uploadRenameFiles(sessionId: sessionId, files: files);
+          sent += slice.length;
+          _statusText = 'Uploading… $sent / ${batch.length}';
+          notifyListeners();
+        }
+
+        // 3) Finalize: the engine packs the ZIP from disk.
+        _statusText = 'Renaming and packing your images…';
+        notifyListeners();
+        finalize = await client.finalizeRenameSession(
+          sessionId: sessionId,
+          pattern: _pattern.isEmpty ? '#' : _pattern,
+          start: _start,
+          padding: _padding,
+          names: stems,
+          outputFormat: _outputFormat.value,
+          jpgQuality: _jpgQuality,
+        );
+      }
 
       // 4) Download — streamed from disk on the engine side, to a chosen path.
       final result = await downloader.download(
@@ -701,10 +849,34 @@ class RenameController extends ChangeNotifier {
         acceptedTypeGroups: const <XTypeGroup>[_zipTypeGroup],
       );
 
-      _statusText = result.isSaved
-          ? 'Saved ${finalize.count} renamed '
-              'image${finalize.count == 1 ? '' : 's'} as a ZIP.'
-          : null;
+      if (result.isSaved && result.path != null) {
+        final zipPath = result.path!;
+        final excelUrl = finalize.excelDownloadUrl;
+        if (_downloadExcel && excelUrl != null) {
+          // Compute companion Excel file path next to the saved ZIP.
+          final dir = p.dirname(zipPath);
+          final base = p.basenameWithoutExtension(zipPath);
+          final excelPath = p.join(dir, '$base.xlsx');
+
+          _statusText = 'Saving Excel companion sheet…';
+          notifyListeners();
+          try {
+            await downloader.downloadToPath(
+              engineUrl: excelUrl,
+              savePath: excelPath,
+            );
+            _statusText = 'Saved ${finalize.count} renamed '
+                'image${finalize.count == 1 ? '' : 's'} ZIP and Excel sheet.';
+          } catch (e) {
+            _statusText = 'ZIP saved, but failed to save Excel sheet: $e';
+          }
+        } else {
+          _statusText = 'Saved ${finalize.count} renamed '
+              'image${finalize.count == 1 ? '' : 's'} as a ZIP.';
+        }
+      } else {
+        _statusText = null;
+      }
       return result;
     } on ApiException catch (e) {
       _errorText = e.detail;
@@ -724,7 +896,11 @@ class RenameController extends ChangeNotifier {
       //    drop the session immediately.
       if (sessionId != null) {
         try {
-          await client.deleteRenameSession(sessionId);
+          if (isPdfSession) {
+            await client.deletePdfSession(sessionId);
+          } else {
+            await client.deleteRenameSession(sessionId);
+          }
         } catch (_) {
           // Cleanup is best-effort; never surface its failure to the user.
         }

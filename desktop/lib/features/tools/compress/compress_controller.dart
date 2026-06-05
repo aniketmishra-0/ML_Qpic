@@ -216,7 +216,7 @@ class CompressController extends ChangeNotifier {
     try {
       final result = await _downloadService.download(
         engineUrl: response.downloadUrl,
-        suggestedName: 'compressed.pdf',
+        suggestedName: _fileName ?? 'compressed.pdf',
         acceptedTypeGroups: const <XTypeGroup>[_pdfTypeGroup],
       );
       return result;

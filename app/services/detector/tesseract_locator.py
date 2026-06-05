@@ -64,6 +64,13 @@ def _candidate_paths() -> list[Path]:
     for base in _bundle_dirs():
         candidates.append(base / "tesseract" / name)
 
+    # 2b. Workspace repo root vendor directory (for source/dev runs).
+    try:
+        repo_root = Path(__file__).resolve().parent.parent.parent.parent
+        candidates.append(repo_root / "vendor" / "tesseract" / name)
+    except Exception:
+        pass
+
     # 3. Common per-OS install locations.
     if sys.platform == "darwin":
         candidates += [Path("/opt/homebrew/bin") / name, Path("/usr/local/bin") / name]

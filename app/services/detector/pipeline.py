@@ -6,6 +6,7 @@ import asyncio
 import inspect
 import logging
 import re
+from pathlib import Path
 from typing import Any, Optional
 
 import fitz
@@ -16,6 +17,8 @@ from ...models.schemas import DetectedQuestion
 from .base import merge_bilingual_pairs
 from .ai_detector import AIDetector
 from .ocr_detector import OCRDetector
+from .google_ocr_detector import GoogleOCRDetector
+from .paddle_ocr_detector import PaddleOCRDetector
 from .text_detector import TextDetector
 
 logger = logging.getLogger(__name__)
@@ -29,11 +32,15 @@ class DetectionPipeline:
         *,
         text_detector: Optional[TextDetector] = None,
         ocr_detector: Optional[OCRDetector] = None,
+        google_ocr_detector: Optional[GoogleOCRDetector] = None,
+        paddle_ocr_detector: Optional[PaddleOCRDetector] = None,
         ai_detector: Optional[AIDetector] = None,
         local_ml_detector: Optional[Any] = None,
     ) -> None:
         self.text_detector = text_detector or TextDetector()
         self.ocr_detector = ocr_detector or OCRDetector()
+        self.google_ocr_detector = google_ocr_detector or GoogleOCRDetector()
+        self.paddle_ocr_detector = paddle_ocr_detector or PaddleOCRDetector()
         self.local_ml_detector = local_ml_detector
         self.ai_detector = ai_detector
 
@@ -46,6 +53,8 @@ class DetectionPipeline:
         render_dpi: Optional[int] = None,
         smart: bool = False,
         prefer_ai: bool = False,
+        use_google_ocr: bool = False,
+        use_paddle_ocr: bool = False,
         marker_style: str = "auto",
         layout_columns: Optional[int] = None,
         confidence: Optional[float] = None,
@@ -58,6 +67,8 @@ class DetectionPipeline:
             render_dpi=render_dpi,
             smart=smart,
             prefer_ai=prefer_ai,
+            use_google_ocr=use_google_ocr,
+            use_paddle_ocr=use_paddle_ocr,
             marker_style=marker_style,
             layout_columns=layout_columns,
             confidence=confidence,
@@ -79,6 +90,8 @@ class DetectionPipeline:
         render_dpi: Optional[int] = None,
         smart: bool = False,
         prefer_ai: bool = False,
+        use_google_ocr: bool = False,
+        use_paddle_ocr: bool = False,
         marker_style: str = "auto",
         layout_columns: Optional[int] = None,
         confidence: Optional[float] = None,
@@ -168,25 +181,166 @@ class DetectionPipeline:
                 else self._result_is_sufficient(text_questions, total_pages, settings)
             )
             if accept:
-                return text_questions, "text"
+                # Page-level hybrid routing
+                final_questions = []
+                ocr_run_pages = []
+                
+                accumulated_ocr_lines = {}
+                accumulated_ocr_conf = {}
+                
+                for page_num in range(1, total_pages + 1):
+                    page_class = self._page_classes.get(page_num, "text")
+                    text_q = [q for q in text_questions if any(seg.page == page_num for seg in q.segments)]
+                    
+                    if self._should_run_ocr_for_page(page_num, page_class, text_q):
+                        logger.info("hybrid_pdf: running OCR fallback for page %s (class: %s)", page_num, page_class)
+                        page_img = page_images[page_num - 1]
+                        ocr_q = await self._detect_ocr_single_page(
+                            page_img,
+                            page_num,
+                            settings,
+                            render_dpi=render_dpi,
+                            use_google_ocr=use_google_ocr,
+                            use_paddle_ocr=use_paddle_ocr,
+                            marker_style=marker_style,
+                            layout_columns=layout_columns,
+                            custom_regex=custom_regex,
+                        )
+                        
+                        # Accumulate OCR page lines and confidence
+                        active_detector = self.ocr_detector
+                        google_ocr_ready = self.google_ocr_detector is not None and self.google_ocr_detector.is_available()
+                        if use_google_ocr and google_ocr_ready:
+                            active_detector = self.google_ocr_detector
+                        elif (use_paddle_ocr or getattr(settings, "USE_PADDLE_OCR", False)) and self.paddle_ocr_detector.is_available():
+                            active_detector = self.paddle_ocr_detector
+                            
+                        conf = getattr(active_detector, "page_confidence", None)
+                        if conf and 1 in conf:
+                            accumulated_ocr_conf[page_num] = conf[1]
+                        lines = getattr(active_detector, "page_lines_pct", None)
+                        if lines and 1 in lines:
+                            accumulated_ocr_lines[page_num] = lines[1]
+                        
+                        # Decide whether to use OCR or text result for this page
+                        use_ocr = False
+                        if page_class == "ocr":
+                            use_ocr = True
+                        elif len(ocr_q) > len(text_q):
+                            use_ocr = True
+                            logger.info("Page %s: Using OCR result because len(ocr) %d > len(text) %d", page_num, len(ocr_q), len(text_q))
+                        else:
+                            text_cols = self._check_column_spread(text_q)
+                            ocr_cols = self._check_column_spread(ocr_q)
+                            if len(ocr_cols) > len(text_cols):
+                                use_ocr = True
+                                logger.info("Page %s: Using OCR result because OCR spans more columns: %s vs %s", page_num, ocr_cols, text_cols)
+                                
+                        if use_ocr:
+                            final_questions.extend(ocr_q)
+                            ocr_run_pages.append(page_num)
+                        else:
+                            final_questions.extend(text_q)
+                    else:
+                        final_questions.extend(text_q)
+                
+                # Deduplicate final_questions by object reference ID to avoid duplicates of multi-page questions
+                seen_ids = set()
+                deduped_final = []
+                for q in final_questions:
+                    if id(q) not in seen_ids:
+                        seen_ids.add(id(q))
+                        deduped_final.append(q)
+                final_questions = deduped_final
+
+                # Expose accumulated OCR data on the ocr_detector object so downstream review can use it
+                self.ocr_detector.page_confidence = accumulated_ocr_conf
+                self.ocr_detector.page_lines_pct = accumulated_ocr_lines
+                
+                if ocr_run_pages:
+                    logger.info(
+                        "hybrid_pdf text_accepted but_ocr_pages=%s (used OCR fallback on pages %s)",
+                        [p for p, cls in self._page_classes.items() if cls == 'ocr'],
+                        ocr_run_pages,
+                    )
+                    # Return the combined questions, mapped to "text" method so the pipeline accepts it
+                    return final_questions, "text"
+                else:
+                    return text_questions, "text"
         else:
             logger.info("pdf_not_searchable tier_start=ocr")
 
         # Tier 2: OCR
-        def _detect_ocr():
-            sig = inspect.signature(self.ocr_detector.detect)
-            kwargs = {}
-            if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-                kwargs["custom_regex"] = custom_regex
-            return self.ocr_detector.detect(
-                page_images,
-                settings,
-                render_dpi,
-                marker_style,
-                layout_columns,
-                **kwargs
-            )
-        ocr_questions = await asyncio.to_thread(_detect_ocr)
+        google_ocr_ready = self.google_ocr_detector is not None and self.google_ocr_detector.is_available()
+        if use_google_ocr and google_ocr_ready:
+            logger.info("google_ocr_primary tier_start=google_ocr pages=%s", total_pages)
+            def _detect_google_ocr():
+                return self.google_ocr_detector.detect(
+                    page_images,
+                    settings,
+                    render_dpi,
+                    marker_style,
+                    layout_columns,
+                    custom_regex=custom_regex,
+                )
+            ocr_questions = await asyncio.to_thread(_detect_google_ocr)
+            # Map page_lines_pct to ocr_detector for smart mode/review notes compatibility
+            if hasattr(self.google_ocr_detector, "page_lines_pct"):
+                self.ocr_detector.page_lines_pct = self.google_ocr_detector.page_lines_pct
+        elif (use_paddle_ocr or getattr(settings, "USE_PADDLE_OCR", False)) and self.paddle_ocr_detector.is_available():
+            logger.info("paddle_ocr_primary tier_start=paddle_ocr pages=%s", total_pages)
+            def _detect_paddle_ocr():
+                sig = inspect.signature(self.paddle_ocr_detector.detect)
+                kwargs = {}
+                if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                    kwargs["custom_regex"] = custom_regex
+                return self.paddle_ocr_detector.detect(
+                    page_images,
+                    settings,
+                    render_dpi,
+                    marker_style,
+                    layout_columns,
+                    **kwargs
+                )
+            ocr_questions = await asyncio.to_thread(_detect_paddle_ocr)
+            if not ocr_questions:
+                logger.info("paddle_ocr returned empty, falling back to Tesseract OCR")
+                def _detect_ocr():
+                    sig = inspect.signature(self.ocr_detector.detect)
+                    kwargs = {}
+                    if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                        kwargs["custom_regex"] = custom_regex
+                    return self.ocr_detector.detect(
+                        page_images,
+                        settings,
+                        render_dpi,
+                        marker_style,
+                        layout_columns,
+                        **kwargs
+                    )
+                ocr_questions = await asyncio.to_thread(_detect_ocr)
+            else:
+                # Map page_lines_pct and page_confidence to self.ocr_detector for smart mode/review notes compatibility
+                if hasattr(self.paddle_ocr_detector, "page_lines_pct"):
+                    self.ocr_detector.page_lines_pct = self.paddle_ocr_detector.page_lines_pct
+                if hasattr(self.paddle_ocr_detector, "page_confidence"):
+                    self.ocr_detector.page_confidence = self.paddle_ocr_detector.page_confidence
+        else:
+            def _detect_ocr():
+                sig = inspect.signature(self.ocr_detector.detect)
+                kwargs = {}
+                if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                    kwargs["custom_regex"] = custom_regex
+                return self.ocr_detector.detect(
+                    page_images,
+                    settings,
+                    render_dpi,
+                    marker_style,
+                    layout_columns,
+                    **kwargs
+                )
+            ocr_questions = await asyncio.to_thread(_detect_ocr)
+
         if len(ocr_questions) > len(best_questions):
             best_questions, best_method = ocr_questions, "ocr"
         accept_ocr = (
@@ -207,6 +361,8 @@ class DetectionPipeline:
             kwargs = {}
             if "confidence" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
                 kwargs["confidence"] = confidence
+            if "layout_columns" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                kwargs["layout_columns"] = layout_columns
             local_questions = await self.local_ml_detector.detect(
                 page_images, settings, marker_style=marker_style, **kwargs
             )
@@ -341,8 +497,18 @@ class DetectionPipeline:
         )
         return merged
 
-    def _is_searchable_pdf(self, pdf_source: bytes | str | Path) -> bool:
-        """Return True if first 3 pages contain meaningful extractable text."""
+    def _classify_pages(
+        self, pdf_source: bytes | str | Path
+    ) -> dict[int, str]:
+        """Classify each page as 'text', 'ocr', or 'text_then_ocr'.
+
+        'text'          — rich native text layer; use PyMuPDF extraction.
+        'ocr'           — single full-page image, no text; must OCR.
+        'text_then_ocr' — sparse text + images; try text, fall back to OCR.
+
+        Returns a 1-indexed page number → classification mapping. An empty
+        dict means the PDF couldn't be opened (fall back to old behaviour).
+        """
 
         try:
             if isinstance(pdf_source, bytes):
@@ -350,14 +516,52 @@ class DetectionPipeline:
             else:
                 doc = fitz.open(str(pdf_source))
             with doc:
-                total = 0
-                for page_idx in range(min(3, doc.page_count)):
+                result: dict[int, str] = {}
+                for page_idx in range(doc.page_count):
                     page = doc.load_page(page_idx)
                     text = (page.get_text("text") or "").strip()
-                    total += len(text)
-                return total > 100
+                    images = page.get_images(full=True)
+
+                    # Filter for large images (exclude small icons/logos)
+                    large_images = []
+                    try:
+                        img_info = page.get_image_info(xrefs=True)
+                        page_area = page.rect.width * page.rect.height
+                        for img in img_info:
+                            bbox = img.get("bbox", (0, 0, 0, 0))
+                            w = bbox[2] - bbox[0]
+                            h = bbox[3] - bbox[1]
+                            if (w * h) > 0.05 * page_area or w > 0.3 * page.rect.width:
+                                large_images.append(img)
+                    except Exception:
+                        large_images = images
+
+                    text_len = len(text)
+                    if text_len > 50 and len(large_images) == 0:
+                        result[page_idx + 1] = "text"
+                    elif len(large_images) >= 1 and text_len < 10:
+                        result[page_idx + 1] = "ocr"
+                    else:
+                        result[page_idx + 1] = "text_then_ocr"
+                return result
         except Exception:
+            return {}
+
+    def _is_searchable_pdf(self, pdf_source: bytes | str | Path) -> bool:
+        """Return True if the majority of pages contain meaningful extractable text.
+
+        Uses :meth:`_classify_pages` internally and caches the result so the
+        per-page classification is available to :meth:`_detect_raw` without
+        re-scanning.
+        """
+
+        page_classes = self._classify_pages(pdf_source)
+        # Cache for later use by _detect_raw.
+        self._page_classes = page_classes
+        if not page_classes:
             return False
+        text_pages = sum(1 for v in page_classes.values() if v in ("text", "text_then_ocr"))
+        return text_pages >= len(page_classes) * 0.5
 
 
     def _result_is_sufficient(self, questions: list[DetectedQuestion], total_pages: int, settings: Settings) -> bool:
@@ -414,6 +618,111 @@ class DetectionPipeline:
                 return False
 
         return True
+
+    def _should_run_ocr_for_page(self, page_num: int, page_class: str, text_q: list[DetectedQuestion]) -> bool:
+        """Return True if we should run OCR fallback for page_num."""
+        if page_class == "ocr":
+            return True
+        if page_class == "text_then_ocr":
+            if not text_q:
+                return True
+            q_nums = [q.q_num for q in text_q if not q.is_solution]
+            if len(q_nums) != len(set(q_nums)):
+                return False
+            cols = set()
+            for q in text_q:
+                for seg in q.segments:
+                    cx = (seg.x_start_pct + seg.x_end_pct) / 2.0
+                    if cx < 48.0:
+                        cols.add(0)
+                    elif cx > 52.0:
+                        cols.add(1)
+            if 0 in cols and 1 in cols:
+                return False
+            return True
+        return False
+
+    def _check_column_spread(self, qs: list[DetectedQuestion]) -> set[int]:
+        """Return the set of columns containing question segments."""
+        cols = set()
+        for q in qs:
+            for seg in q.segments:
+                cx = (seg.x_start_pct + seg.x_end_pct) / 2.0
+                if cx < 48.0:
+                    cols.add(0)
+                elif cx > 52.0:
+                    cols.add(1)
+                else:
+                    cols.add(2)
+        return cols
+
+    async def _detect_ocr_single_page(
+        self,
+        page_img: Image.Image,
+        page_num: int,
+        settings: Settings,
+        *,
+        render_dpi: Optional[int] = None,
+        use_google_ocr: bool = False,
+        use_paddle_ocr: bool = False,
+        marker_style: str = "auto",
+        layout_columns: Optional[int] = None,
+        custom_regex: Optional[str] = None,
+    ) -> list[DetectedQuestion]:
+        """Run OCR on a single page and map the returned page numbers back to page_num."""
+        google_ocr_ready = self.google_ocr_detector is not None and self.google_ocr_detector.is_available()
+        
+        if use_google_ocr and google_ocr_ready:
+            def _run():
+                return self.google_ocr_detector.detect(
+                    [page_img], settings, render_dpi, marker_style, layout_columns, custom_regex=custom_regex
+                )
+            ocr_q = await asyncio.to_thread(_run)
+        elif (use_paddle_ocr or getattr(settings, "USE_PADDLE_OCR", False)) and self.paddle_ocr_detector.is_available():
+            def _run():
+                sig = inspect.signature(self.paddle_ocr_detector.detect)
+                kwargs = {}
+                if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                    kwargs["custom_regex"] = custom_regex
+                return self.paddle_ocr_detector.detect(
+                    [page_img], settings, render_dpi, marker_style, layout_columns, **kwargs
+                )
+            ocr_q = await asyncio.to_thread(_run)
+            if not ocr_q:
+                # Fallback to Tesseract
+                def _run_tess():
+                    sig = inspect.signature(self.ocr_detector.detect)
+                    kwargs = {}
+                    if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                        kwargs["custom_regex"] = custom_regex
+                    return self.ocr_detector.detect(
+                        [page_img], settings, render_dpi, marker_style, layout_columns, **kwargs
+                    )
+                ocr_q = await asyncio.to_thread(_run_tess)
+        else:
+            def _run():
+                sig = inspect.signature(self.ocr_detector.detect)
+                kwargs = {}
+                if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                    kwargs["custom_regex"] = custom_regex
+                return self.ocr_detector.detect(
+                    [page_img], settings, render_dpi, marker_style, layout_columns, **kwargs
+                )
+            ocr_q = await asyncio.to_thread(_run)
+            
+        remapped = []
+        for q in ocr_q:
+            segs = [seg.model_copy(update={"page": page_num}) for seg in q.segments]
+            if segs:
+                remapped.append(
+                    DetectedQuestion(
+                        q_num=q.q_num,
+                        is_solution=q.is_solution,
+                        segments=segs,
+                        option_labels=q.option_labels,
+                    )
+                )
+        return remapped
 
 
 def resolve_vertical_overlaps(questions: list[DetectedQuestion]) -> list[DetectedQuestion]:

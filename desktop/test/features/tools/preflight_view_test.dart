@@ -194,7 +194,7 @@ void main() {
     expect(find.text('Helvetica'), findsOneWidget); // a font name
   });
 
-  testWidgets('no Fix affordance when the report has uniform page sizes (14.3)',
+  testWidgets('Fix affordance is available even when the report has uniform page sizes (14.3)',
       (tester) async {
     final h = _build(statusCode: 200, body: _reportBody);
     addTearDown(h.controller.dispose);
@@ -205,8 +205,9 @@ void main() {
     await tester.pump();
 
     expect(h.controller.result?.mixedPageSizes, isFalse);
-    expect(find.byKey(const ValueKey('preflight-mixed-warning')), findsNothing);
-    expect(find.byKey(const ValueKey('preflight-fix-submit')), findsNothing);
+    expect(find.byKey(const ValueKey('preflight-mixed-warning')), findsOneWidget);
+    expect(find.text('Resize / Normalize pages'), findsOneWidget);
+    expect(find.byKey(const ValueKey('preflight-fix-submit')), findsOneWidget);
   });
 
   testWidgets('surfaces the engine error detail in a banner (14.6)',

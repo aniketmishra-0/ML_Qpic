@@ -56,5 +56,5 @@ def test_layout_columns_override_2() -> None:
     # Q1 is in column 0, which gets constrained to [0%, 50%]
     assert len(q1.segments) == 1
     seg = q1.segments[0]
-    assert seg.x_start_pct == 5.0
-    assert seg.x_end_pct == 20.0
+    assert seg.x_start_pct == 4.5
+    assert seg.x_end_pct == 20.5

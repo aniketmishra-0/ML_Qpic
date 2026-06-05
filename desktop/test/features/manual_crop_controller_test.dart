@@ -291,4 +291,32 @@ void main() {
       expect(c.engineReady, isFalse);
     });
   });
+
+  group('bilingual mode prefixes and reset preservation', () {
+    test('setting bilingualModeActive to true defaults prefixes to EQ and ES', () {
+      final c = ManualCropController();
+      addTearDown(c.dispose);
+
+      expect(c.questionPrefix, 'Q');
+      expect(c.solutionPrefix, 'S');
+
+      c.bilingualModeActive = true;
+      expect(c.questionPrefix, 'EQ');
+      expect(c.solutionPrefix, 'ES');
+    });
+
+    test('reset preserves bilingualModeActive and defaults prefixes to EQ and ES when active', () {
+      final c = ManualCropController();
+      addTearDown(c.dispose);
+
+      c.bilingualModeActive = true;
+      c.questionPrefix = 'CustomQ';
+      c.solutionPrefix = 'CustomS';
+
+      c.reset();
+      expect(c.bilingualModeActive, isTrue);
+      expect(c.questionPrefix, 'EQ');
+      expect(c.solutionPrefix, 'ES');
+    });
+  });
 }

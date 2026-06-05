@@ -132,6 +132,7 @@ class ApiClient {
     String imageFormat = 'png',
     int jpgQuality = 90,
     bool useAi = false,
+    bool useGoogleOcr = false,
     bool answerSheet = true,
     String layoutColumns = 'auto',
     bool binarize = false,
@@ -155,6 +156,7 @@ class ApiClient {
         'image_format': imageFormat,
         'jpg_quality': jpgQuality,
         'use_ai': useAi,
+        'use_google_ocr': useGoogleOcr,
         'answer_sheet': answerSheet,
         'layout_columns': layoutColumns,
         'binarize': binarize,
@@ -207,6 +209,7 @@ class ApiClient {
     String? answerPages,
     String? skipPages,
     bool useAi = false,
+    bool useGoogleOcr = false,
     bool answerSheet = true,
     String layoutColumns = 'auto',
     bool binarize = false,
@@ -224,6 +227,7 @@ class ApiClient {
         'has_questions': hasQuestions,
         'has_answers': hasAnswers,
         'use_ai': useAi,
+        'use_google_ocr': useGoogleOcr,
         'answer_sheet': answerSheet,
         'layout_columns': layoutColumns,
         'binarize': binarize,
@@ -309,6 +313,7 @@ class ApiClient {
     required String jobId,
     int? page,
     bool useAi = false,
+    bool useGoogleOcr = false,
     String markerStyle = 'auto',
     String layoutColumns = 'auto',
     bool binarize = false,
@@ -322,6 +327,7 @@ class ApiClient {
     return _guard(() async {
       final query = <String, dynamic>{
         'use_ai': useAi,
+        'use_google_ocr': useGoogleOcr,
         'marker_style': markerStyle,
         'layout_columns': layoutColumns,
         'binarize': binarize,
@@ -452,6 +458,81 @@ class ApiClient {
       return PdfToImagesResponse.fromJson(res.data!);
     });
   }
+
+  /// `POST /api/rename/pdf-to-session` — fast parallel PDF rendering to
+  /// per-page JPEG files. Returns metadata with per-page download URLs.
+  Future<PdfToSessionResponse> renamePdfToSession({
+    required List<int> fileBytes,
+    required String filename,
+    int? dpi,
+    int? quality,
+  }) {
+    return _guard(() async {
+      final form = FormData();
+      form.files.add(
+        MapEntry(
+          'file',
+          MultipartFile.fromBytes(
+            fileBytes,
+            filename: filename,
+            contentType: _pdfMediaType,
+          ),
+        ),
+      );
+      if (dpi != null) {
+        form.fields.add(MapEntry('dpi', dpi.toString()));
+      }
+      if (quality != null) {
+        form.fields.add(MapEntry('quality', quality.toString()));
+      }
+
+      final res = await _dio.post<Map<String, dynamic>>(
+        '$_api/rename/pdf-to-session',
+        data: form,
+      );
+      return PdfToSessionResponse.fromJson(res.data!);
+    });
+  }
+
+  /// `DELETE /api/rename/pdf-session/{id}` — clean up a PDF session.
+  Future<void> deletePdfSession(String jobId) {
+    return _guard(() async {
+      await _dio.delete<dynamic>('$_api/rename/pdf-session/$jobId');
+    });
+  }
+
+  /// `POST /api/rename/pdf-session/{jobId}/finalize` — fast direct finalize
+  /// for PDF pages already on disk.
+  Future<RenameFinalizeResponse> finalizePdfSession({
+    required String jobId,
+    required List<String> originals,
+    required List<String> names,
+    String? outputFormat,
+    int? jpgQuality,
+  }) {
+    return _guard(() async {
+      final payload = <String, dynamic>{
+        'items': List<Map<String, String>>.generate(
+          originals.length,
+          (i) => {
+            'original': originals[i],
+            'new_stem': names[i],
+          },
+        ),
+        if (outputFormat != null) 'output_format': outputFormat,
+        if (jpgQuality != null) 'jpg_quality': jpgQuality,
+      };
+      final res = await _dio.post<Map<String, dynamic>>(
+        '$_api/rename/pdf-session/$jobId/finalize',
+        data: payload,
+      );
+      return RenameFinalizeResponse.fromJson(res.data!);
+    });
+  }
+
+  /// Build the absolute URL for a PDF page image from the relative page_url.
+  String pdfPageImageUrl(String relativePageUrl) =>
+      '${baseUrl.origin}$relativePageUrl';
 
   /// `POST /api/rename/session` — open a streamed rename session.
   Future<RenameSessionResponse> createRenameSession() {

@@ -19,3 +19,4 @@ vendor/
 # Local model weights and runs
 yolov8s.pt
 runs/
+google-credentials.json

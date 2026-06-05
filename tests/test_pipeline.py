@@ -262,3 +262,70 @@ def test_local_ml_prevents_cloud_ai_when_sufficient() -> None:
     assert ai.calls == 0
     assert method_used == "local_ml"
     assert [q.q_num for q in questions] == ["1"]
+
+
+def test_hybrid_pdf_page_level_fallback() -> None:
+    # A 2-page PDF
+    # Page 1: Has native text
+    # Page 2: Has images and is classified as "text_then_ocr"
+
+    class DummyTextDetector:
+        def detect(self, pdf_bytes, padding_px=0, marker_style='auto', layout_columns=None):
+            # Only detects a question on page 1
+            return [
+                DetectedQuestion(
+                    q_num="1",
+                    segments=[QuestionSegment(page=1, y_start_pct=10.0, y_end_pct=50.0)],
+                )
+            ]
+
+    class DummyOCRDetector:
+        def detect(self, page_images, settings, render_dpi=None, marker_style="auto", layout_columns=None):
+            # Detects a question on the page it receives (which will be page 2, mapped back to page 2)
+            # DummyOCRDetector receives page_images of length 1 (since it's called per-page)
+            assert len(page_images) == 1
+            return [
+                DetectedQuestion(
+                    q_num="2",
+                    segments=[QuestionSegment(page=1, y_start_pct=10.0, y_end_pct=50.0)],
+                )
+            ]
+
+    # Create a 2-page PDF where page 1 has text, page 2 has an image
+    doc = fitz.open()
+    # Page 1
+    p1 = doc.new_page()
+    p1.insert_text((72, 72), "1. " + ("A" * 160), fontsize=12)
+    # Page 2: Add an image so it has len(images) >= 1, but no text so it is classified as text_then_ocr
+    p2 = doc.new_page()
+    img = Image.new("RGB", (10, 10), (0, 0, 0))
+    import tempfile, os
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        img.save(tmp.name)
+        tmp_name = tmp.name
+    try:
+        p2.insert_image(p2.rect, filename=tmp_name)
+    finally:
+        try:
+            os.remove(tmp_name)
+        except Exception:
+            pass
+
+    pdf_bytes = doc.tobytes()
+    doc.close()
+
+    page_images = [Image.new("RGB", (100, 100), (255, 255, 255)) for _ in range(2)]
+    settings = Settings(MIN_QUESTIONS_PER_2_PAGES=0.5)
+
+    pipeline = DetectionPipeline(text_detector=DummyTextDetector(), ocr_detector=DummyOCRDetector())
+    questions, method_used = asyncio.run(pipeline.detect(pdf_bytes, page_images, settings))
+
+    # Should have run text detector on page 1, and OCR detector on page 2.
+    # Questions should contain both Q1 (page 1) and Q2 (page 2).
+    assert method_used == "text" # Still classified as text method since it merged text with OCR
+    assert len(questions) == 2
+    q_map = {q.q_num: q for q in questions}
+    assert "1" in q_map
+    assert "2" in q_map
+    assert q_map["1"].segments[0].page == 1
+    assert q_map["2"].segments[0].page == 2

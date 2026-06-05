@@ -326,3 +326,67 @@ def write_rename_zip_from_paths(
         fmt,
     )
     return len(entries)
+
+
+def write_rename_excel(
+    excel_path: Path,
+    new_names: list[str],
+) -> None:
+    """Generate an Excel file listing the renamed file names under the specified columns."""
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, Border, Side
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+
+    # Columns: Serial Number, Slide Name, Solution URL, Custom Message
+    headers = ["Serial Number", "Slide Name", "Solution URL", "Custom Message"]
+    ws.append(headers)
+
+    # Styles
+    font_bold = Font(name="Calibri", size=11, bold=True)
+    font_regular = Font(name="Calibri", size=11)
+    
+    thin_side = Side(style='thin', color='000000')
+    cell_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+    
+    center_align = Alignment(horizontal="center", vertical="center")
+    left_align = Alignment(horizontal="left", vertical="center")
+    right_align = Alignment(horizontal="right", vertical="center")
+
+    # Format headers
+    for col_num, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_num)
+        cell.font = font_bold
+        cell.alignment = center_align
+        cell.border = cell_border
+
+    # Append data rows
+    for idx, name in enumerate(new_names, 1):
+        row_data = [idx, name, "", ""]
+        ws.append(row_data)
+
+        # Style data cells
+        for col_num in range(1, 5):
+            cell = ws.cell(row=idx + 1, column=col_num)
+            cell.font = font_regular
+            cell.border = cell_border
+            if col_num == 1:
+                cell.alignment = right_align
+            elif col_num == 2:
+                cell.alignment = left_align
+            else:
+                cell.alignment = left_align
+
+    # Column widths
+    ws.column_dimensions['A'].width = 15
+    ws.column_dimensions['B'].width = 30
+    ws.column_dimensions['C'].width = 20
+    ws.column_dimensions['D'].width = 25
+
+    # Enable grid lines visibility explicitly
+    ws.views.sheetView[0].showGridLines = True
+
+    wb.save(excel_path)
+

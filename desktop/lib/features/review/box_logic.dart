@@ -90,7 +90,74 @@ String nextAutoNumber(
   bool isSolution,
   List<AnalyzedItem> items, {
   bool bilingualModeActive = false,
+  bool? isHindi,
 }) {
+  if (bilingualModeActive && isHindi != null) {
+    // 1. Separate existing same-type items into English and Hindi
+    final Set<int> englishNums = <int>{};
+    final Set<int> hindiNums = <int>{};
+    int maxNum = 0;
+
+    for (final it in items) {
+      if (it.isSolution != isSolution) continue;
+      final match = RegExp(r'\d+').firstMatch(it.qNum);
+      if (match != null) {
+        final val = int.parse(match.group(0)!);
+        maxNum = math.max(maxNum, val);
+        
+        // Determine language of the item
+        final bool itemIsHindi = it.isHindi ?? (it.segments.isNotEmpty
+            ? (it.segments.first.xStartPct + it.segments.first.xEndPct) / 2.0 > 50.0
+            : false);
+        if (itemIsHindi) {
+          hindiNums.add(val);
+        } else {
+          englishNums.add(val);
+        }
+      }
+    }
+
+    // 2. If we are drawing Hindi, find the smallest English number that has no Hindi counterpart
+    if (isHindi) {
+      int? found;
+      for (final num in englishNums) {
+        if (!hindiNums.contains(num)) {
+          if (found == null || num < found) {
+            found = num;
+          }
+        }
+      }
+      if (found != null) {
+        return found.toString();
+      }
+    } else {
+      // If we are drawing English, find the smallest Hindi number that has no English counterpart
+      int? found;
+      for (final num in hindiNums) {
+        if (!englishNums.contains(num)) {
+          if (found == null || num < found) {
+            found = num;
+          }
+        }
+      }
+      if (found != null) {
+        return found.toString();
+      }
+    }
+
+    // 3. Fallback: if no unpaired item of opposite language exists, use maxNum + 1.
+    // However, if there is a number maxNum which ONLY exists in the opposite language (i.e. not in our language),
+    // we can reuse it to form the pair.
+    if (maxNum > 0) {
+      final bool currentLanguageHasMax = isHindi ? hindiNums.contains(maxNum) : englishNums.contains(maxNum);
+      if (!currentLanguageHasMax) {
+        return maxNum.toString();
+      }
+      return (maxNum + 1).toString();
+    }
+    return '1';
+  }
+
   int max = 0;
   for (final it in items) {
     if (it.isSolution != isSolution) continue;

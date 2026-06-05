@@ -18,6 +18,7 @@ from ..config import Settings
 from ..dependencies import (
     build_ai_detector,
     build_local_ml_detector,
+    build_paddle_ocr_detector,
     get_anthropic_client_optional,
     get_settings,
 )
@@ -51,6 +52,7 @@ from ..services.detector.answer_key import (
 )
 from ..services.detector.furniture import collect_document_furniture
 from ..services.detector.ocr_detector import OCRDetector
+from ..services.detector.google_ocr_detector import GoogleOCRDetector
 from ..services.detector.base import has_bilingual_items
 from ..services.detector.pipeline import DetectionPipeline
 from ..services.detector.training_data import write_training_example
@@ -171,6 +173,11 @@ def _dedupe_by_output_file(detected: list[Any], bilingual_mode: Optional[str] = 
                 import functools
 
                 def compare_items(it1, it2):
+                    h1 = getattr(it1, "is_hindi", None)
+                    h2 = getattr(it2, "is_hindi", None)
+                    if h1 is not None and h2 is not None and h1 != h2:
+                        return -1 if (not h1 and h2) else 1
+
                     p1 = it1.segments[0].page if it1.segments else 0
                     p2 = it2.segments[0].page if it2.segments else 0
                     if p1 != p2:
@@ -369,6 +376,7 @@ async def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
     """Basic health check."""
 
     tesseract_available = OCRDetector()._is_available()
+    google_ocr_available = GoogleOCRDetector().is_available()
     ai_available = settings.ai_is_configured()
     provider = settings.resolved_ai_provider()
     local_ml_detector = build_local_ml_detector(settings)
@@ -383,6 +391,7 @@ async def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
     return HealthResponse(
         status="ok",
         tesseract_available=tesseract_available,
+        google_ocr_available=google_ocr_available,
         ai_available=ai_available,
         version="2.0.0",
         ai_provider=provider,
@@ -531,6 +540,14 @@ async def crop_pdf(
         description="Online mode: allow the AI vision tier when a key is configured. "
         "Defaults to off (fully offline text/OCR run); set true to opt into AI.",
     ),
+    use_google_ocr: bool = Query(
+        False,
+        description="Use Google Cloud Vision OCR instead of Tesseract.",
+    ),
+    use_paddle_ocr: bool = Query(
+        False,
+        description="Use PaddleOCR instead of Tesseract.",
+    ),
     answer_sheet: bool = Query(
         True,
         description="Bundle an answer sheet (answers.csv + answers.json mapping each "
@@ -660,6 +677,7 @@ async def crop_pdf(
         pipeline = DetectionPipeline(
             ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client),
             local_ml_detector=build_local_ml_detector(settings),
+            paddle_ocr_detector=build_paddle_ocr_detector(settings),
         )
         layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
@@ -668,6 +686,8 @@ async def crop_pdf(
             settings=settings,
             render_dpi=dpi,
             prefer_ai=use_ai,
+            use_google_ocr=use_google_ocr,
+            use_paddle_ocr=use_paddle_ocr,
             marker_style=style,
             layout_columns=layout_val,
             confidence=confidence,
@@ -859,6 +879,7 @@ def _analyzed_to_detected(items: list[Any]) -> list[DetectedQuestion]:
                 segments=list(it.segments),
                 source=getattr(it, "source", "auto") or "auto",
                 align=getattr(it, "align", None),
+                is_hindi=getattr(it, "is_hindi", None),
             )
         )
     return out
@@ -879,6 +900,14 @@ async def analyze_pdf(
         False,
         description="Online mode: allow the AI vision tier when a key is configured. "
         "Defaults to off (fully offline text/OCR run); set true to opt into AI.",
+    ),
+    use_google_ocr: bool = Query(
+        False,
+        description="Use Google Cloud Vision OCR instead of Tesseract.",
+    ),
+    use_paddle_ocr: bool = Query(
+        False,
+        description="Use PaddleOCR instead of Tesseract.",
     ),
     answer_sheet: bool = Query(
         True,
@@ -982,6 +1011,7 @@ async def analyze_pdf(
         pipeline = DetectionPipeline(
             ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client),
             local_ml_detector=build_local_ml_detector(settings),
+            paddle_ocr_detector=build_paddle_ocr_detector(settings),
         )
         layout_val = _parse_layout_columns(layout_columns)
         detected, method_used = await pipeline.detect(
@@ -991,6 +1021,8 @@ async def analyze_pdf(
             render_dpi=dpi,
             smart=True,
             prefer_ai=use_ai,
+            use_google_ocr=use_google_ocr,
+            use_paddle_ocr=use_paddle_ocr,
             marker_style=(marker_style or "auto").strip().lower()
             if (marker_style or "auto").strip().lower() in ("auto", "q", "numbered")
             else "auto",
@@ -1336,6 +1368,8 @@ async def auto_detect_job_page(
     job_id: str,
     page: Optional[int] = Query(None, description="1-indexed page. If null, run on all pages."),
     use_ai: bool = Query(False),
+    use_google_ocr: bool = Query(False),
+    use_paddle_ocr: bool = Query(False),
     marker_style: str = Query("auto"),
     layout_columns: str = Query("auto", description="Force page layout columns: 'auto', '1', '2', or '3'."),
     binarize: bool = Query(False),
@@ -1415,6 +1449,7 @@ async def auto_detect_job_page(
         pipeline = DetectionPipeline(
             ai_detector=build_ai_detector(settings, use_ai=use_ai, anthropic_client=client),
             local_ml_detector=build_local_ml_detector(settings),
+            paddle_ocr_detector=build_paddle_ocr_detector(settings),
         )
         style = (marker_style or "auto").strip().lower()
         if style not in ("auto", "q", "numbered"):
@@ -1428,6 +1463,8 @@ async def auto_detect_job_page(
             render_dpi=dpi,
             smart=True,
             prefer_ai=use_ai,
+            use_google_ocr=use_google_ocr,
+            use_paddle_ocr=use_paddle_ocr,
             marker_style=style,
             layout_columns=layout_val,
             confidence=confidence,
@@ -1620,6 +1657,7 @@ async def crop_preview(
         segments=list(payload.segments),
         source=payload.source or "auto",
         align=payload.align,
+        is_hindi=payload.is_hindi,
     )
 
     file_bytes = await asyncio.to_thread(source_pdf.read_bytes)
@@ -1746,6 +1784,10 @@ async def finalize_crop(
     out_format = "jpg" if fmt in ("jpg", "jpeg") else "png"
     q_prefix = (payload.question_prefix or "Q").strip() or "Q"
     s_prefix = (payload.solution_prefix or "S").strip() or "S"
+    eq_prefix = (payload.english_question_prefix or "EQ").strip() or "EQ"
+    es_prefix = (payload.english_solution_prefix or "ES").strip() or "ES"
+    hq_prefix = (payload.hindi_question_prefix or "HQ").strip() or "HQ"
+    hs_prefix = (payload.hindi_solution_prefix or "HS").strip() or "HS"
     dpi = max(72, min(600, int(payload.dpi or 200)))
     padding = max(0, min(200, int(payload.padding or 0)))
     start_number = max(1, int(payload.start_number or 1))
@@ -1832,29 +1874,36 @@ async def finalize_crop(
                     # the bilingual merge didn't run, or manual items).
                     import functools
 
-                    def compare_items(it1, it2):
-                        p1 = it1.segments[0].page if it1.segments else 0
-                        p2 = it2.segments[0].page if it2.segments else 0
-                        if p1 != p2:
-                            return -1 if p1 < p2 else 1
+                    en_candidates = [it for it in items if getattr(it, "is_hindi", None) is False]
+                    hi_candidates = [it for it in items if getattr(it, "is_hindi", None) is True]
 
-                        s1 = it1.segments[0] if it1.segments else None
-                        s2 = it2.segments[0] if it2.segments else None
-                        if not s1 or not s2:
-                            return 0
+                    if len(en_candidates) == 1 and len(hi_candidates) == 1:
+                        en_item = en_candidates[0]
+                        hi_item = hi_candidates[0]
+                    else:
+                        def compare_items(it1, it2):
+                            p1 = it1.segments[0].page if it1.segments else 0
+                            p2 = it2.segments[0].page if it2.segments else 0
+                            if p1 != p2:
+                                return -1 if p1 < p2 else 1
 
-                        c1 = (s1.x_start_pct + s1.x_end_pct) / 2.0
-                        c2 = (s2.x_start_pct + s2.x_end_pct) / 2.0
-                        is_side_by_side = (abs(s1.x_start_pct - s2.x_start_pct) > 15.0) or (abs(c1 - c2) > 15.0)
+                            s1 = it1.segments[0] if it1.segments else None
+                            s2 = it2.segments[0] if it2.segments else None
+                            if not s1 or not s2:
+                                return 0
 
-                        if is_side_by_side:
-                            return -1 if s1.x_start_pct < s2.x_start_pct else (1 if s1.x_start_pct > s2.x_start_pct else 0)
-                        else:
-                            return -1 if s1.y_start_pct < s2.y_start_pct else (1 if s1.y_start_pct > s2.y_start_pct else 0)
+                            c1 = (s1.x_start_pct + s1.x_end_pct) / 2.0
+                            c2 = (s2.x_start_pct + s2.x_end_pct) / 2.0
+                            is_side_by_side = (abs(s1.x_start_pct - s2.x_start_pct) > 15.0) or (abs(c1 - c2) > 15.0)
 
-                    items.sort(key=functools.cmp_to_key(compare_items))
-                    en_item = items[0]
-                    hi_item = items[1]
+                            if is_side_by_side:
+                                return -1 if s1.x_start_pct < s2.x_start_pct else (1 if s1.x_start_pct > s2.x_start_pct else 0)
+                            else:
+                                return -1 if s1.y_start_pct < s2.y_start_pct else (1 if s1.y_start_pct > s2.y_start_pct else 0)
+
+                        items.sort(key=functools.cmp_to_key(compare_items))
+                        en_item = items[0]
+                        hi_item = items[1]
 
                     if payload.bilingual_mode == "english":
                         setattr(en_item, "_bilingual_lang", "english")
@@ -1872,11 +1921,13 @@ async def finalize_crop(
                         filtered_items.append(en_item)
                 else:
                     item = items[0]
-                    if payload.bilingual_mode == "english":
+                    if getattr(item, "is_hindi", None) is not None:
+                        setattr(item, "_bilingual_lang", "hindi" if item.is_hindi else "english")
+                    elif payload.bilingual_mode == "english":
                         setattr(item, "_bilingual_lang", "english")
                     elif payload.bilingual_mode == "hindi":
                         setattr(item, "_bilingual_lang", "hindi")
-                    elif payload.bilingual_mode == "bilingual_separate":
+                    else: # bilingual_horizontal, bilingual_vertical, bilingual_separate
                         s = item.segments[0] if item.segments else None
                         if s and s.x_start_pct > 50.0:
                             setattr(item, "_bilingual_lang", "hindi")
@@ -1946,14 +1997,12 @@ async def finalize_crop(
                         img = bilingual_img
 
                 lang = getattr(question, "_bilingual_lang", None)
-                curr_q_prefix = q_prefix
-                curr_s_prefix = s_prefix
-                if lang == "english":
-                    curr_q_prefix = "EQ"
-                    curr_s_prefix = "ES"
-                elif lang == "hindi":
-                    curr_q_prefix = "HQ"
-                    curr_s_prefix = "HS"
+                if payload.bilingual_mode in ("english", "hindi", "bilingual_horizontal", "bilingual_vertical", "bilingual_separate"):
+                    curr_q_prefix = eq_prefix if (lang == "english" or lang is None) else hq_prefix
+                    curr_s_prefix = es_prefix if (lang == "english" or lang is None) else hs_prefix
+                else:
+                    curr_q_prefix = q_prefix
+                    curr_s_prefix = s_prefix
 
                 saved = save_question_image(
                     image=img,
