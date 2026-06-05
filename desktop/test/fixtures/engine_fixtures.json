@@ -58,7 +58,8 @@
     "source": "auto",
     "flagged": true,
     "flag_reason": "cut-off: continues on next page",
-    "other_segments": null
+    "other_segments": null,
+    "is_hindi": null
   },
 
   "ReviewNote": {
@@ -106,7 +107,8 @@
         "source": "auto",
         "flagged": false,
         "flag_reason": null,
-        "other_segments": null
+        "other_segments": null,
+        "is_hindi": null
       }
     ],
     "notes": [
@@ -156,7 +158,8 @@
       }
     ],
     "source": "manual",
-    "align": null
+    "align": null,
+    "is_hindi": null
   },
 
   "CropPreviewRequest": {
@@ -181,7 +184,8 @@
     "image_format": "png",
     "jpg_quality": 90,
     "bilingual_mode": null,
-    "other_segments": null
+    "other_segments": null,
+    "is_hindi": null
   },
 
   "FinalizeRequest": {
@@ -202,7 +206,8 @@
           }
         ],
         "source": "auto",
-        "align": null
+        "align": null,
+        "is_hindi": null
       }
     ],
     "dpi": 200,
@@ -213,7 +218,11 @@
     "image_format": "png",
     "jpg_quality": 90,
     "answer_sheet": true,
-    "bilingual_mode": null
+    "bilingual_mode": null,
+    "english_question_prefix": null,
+    "english_solution_prefix": null,
+    "hindi_question_prefix": null,
+    "hindi_solution_prefix": null
   },
 
   "HealthResponse": {
@@ -274,7 +283,8 @@
   "RenameFinalizeResponse": {
     "session_id": "8c7b6a5d-4e3f-2a1b-0c9d-8e7f6a5b4c3d",
     "count": 600,
-    "download_url": "/api/rename/session/8c7b6a5d/download"
+    "download_url": "/api/rename/session/8c7b6a5d/download",
+    "excel_download_url": null
   },
 
   "CompressResponse": {

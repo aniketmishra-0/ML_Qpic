@@ -109,6 +109,7 @@ def _page_size_label(rect: "fitz.Rect") -> str:
         (216, 279): "Letter",
         (216, 356): "Legal",
         (148, 210): "A5",
+        (339, 191): "PPTX Slide",
     }
     label = ""
     for (kw, kh), name in known.items():
@@ -413,6 +414,7 @@ _NAMED_SIZES_PT: dict[str, tuple[float, float]] = {
     "letter": (612.0, 792.0),
     "legal": (612.0, 1008.0),
     "square": (612.0, 612.0),  # 216×216 mm
+    "pptx": (960.0, 540.0),   # 338.67×190.5 mm — PowerPoint Widescreen 16∶9
 }
 
 
@@ -480,8 +482,8 @@ def resolve_target_size(doc: "fitz.Document", target: str) -> tuple[float, float
 
     if spec in _NAMED_SIZES_PT:
         w, h = _NAMED_SIZES_PT[spec]
-        # Square doesn't need orientation matching.
-        if spec == "square":
+        # Square and PPTX don't need orientation matching.
+        if spec in ("square", "pptx"):
             return (w, h)
         # Match the document's dominant orientation (landscape vs portrait).
         landscape_votes = sum(

@@ -70,6 +70,13 @@ _NORMALIZED_PDF = "normalized.pdf"
 # zoomed in; the page is downscaled by CSS to fit, so quality holds up).
 _EDIT_PREVIEW_DPI = 200
 
+# Hard pixel-cap for the longest side of a page preview image.  Very large
+# page dimensions (e.g. 1920×1080 mm presentation slides) at 200 DPI would
+# produce ~15 000 px images, which can exhaust memory or render as blank in
+# Flutter's Image widget.  When a page would exceed this cap the render DPI
+# is reduced automatically.
+_MAX_PREVIEW_PX = 3000
+
 
 def _get_temp_root(request: Request, settings: Settings) -> str:
     return str(getattr(request.app.state, "temp_root", settings.TEMP_DIR))
@@ -554,13 +561,31 @@ async def edit_state(
 
 
 def _render_single_page_png(file_bytes: bytes, page_no: int, dpi: int) -> bytes:
-    """Render one page (1-indexed) to PNG bytes."""
+    """Render one page (1-indexed) to PNG bytes.
+
+    For very large pages (e.g. 1920×1080 mm presentation slides) the default
+    DPI would produce enormous images that exhaust memory or appear blank in
+    the Flutter image widget.  We cap the output at ``_MAX_PREVIEW_PX`` on the
+    longest side and reduce the effective DPI to stay within that limit.
+    """
 
     import fitz
 
     with fitz.open(stream=file_bytes, filetype="pdf") as doc:
         if page_no < 1 or page_no > doc.page_count:
             raise IndexError(page_no)
+
+        page = doc.load_page(page_no - 1)
+        rect = page.rect
+
+        # Cap the rendered image so no dimension exceeds _MAX_PREVIEW_PX.
+        max_pt = max(rect.width, rect.height)
+        if max_pt > 0:
+            px_at_dpi = max_pt * dpi / 72.0
+            if px_at_dpi > _MAX_PREVIEW_PX:
+                dpi = int(_MAX_PREVIEW_PX * 72.0 / max_pt)
+                dpi = max(dpi, 36)  # never go below 36 DPI
+
         img = render_page_image(doc, page_no - 1, dpi)
     buff = io.BytesIO()
     ensure_rgb(img).save(buff, format="PNG")

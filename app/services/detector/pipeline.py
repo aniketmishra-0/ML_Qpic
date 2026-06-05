@@ -16,6 +16,7 @@ from ...models.schemas import DetectedQuestion
 from .base import merge_bilingual_pairs
 from .ai_detector import AIDetector
 from .ocr_detector import OCRDetector
+from .google_ocr_detector import GoogleOCRDetector
 from .text_detector import TextDetector
 
 logger = logging.getLogger(__name__)
@@ -29,11 +30,13 @@ class DetectionPipeline:
         *,
         text_detector: Optional[TextDetector] = None,
         ocr_detector: Optional[OCRDetector] = None,
+        google_ocr_detector: Optional[GoogleOCRDetector] = None,
         ai_detector: Optional[AIDetector] = None,
         local_ml_detector: Optional[Any] = None,
     ) -> None:
         self.text_detector = text_detector or TextDetector()
         self.ocr_detector = ocr_detector or OCRDetector()
+        self.google_ocr_detector = google_ocr_detector or GoogleOCRDetector()
         self.local_ml_detector = local_ml_detector
         self.ai_detector = ai_detector
 
@@ -46,6 +49,7 @@ class DetectionPipeline:
         render_dpi: Optional[int] = None,
         smart: bool = False,
         prefer_ai: bool = False,
+        use_google_ocr: bool = False,
         marker_style: str = "auto",
         layout_columns: Optional[int] = None,
         confidence: Optional[float] = None,
@@ -58,6 +62,7 @@ class DetectionPipeline:
             render_dpi=render_dpi,
             smart=smart,
             prefer_ai=prefer_ai,
+            use_google_ocr=use_google_ocr,
             marker_style=marker_style,
             layout_columns=layout_columns,
             confidence=confidence,
@@ -79,6 +84,7 @@ class DetectionPipeline:
         render_dpi: Optional[int] = None,
         smart: bool = False,
         prefer_ai: bool = False,
+        use_google_ocr: bool = False,
         marker_style: str = "auto",
         layout_columns: Optional[int] = None,
         confidence: Optional[float] = None,
@@ -173,20 +179,38 @@ class DetectionPipeline:
             logger.info("pdf_not_searchable tier_start=ocr")
 
         # Tier 2: OCR
-        def _detect_ocr():
-            sig = inspect.signature(self.ocr_detector.detect)
-            kwargs = {}
-            if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
-                kwargs["custom_regex"] = custom_regex
-            return self.ocr_detector.detect(
-                page_images,
-                settings,
-                render_dpi,
-                marker_style,
-                layout_columns,
-                **kwargs
-            )
-        ocr_questions = await asyncio.to_thread(_detect_ocr)
+        google_ocr_ready = self.google_ocr_detector is not None and self.google_ocr_detector.is_available()
+        if use_google_ocr and google_ocr_ready:
+            logger.info("google_ocr_primary tier_start=google_ocr pages=%s", total_pages)
+            def _detect_google_ocr():
+                return self.google_ocr_detector.detect(
+                    page_images,
+                    settings,
+                    render_dpi,
+                    marker_style,
+                    layout_columns,
+                    custom_regex=custom_regex,
+                )
+            ocr_questions = await asyncio.to_thread(_detect_google_ocr)
+            # Map page_lines_pct to ocr_detector for smart mode/review notes compatibility
+            if hasattr(self.google_ocr_detector, "page_lines_pct"):
+                self.ocr_detector.page_lines_pct = self.google_ocr_detector.page_lines_pct
+        else:
+            def _detect_ocr():
+                sig = inspect.signature(self.ocr_detector.detect)
+                kwargs = {}
+                if "custom_regex" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                    kwargs["custom_regex"] = custom_regex
+                return self.ocr_detector.detect(
+                    page_images,
+                    settings,
+                    render_dpi,
+                    marker_style,
+                    layout_columns,
+                    **kwargs
+                )
+            ocr_questions = await asyncio.to_thread(_detect_ocr)
+
         if len(ocr_questions) > len(best_questions):
             best_questions, best_method = ocr_questions, "ocr"
         accept_ocr = (
@@ -207,6 +231,8 @@ class DetectionPipeline:
             kwargs = {}
             if "confidence" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
                 kwargs["confidence"] = confidence
+            if "layout_columns" in sig.parameters or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()):
+                kwargs["layout_columns"] = layout_columns
             local_questions = await self.local_ml_detector.detect(
                 page_images, settings, marker_style=marker_style, **kwargs
             )

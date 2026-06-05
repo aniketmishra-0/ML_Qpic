@@ -91,8 +91,7 @@ class PreflightView extends StatelessWidget {
                         ],
                         const SizedBox(height: 32),
                         _PreflightButton(controller: controller),
-                        if (result != null &&
-                            result.mixedPageSizes) ...<Widget>[
+                        if (result != null) ...<Widget>[
                           const SizedBox(height: 24),
                           _FixPageSizesSection(
                               controller: controller, palette: palette),
@@ -410,10 +409,8 @@ class _ResultCard extends StatelessWidget {
                 initiallyExpanded: initiallyExpanded,
               ),
             ],
-            if (result.mixedPageSizes) ...<Widget>[
-              const SizedBox(height: 24),
-              _FixPageSizesSection(controller: controller, palette: palette),
-            ],
+            const SizedBox(height: 24),
+            _FixPageSizesSection(controller: controller, palette: palette),
           ],
         ),
       ),
@@ -800,24 +797,33 @@ class _FixPageSizesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final warn = palette?.warn ?? Colors.orange;
+    final isMixed = controller.result?.mixedPageSizes ?? false;
+    final accentColor = isMixed
+        ? (palette?.warn ?? Colors.orange)
+        : (palette?.brand ?? theme.colorScheme.primary);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: warn.withAlpha(20),
+        color: accentColor.withAlpha(20),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: warn.withAlpha(100)),
+        border: Border.all(color: accentColor.withAlpha(100)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           Row(
             children: <Widget>[
-              Icon(Icons.warning_amber, color: warn, size: 20),
+              Icon(
+                isMixed ? Icons.warning_amber : Icons.aspect_ratio_rounded,
+                color: accentColor,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Mixed page sizes detected',
+                  isMixed
+                      ? 'Mixed page sizes detected'
+                      : 'Resize / Normalize pages',
                   key: const ValueKey<String>('preflight-mixed-warning'),
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
@@ -827,6 +833,15 @@ class _FixPageSizesSection extends StatelessWidget {
               ),
             ],
           ),
+          if (!isMixed) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Resize all pages to a standard print size.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: palette?.muted ?? theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           _TargetField(controller: controller),
           const SizedBox(height: 12),
@@ -848,12 +863,38 @@ class _TargetField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Offer the distinct page sizes from the result plus "auto" as options.
+    // Offer standard print sizes + the distinct sizes from the result.
     final result = controller.result;
     final options = <String>['auto'];
+    // Standard print sizes the engine supports.
+    const standardSizes = <String>['a4', 'a3', 'a5', 'letter', 'legal', 'pptx'];
+    for (final s in standardSizes) {
+      if (!options.contains(s)) options.add(s);
+    }
     if (result != null) {
       for (final size in result.distinctPageSizes) {
         if (!options.contains(size)) options.add(size);
+      }
+    }
+
+    String sizeLabel(String s) {
+      switch (s) {
+        case 'auto':
+          return 'Auto Detect (Most common)';
+        case 'a4':
+          return 'A4 (210 × 297 mm)';
+        case 'a3':
+          return 'A3 (297 × 420 mm)';
+        case 'a5':
+          return 'A5 (148 × 210 mm)';
+        case 'letter':
+          return 'Letter (216 × 279 mm)';
+        case 'legal':
+          return 'Legal (216 × 356 mm)';
+        case 'pptx':
+          return 'PPTX Slide (pptx Side) (339 × 191 mm)';
+        default:
+          return s;
       }
     }
 
@@ -864,7 +905,7 @@ class _TargetField extends StatelessWidget {
       items: options.map((s) {
         return QpicDropdownItem<String>(
           value: s,
-          label: s == 'auto' ? 'Auto Detect (Most common)' : s,
+          label: sizeLabel(s),
         );
       }).toList(),
       onChanged: (value) {
@@ -890,13 +931,16 @@ class _FillModeSelector extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           for (final mode in FillMode.values)
-            RadioListTile<FillMode>(
-              key: ValueKey<String>('preflight-fill-${mode.value}'),
-              title: Text(mode.label),
-              subtitle: Text(mode.description),
-              value: mode,
-              contentPadding: EdgeInsets.zero,
-              dense: true,
+            Material(
+              type: MaterialType.transparency,
+              child: RadioListTile<FillMode>(
+                key: ValueKey<String>('preflight-fill-${mode.value}'),
+                title: Text(mode.label),
+                subtitle: Text(mode.description),
+                value: mode,
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+              ),
             ),
         ],
       ),

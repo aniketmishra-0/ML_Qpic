@@ -12,6 +12,7 @@ from app.services.rename_service import (
     plan_renames,
     split_extension,
     write_rename_zip,
+    write_rename_excel,
 )
 
 
@@ -92,3 +93,35 @@ def test_write_rename_zip_bytes_are_identical(tmp_path) -> None:
 
     with zipfile.ZipFile(zip_path) as zf:
         assert zf.read("x1.png") == raw
+
+
+def test_write_rename_excel(tmp_path) -> None:
+    excel_path = tmp_path / "out.xlsx"
+    new_names = ["(1).png", "(2).jpg"]
+    write_rename_excel(excel_path, new_names)
+
+    assert excel_path.exists()
+
+    import openpyxl
+    wb = openpyxl.load_workbook(excel_path)
+    ws = wb.active
+    assert ws.title == "Sheet1"
+
+    # Verify headers
+    headers = [cell.value for cell in ws[1]]
+    assert headers == ["Serial Number", "Slide Name", "Solution URL", "Custom Message"]
+
+    # Verify rows
+    assert ws.cell(row=2, column=1).value == 1
+    assert ws.cell(row=2, column=2).value == "(1).png"
+    assert ws.cell(row=2, column=3).value is None
+    assert ws.cell(row=2, column=4).value is None
+
+    assert ws.cell(row=3, column=1).value == 2
+    assert ws.cell(row=3, column=2).value == "(2).jpg"
+    assert ws.cell(row=3, column=3).value is None
+    assert ws.cell(row=3, column=4).value is None
+
+    # Verify gridlines
+    assert ws.views.sheetView[0].showGridLines is True
+

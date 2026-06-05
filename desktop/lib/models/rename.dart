@@ -123,6 +123,74 @@ class PdfToImagesResponse {
   }
 }
 
+/// One PDF page rendered to a JPEG file on disk, served via a URL.
+class PdfPageItem {
+  const PdfPageItem({
+    required this.name,
+    required this.pageUrl,
+    required this.width,
+    required this.height,
+    required this.size,
+  });
+
+  final String name;
+  final String pageUrl;
+  final int width;
+  final int height;
+  final int size;
+
+  factory PdfPageItem.fromJson(Map<String, dynamic> json) {
+    return PdfPageItem(
+      name: json['name'] as String,
+      pageUrl: json['page_url'] as String,
+      width: (json['width'] as num).toInt(),
+      height: (json['height'] as num).toInt(),
+      size: (json['size'] as num).toInt(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'name': name,
+      'page_url': pageUrl,
+      'width': width,
+      'height': height,
+      'size': size,
+    };
+  }
+}
+
+/// PDF uploaded and rendered to per-page images on disk.
+class PdfToSessionResponse {
+  const PdfToSessionResponse({
+    required this.jobId,
+    required this.count,
+    required this.pages,
+  });
+
+  final String jobId;
+  final int count;
+  final List<PdfPageItem> pages;
+
+  factory PdfToSessionResponse.fromJson(Map<String, dynamic> json) {
+    return PdfToSessionResponse(
+      jobId: json['job_id'] as String,
+      count: (json['count'] as num).toInt(),
+      pages: (json['pages'] as List<dynamic>)
+          .map((e) => PdfPageItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'job_id': jobId,
+      'count': count,
+      'pages': pages.map((e) => e.toJson()).toList(),
+    };
+  }
+}
+
 /// A freshly created upload session for a large rename batch.
 class RenameSessionResponse {
   const RenameSessionResponse({required this.sessionId});
@@ -177,17 +245,20 @@ class RenameFinalizeResponse {
     required this.sessionId,
     required this.count,
     required this.downloadUrl,
+    this.excelDownloadUrl,
   });
 
   final String sessionId;
   final int count;
   final String downloadUrl;
+  final String? excelDownloadUrl;
 
   factory RenameFinalizeResponse.fromJson(Map<String, dynamic> json) {
     return RenameFinalizeResponse(
       sessionId: json['session_id'] as String,
       count: (json['count'] as num).toInt(),
       downloadUrl: json['download_url'] as String,
+      excelDownloadUrl: json['excel_download_url'] as String?,
     );
   }
 
@@ -196,6 +267,7 @@ class RenameFinalizeResponse {
       'session_id': sessionId,
       'count': count,
       'download_url': downloadUrl,
+      'excel_download_url': excelDownloadUrl,
     };
   }
 }

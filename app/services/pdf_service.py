@@ -120,6 +120,84 @@ def pdf_to_images(pdf_source: bytes | str | Path, dpi: int) -> list[Image.Image]
         return [render_page_image(doc, i, dpi) for i in range(doc.page_count)]
 
 
+def render_pages_chunk(
+    pdf_path: str | Path,
+    page_indices: list[int],
+    dpi: int,
+    output_dir: Path,
+    stem: str,
+    pad: int,
+    jpg_quality: int = 75,
+) -> list[tuple[int, str, int, int, int]]:
+    """Render a batch of pages using a single fitz.Document handle."""
+    doc = fitz.open(str(pdf_path))
+    results = []
+    try:
+        zoom = dpi / 72.0
+        matrix = fitz.Matrix(zoom, zoom)
+        for idx in page_indices:
+            name = f"{stem}_p{str(idx + 1).zfill(pad)}.jpg"
+            out = output_dir / name
+            page = doc.load_page(idx)
+            pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csRGB, alpha=False)
+            w, h = pix.width, pix.height
+            pix.save(str(out), output="jpeg", jpg_quality=jpg_quality)
+            file_size = out.stat().st_size
+            results.append((idx, name, w, h, file_size))
+    finally:
+        doc.close()
+    return results
+
+
+def parallel_render_pdf_to_files(
+    pdf_path: str | Path,
+    dpi: int,
+    output_dir: Path,
+    stem: str,
+    max_workers: int = 6,
+    jpg_quality: int = 75,
+) -> list[tuple[str, int, int, int]]:
+    """Render all PDF pages to JPEG files in parallel.
+
+    Partitions page indices across workers so each worker thread opens the PDF
+    document only once, maximizing I/O performance.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    doc = fitz.open(str(pdf_path))
+    page_count = doc.page_count
+    doc.close()
+
+    pad = max(2, len(str(page_count)))
+    
+    chunks: list[list[int]] = [[] for _ in range(min(max_workers, page_count))]
+    for i in range(page_count):
+        chunks[i % len(chunks)].append(i)
+
+    results: dict[int, tuple[str, int, int, int]] = {}
+
+    with ThreadPoolExecutor(max_workers=len(chunks)) as pool:
+        futures = [
+            pool.submit(
+                render_pages_chunk,
+                pdf_path,
+                chunk,
+                dpi,
+                output_dir,
+                stem,
+                pad,
+                jpg_quality,
+            )
+            for chunk in chunks
+            if chunk
+        ]
+        for fut in futures:
+            for idx, name, w, h, sz in fut.result():
+                results[idx] = (name, w, h, sz)
+
+    return [results[i] for i in range(page_count)]
+
+
 def deskew_image(img: Image.Image) -> Image.Image:
     """Detect text lines tilt angle and rotate to make them horizontal."""
     try:

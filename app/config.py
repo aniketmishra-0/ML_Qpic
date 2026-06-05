@@ -124,6 +124,8 @@ class Settings(BaseSettings):
     CLEANUP_AFTER_SECONDS: int = 1800
     API_TIMEOUT_SECONDS: int = 120
 
+    GOOGLE_APPLICATION_CREDENTIALS: Optional[str] = None
+
     model_config = ConfigDict(env_file=".env")
 
     def resolved_ai_provider(self) -> Optional[str]:

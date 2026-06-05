@@ -76,6 +76,11 @@ class ReviewPainter extends CustomPainter {
     this.selection,
     this.questionPrefix = 'Q',
     this.solutionPrefix = 'S',
+    this.englishQuestionPrefix = 'EQ',
+    this.englishSolutionPrefix = 'ES',
+    this.hindiQuestionPrefix = 'HQ',
+    this.hindiSolutionPrefix = 'HS',
+    this.bilingualModeActive = false,
   });
 
   /// Coordinate transforms (page-percent ⇄ screen px) for the current view.
@@ -115,6 +120,11 @@ class ReviewPainter extends CustomPainter {
   /// `reviewSPrefix`). Defaults match the web defaults.
   final String questionPrefix;
   final String solutionPrefix;
+  final String englishQuestionPrefix;
+  final String englishSolutionPrefix;
+  final String hindiQuestionPrefix;
+  final String hindiSolutionPrefix;
+  final bool bilingualModeActive;
 
   /// Controller-owned repaint key. See [shouldRepaint].
   final int revision;
@@ -233,8 +243,19 @@ class ReviewPainter extends CustomPainter {
   /// Builds a box's label: `<prefix><q_num>` plus a part letter for
   /// multi-segment items, exactly like the web `drawExistingBoxes`.
   String _label(AnalyzedItem item, int segIdx, bool multiSegment) {
-    final String base =
-        (item.isSolution ? solutionPrefix : questionPrefix) + item.qNum;
+    final String prefix;
+    if (bilingualModeActive && item.segments.isNotEmpty) {
+      final QuestionSegment seg = item.segments[segIdx];
+      final bool isHindi = item.isHindi ?? (((seg.xStartPct + seg.xEndPct) / 2.0) > 50.0);
+      if (isHindi) {
+        prefix = item.isSolution ? hindiSolutionPrefix : hindiQuestionPrefix;
+      } else {
+        prefix = item.isSolution ? englishSolutionPrefix : englishQuestionPrefix;
+      }
+    } else {
+      prefix = item.isSolution ? solutionPrefix : questionPrefix;
+    }
+    final String base = prefix + item.qNum;
     if (!multiSegment) return base;
     final String segLetter = String.fromCharCode(97 + segIdx);
     return base + segLetter;
@@ -425,6 +446,13 @@ class ReviewPainter extends CustomPainter {
         pageNumber != oldDelegate.pageNumber ||
         editingIndex != oldDelegate.editingIndex ||
         hoveredIndex != oldDelegate.hoveredIndex ||
+        questionPrefix != oldDelegate.questionPrefix ||
+        solutionPrefix != oldDelegate.solutionPrefix ||
+        englishQuestionPrefix != oldDelegate.englishQuestionPrefix ||
+        englishSolutionPrefix != oldDelegate.englishSolutionPrefix ||
+        hindiQuestionPrefix != oldDelegate.hindiQuestionPrefix ||
+        hindiSolutionPrefix != oldDelegate.hindiSolutionPrefix ||
+        bilingualModeActive != oldDelegate.bilingualModeActive ||
         !listEquals(selectedIndices, oldDelegate.selectedIndices) ||
         !identical(pageImage, oldDelegate.pageImage) ||
         !identical(selection, oldDelegate.selection) ||

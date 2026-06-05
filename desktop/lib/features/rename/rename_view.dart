@@ -180,7 +180,7 @@ class _RenameViewState extends State<RenameView> {
                   children: <Widget>[
                     _OutputFormatSelector(controller: widget.controller),
                     const SizedBox(height: 12),
-                    _DpiSelector(controller: widget.controller),
+                    _PdfQualitySelector(controller: widget.controller),
                     if (widget.controller.outputFormat ==
                             RenameOutputFormat.jpg ||
                         widget.controller.outputFormat ==
@@ -188,6 +188,8 @@ class _RenameViewState extends State<RenameView> {
                       const SizedBox(height: 12),
                       _JpgQualitySlider(controller: widget.controller),
                     ],
+                    const SizedBox(height: 12),
+                    _ExcelToggle(controller: widget.controller),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -249,13 +251,15 @@ class _RenameViewState extends State<RenameView> {
             children: <Widget>[
               _OutputFormatSelector(controller: widget.controller),
               const SizedBox(height: 12),
-              _DpiSelector(controller: widget.controller),
+              _PdfQualitySelector(controller: widget.controller),
               if (widget.controller.outputFormat == RenameOutputFormat.jpg ||
                   widget.controller.outputFormat ==
                       RenameOutputFormat.jpeg) ...<Widget>[
                 const SizedBox(height: 12),
                 _JpgQualitySlider(controller: widget.controller),
               ],
+              const SizedBox(height: 12),
+              _ExcelToggle(controller: widget.controller),
             ],
           ),
           const SizedBox(height: 12),
@@ -1151,15 +1155,34 @@ class _PreviewCard extends StatelessWidget {
                     },
                     child: Container(
                       color: Colors.black.withAlpha(20),
-                      child: bytes.isNotEmpty
+                      child: item.hasBytesAvailable
                           ? Image.memory(
                               item.getUint8List(),
                               fit: BoxFit.contain,
                             )
-                          : const Center(
-                              child:
-                                  Icon(Icons.broken_image_outlined, size: 36),
-                            ),
+                          : item.pageUrl != null
+                              ? Image.network(
+                                  item.pageUrl!,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                      const Center(
+                                    child: Icon(Icons.broken_image_outlined, size: 36),
+                                  ),
+                                  loadingBuilder: (context, child, loadingProgress) {
+                                    if (loadingProgress == null) return child;
+                                    return const Center(
+                                      child: SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      ),
+                                    );
+                                  },
+                                )
+                              : const Center(
+                                  child:
+                                      Icon(Icons.broken_image_outlined, size: 36),
+                                ),
                     ),
                   ),
                 ),
@@ -1453,17 +1476,42 @@ class _GalleryThumbnail extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              bytes.isNotEmpty
+              item.hasBytesAvailable
                   ? Image.memory(
                       item.getUint8List(),
                       fit: BoxFit.cover,
                     )
-                  : Container(
-                      color: Colors.black.withAlpha(20),
-                      child: const Center(
-                        child: Icon(Icons.broken_image_outlined, size: 20),
-                      ),
-                    ),
+                  : item.pageUrl != null
+                      ? Image.network(
+                          item.pageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(
+                            color: Colors.black.withAlpha(20),
+                            child: const Center(
+                              child: Icon(Icons.broken_image_outlined, size: 20),
+                            ),
+                          ),
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Container(
+                              color: Colors.black.withAlpha(20),
+                              child: const Center(
+                                child: SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : Container(
+                          color: Colors.black.withAlpha(20),
+                          child: const Center(
+                            child: Icon(Icons.broken_image_outlined, size: 20),
+                          ),
+                        ),
               Positioned(
                 bottom: 0,
                 left: 0,
@@ -1669,7 +1717,7 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
                           children: [
                             Padding(
                               padding: const EdgeInsets.all(24.0),
-                              child: bytes.isNotEmpty
+                              child: item.hasBytesAvailable
                                   ? InteractiveViewer(
                                       maxScale: 4.0,
                                       child: Image.memory(
@@ -1677,9 +1725,31 @@ class _ImageViewerDialogState extends State<_ImageViewerDialog> {
                                         fit: BoxFit.contain,
                                       ),
                                     )
-                                  : const Center(
-                                      child: Text('Could not load image'),
-                                    ),
+                                  : item.pageUrl != null
+                                      ? InteractiveViewer(
+                                          maxScale: 4.0,
+                                          child: Image.network(
+                                            item.pageUrl!,
+                                            fit: BoxFit.contain,
+                                            errorBuilder: (context, error, stackTrace) =>
+                                                const Center(
+                                              child: Text('Could not load image'),
+                                            ),
+                                            loadingBuilder: (context, child, loadingProgress) {
+                                              if (loadingProgress == null) return child;
+                                              return const Center(
+                                                child: SizedBox(
+                                                  width: 24,
+                                                  height: 24,
+                                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        )
+                                      : const Center(
+                                          child: Text('Could not load image'),
+                                        ),
                             ),
                             // Navigation
                             if (_currentIndex > 0)
@@ -1796,8 +1866,8 @@ class _OverlayIconButton extends StatelessWidget {
   }
 }
 
-class _DpiSelector extends StatelessWidget {
-  const _DpiSelector({required this.controller});
+class _PdfQualitySelector extends StatelessWidget {
+  const _PdfQualitySelector({required this.controller});
 
   final RenameController controller;
 
@@ -1807,26 +1877,70 @@ class _DpiSelector extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text('PDF Render DPI', style: theme.textTheme.bodyMedium),
+        Text('PDF Render Quality', style: theme.textTheme.bodyMedium),
         const SizedBox(height: 8),
         QpicDropdownField<String>(
-          key: const ValueKey<String>('rename-pdf-dpi'),
-          value: controller.pdfDpi,
-          prefixIcon: const Icon(Icons.hdr_auto_rounded, size: 18),
+          key: const ValueKey<String>('rename-pdf-quality'),
+          value: controller.pdfQuality,
+          prefixIcon: const Icon(Icons.high_quality_rounded, size: 18),
           items: const [
-            QpicDropdownItem(value: 'Original', label: 'Original'),
-            QpicDropdownItem(value: '72', label: '72'),
-            QpicDropdownItem(value: '150', label: '150'),
-            QpicDropdownItem(value: '200', label: '200'),
-            QpicDropdownItem(value: '300', label: '300'),
-            QpicDropdownItem(value: '400', label: '400'),
-            QpicDropdownItem(value: '600', label: '600'),
+            QpicDropdownItem(value: 'Low', label: 'Low (Fastest, Small File)'),
+            QpicDropdownItem(value: 'Medium', label: 'Medium (Recommended)'),
+            QpicDropdownItem(value: 'High', label: 'High (Best Quality)'),
           ],
           onChanged: (val) {
-            controller.pdfDpi = val;
+            if (val != null) {
+              controller.pdfQuality = val;
+            }
           },
         ),
       ],
+    );
+  }
+}
+
+class _ExcelToggle extends StatelessWidget {
+  const _ExcelToggle({required this.controller});
+
+  final RenameController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final palette = theme.extension<QpicPalette>();
+    final brand = palette?.brand ?? theme.colorScheme.primary;
+
+    return InkWell(
+      onTap: () => controller.downloadExcel = !controller.downloadExcel,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: <Widget>[
+            SizedBox(
+              height: 24,
+              width: 24,
+              child: Checkbox(
+                key: const ValueKey<String>('rename-excel-checkbox'),
+                value: controller.downloadExcel,
+                activeColor: brand,
+                onChanged: (val) {
+                  if (val != null) {
+                    controller.downloadExcel = val;
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Download Excel Sheet',
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

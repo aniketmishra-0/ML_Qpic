@@ -278,8 +278,14 @@ def match_question_start_ex(
     if style != MARKER_STYLE_NUMBERED:
         strong = STRONG_QUESTION_PATTERN.match(candidate)
         if strong:
-            q_num = strong.group(1).lstrip("0") or "0"
-            return (q_num, True)
+            match_str = strong.group(0).strip()
+            # Reject lowercase 'q' immediately followed by a digit (no separator)
+            # like 'q2' or 'q12', as it is highly likely to be a math variable.
+            if match_str.startswith('q') and not match_str.startswith('Q') and len(match_str) > 1 and match_str[1].isdigit():
+                pass
+            else:
+                q_num = strong.group(1).lstrip("0") or "0"
+                return (q_num, True)
         if style == MARKER_STYLE_Q:
             return None
 
@@ -1646,8 +1652,18 @@ def starts_to_questions(
     # may "Q"-number its questions but plainly number its answer key (or vice
     # versa). Papers with no "Q" markers at all keep their bare numbering.
     starts = list(starts)
-    has_strong_q = any(s.is_strong for s in starts if not s.is_solution)
-    has_strong_s = any(s.is_strong for s in starts if s.is_solution)
+    # We only treat a section as having strong markers if there's a significant presence
+    # of strong markers (e.g., at least 2 strong markers, or strong markers constitute 
+    # more than 50% of the total detected starts in that section). This prevents a single
+    # false positive strong marker (like a variable 'Q2' or 'q2' in an equation) from
+    # discarding all weak markers in the document.
+    total_q_starts = sum(1 for s in starts if not s.is_solution)
+    strong_q_starts = sum(1 for s in starts if not s.is_solution and s.is_strong)
+    has_strong_q = (strong_q_starts >= 2) or (total_q_starts > 0 and strong_q_starts > 0.5 * total_q_starts)
+
+    total_s_starts = sum(1 for s in starts if s.is_solution)
+    strong_s_starts = sum(1 for s in starts if s.is_solution and s.is_strong)
+    has_strong_s = (strong_s_starts >= 2) or (total_s_starts > 0 and strong_s_starts > 0.5 * total_s_starts)
     filtered_starts: list[QuestionStart] = []
     for s in starts:
         section_has_strong = has_strong_s if s.is_solution else has_strong_q

@@ -437,9 +437,40 @@ class ReviewController extends ChangeNotifier {
     _methodUsed = response.methodUsed;
     _source = ReviewSource.smartAutoCrop;
     _clearFinalizeState();
+
+    final List<AnalyzedItem> processedItems = <AnalyzedItem>[];
+    for (final AnalyzedItem item in response.items) {
+      if (response.bilingualDetected &&
+          item.otherSegments != null &&
+          item.otherSegments!.isNotEmpty) {
+        // English part
+        processedItems.add(AnalyzedItem(
+          qNum: item.qNum,
+          isSolution: item.isSolution,
+          segments: item.segments,
+          source: item.source,
+          flagged: item.flagged,
+          flagReason: item.flagReason,
+          align: item.align,
+        ));
+        // Hindi part
+        processedItems.add(AnalyzedItem(
+          qNum: item.qNum,
+          isSolution: item.isSolution,
+          segments: item.otherSegments!,
+          source: item.source,
+          flagged: item.flagged,
+          flagReason: item.flagReason,
+          align: item.align,
+        ));
+      } else {
+        processedItems.add(item);
+      }
+    }
+
     _canvas.load(
       pages: response.pages,
-      items: response.items,
+      items: processedItems,
       notes: response.notes,
     );
     notifyListeners();
@@ -519,6 +550,18 @@ class ReviewController extends ChangeNotifier {
   /// Selects whether the next drawn box is a solution (Req 8.13).
   void setDrawAsSolution(bool value) => _canvas.setDrawAsSolution(value);
 
+  /// Whether the next drawn box is a solution.
+  bool get drawAsSolution => _canvas.drawAsSolution;
+
+  /// Selects whether the next drawn box is Hindi (true) or English (false).
+  void setDrawAsHindi(bool value) => _canvas.setDrawAsHindi(value);
+
+  /// Whether the next drawn box is Hindi.
+  bool get drawAsHindi => _canvas.drawAsHindi;
+
+  /// The pending number for the next drawn box.
+  String get pendingNumber => _canvas.pendingNumber;
+
   /// Sets the explicit number for the next drawn box, or '' to auto-number
   /// (Req 8.13).
   void setPendingNumber(String value) => _canvas.setPendingNumber(value);
@@ -530,6 +573,14 @@ class ReviewController extends ChangeNotifier {
 
   /// Removes an entire item from the set (Req 8.7).
   void deleteItem(int itemIndex) => _canvas.deleteItem(itemIndex);
+
+  /// Sets the question/solution number of an item.
+  void setItemQNum(int index, String newQNum) =>
+      _canvas.setItemQNum(index, newQNum);
+
+  /// Updates the properties (number, type, language) of an item.
+  void setItemProperties(int index, {required String qNum, required bool isSolution, bool? isHindi}) =>
+      _canvas.setItemProperties(index, qNum: qNum, isSolution: isSolution, isHindi: isHindi);
 
   /// Removes a single segment from an item (Req 8.7).
   void deleteSegment(int itemIndex, int segmentIndex) =>
@@ -755,6 +806,7 @@ class ReviewController extends ChangeNotifier {
         jpgQuality: _previewJpgQuality,
         bilingualMode: _bilingualMode,
         otherSegments: otherSegs,
+        isHindi: it.isHindi,
       ),
     );
     return bytes;
@@ -902,6 +954,7 @@ class ReviewController extends ChangeNotifier {
             segments: it.segments,
             source: it.source,
             align: it.align,
+            isHindi: it.isHindi,
           ),
     ];
   }
@@ -921,6 +974,10 @@ class ReviewController extends ChangeNotifier {
     int jpgQuality = 90,
     bool? answerSheet,
     String? bilingualMode,
+    String? englishQuestionPrefix,
+    String? englishSolutionPrefix,
+    String? hindiQuestionPrefix,
+    String? hindiSolutionPrefix,
   }) {
     return FinalizeRequest(
       jobId: _jobId,
@@ -934,6 +991,10 @@ class ReviewController extends ChangeNotifier {
       jpgQuality: jpgQuality,
       answerSheet: answerSheet ?? finalizeWillIncludeAnswerSheet,
       bilingualMode: bilingualMode ?? _bilingualMode,
+      englishQuestionPrefix: englishQuestionPrefix,
+      englishSolutionPrefix: englishSolutionPrefix,
+      hindiQuestionPrefix: hindiQuestionPrefix,
+      hindiSolutionPrefix: hindiSolutionPrefix,
     );
   }
 
@@ -963,6 +1024,10 @@ class ReviewController extends ChangeNotifier {
     int jpgQuality = 90,
     bool? answerSheet,
     String? bilingualMode,
+    String? englishQuestionPrefix,
+    String? englishSolutionPrefix,
+    String? hindiQuestionPrefix,
+    String? hindiSolutionPrefix,
   }) async {
     final ApiClient? client = _apiClient;
     if (client == null || _finalizing) return false;
@@ -1003,6 +1068,10 @@ class ReviewController extends ChangeNotifier {
           jpgQuality: jpgQuality,
           answerSheet: answerSheet,
           bilingualMode: bilingualMode,
+          englishQuestionPrefix: englishQuestionPrefix,
+          englishSolutionPrefix: englishSolutionPrefix,
+          hindiQuestionPrefix: hindiQuestionPrefix,
+          hindiSolutionPrefix: hindiSolutionPrefix,
         ),
       );
       _finalizeResult = response;
@@ -1053,6 +1122,7 @@ class ReviewController extends ChangeNotifier {
   Future<void> runAutoDetect({
     bool pageOnly = true,
     bool useAi = false,
+    bool useGoogleOcr = false,
     String markerStyle = 'auto',
   }) async {
     final ApiClient? client = _apiClient;
@@ -1067,6 +1137,7 @@ class ReviewController extends ChangeNotifier {
         jobId: _jobId,
         page: targetPage,
         useAi: useAi,
+        useGoogleOcr: useGoogleOcr,
         markerStyle: markerStyle,
       );
 

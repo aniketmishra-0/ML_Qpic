@@ -151,7 +151,7 @@ void main() {
       h.controller.addListener(() => notifies++);
 
       await h.controller
-          .runAutoDetect(pageOnly: true, useAi: true, markerStyle: 'numbered');
+          .runAutoDetect(pageOnly: true, useAi: true, useGoogleOcr: true, markerStyle: 'numbered');
 
       // Verify request parameters
       expect(h.adapter.requestCount, 1);
@@ -160,6 +160,7 @@ void main() {
       expect(req?.method, 'POST');
       expect(h.adapter.lastQueryParams?['page'], 2);
       expect(h.adapter.lastQueryParams?['use_ai'], true);
+      expect(h.adapter.lastQueryParams?['use_google_ocr'], true);
       expect(h.adapter.lastQueryParams?['marker_style'], 'numbered');
 
       // Verify state was merged

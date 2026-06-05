@@ -277,6 +277,7 @@ class AutoCropController extends ChangeNotifier {
 
   bool _smartMode = true;
   bool _onlineMode = false;
+  bool _googleOcr = false;
   bool _answerSheet = false;
   bool _bilingualModeActive = false;
   NumberingMode _numbering = NumberingMode.autoDetect;
@@ -287,6 +288,10 @@ class AutoCropController extends ChangeNotifier {
   set bilingualModeActive(bool value) {
     if (_bilingualModeActive == value) return;
     _bilingualModeActive = value;
+    if (_bilingualModeActive) {
+      _questionPrefix = 'EQ';
+      _solutionPrefix = 'ES';
+    }
     notifyListeners();
   }
 
@@ -305,6 +310,14 @@ class AutoCropController extends ChangeNotifier {
   set onlineMode(bool value) {
     if (_onlineMode == value) return;
     _onlineMode = value;
+    notifyListeners();
+  }
+
+  /// Google Cloud OCR: maps to the engine's `use_google_ocr` query parameter.
+  bool get googleOcr => _googleOcr;
+  set googleOcr(bool value) {
+    if (_googleOcr == value) return;
+    _googleOcr = value;
     notifyListeners();
   }
 
@@ -346,6 +359,10 @@ class AutoCropController extends ChangeNotifier {
 
   String _questionPrefix = 'Q';
   String _solutionPrefix = 'S';
+  String _englishQuestionPrefix = 'EQ';
+  String _englishSolutionPrefix = 'ES';
+  String _hindiQuestionPrefix = 'HQ';
+  String _hindiSolutionPrefix = 'HS';
   int _startNumber = AutoCropBounds.startNumberDefault;
   CropImageFormat _imageFormat = CropImageFormat.png;
   int _jpgQuality = AutoCropBounds.jpgQualityDefault;
@@ -426,6 +443,38 @@ class AutoCropController extends ChangeNotifier {
     final next = _truncatePrefix(value);
     if (_solutionPrefix == next) return;
     _solutionPrefix = next;
+    notifyListeners();
+  }
+
+  String get englishQuestionPrefix => _englishQuestionPrefix;
+  set englishQuestionPrefix(String value) {
+    final next = _truncatePrefix(value);
+    if (_englishQuestionPrefix == next) return;
+    _englishQuestionPrefix = next;
+    notifyListeners();
+  }
+
+  String get englishSolutionPrefix => _englishSolutionPrefix;
+  set englishSolutionPrefix(String value) {
+    final next = _truncatePrefix(value);
+    if (_englishSolutionPrefix == next) return;
+    _englishSolutionPrefix = next;
+    notifyListeners();
+  }
+
+  String get hindiQuestionPrefix => _hindiQuestionPrefix;
+  set hindiQuestionPrefix(String value) {
+    final next = _truncatePrefix(value);
+    if (_hindiQuestionPrefix == next) return;
+    _hindiQuestionPrefix = next;
+    notifyListeners();
+  }
+
+  String get hindiSolutionPrefix => _hindiSolutionPrefix;
+  set hindiSolutionPrefix(String value) {
+    final next = _truncatePrefix(value);
+    if (_hindiSolutionPrefix == next) return;
+    _hindiSolutionPrefix = next;
     notifyListeners();
   }
 
@@ -659,14 +708,15 @@ class AutoCropController extends ChangeNotifier {
     // Mode toggles + numbering.
     _smartMode = defaults?.defaultSmartMode ?? true;
     _onlineMode = false;
+    _googleOcr = false;
     _answerSheet = false;
-    _bilingualModeActive = false;
+    final wasBilingual = _bilingualModeActive;
     _numbering = NumberingMode.autoDetect;
     _layoutColumns = LayoutColumnsMode.auto;
 
     // Output configuration.
-    _questionPrefix = defaults?.defaultQuestionPrefix ?? 'Q';
-    _solutionPrefix = defaults?.defaultSolutionPrefix ?? 'S';
+    _questionPrefix = wasBilingual ? 'EQ' : (defaults?.defaultQuestionPrefix ?? 'Q');
+    _solutionPrefix = wasBilingual ? 'ES' : (defaults?.defaultSolutionPrefix ?? 'S');
     _startNumber = AutoCropBounds.startNumberDefault;
     _imageFormat = defaults?.defaultImageFormat == 'jpg'
         ? CropImageFormat.jpg
@@ -684,12 +734,13 @@ class AutoCropController extends ChangeNotifier {
 
     _batchQueue?.clear();
 
+    _bilingualModeActive = wasBilingual;
     notifyListeners();
   }
 
   void applyDefaults(ThemeController controller) {
-    _questionPrefix = controller.defaultQuestionPrefix;
-    _solutionPrefix = controller.defaultSolutionPrefix;
+    _questionPrefix = _bilingualModeActive ? 'EQ' : controller.defaultQuestionPrefix;
+    _solutionPrefix = _bilingualModeActive ? 'ES' : controller.defaultSolutionPrefix;
     _imageFormat = controller.defaultImageFormat == 'jpg'
         ? CropImageFormat.jpg
         : CropImageFormat.png;
@@ -813,6 +864,7 @@ class AutoCropController extends ChangeNotifier {
         imageFormat: imageFormatValue,
         jpgQuality: _jpgQuality,
         useAi: useAi,
+        useGoogleOcr: _googleOcr,
         answerSheet: _answerSheet,
         layoutColumns: layoutColumnsValue,
         binarize: _binarize,
@@ -881,6 +933,7 @@ class AutoCropController extends ChangeNotifier {
         answerPages: _hasAnswers ? _answerPages : null,
         skipPages: _skipPages.isNotEmpty ? _skipPages : null,
         useAi: useAi,
+        useGoogleOcr: _googleOcr,
         answerSheet: _answerSheet,
         layoutColumns: layoutColumnsValue,
         binarize: _binarize,

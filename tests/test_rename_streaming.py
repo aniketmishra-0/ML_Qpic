@@ -193,3 +193,68 @@ def test_session_name_count_mismatch_errors(tmp_path: Path) -> None:
         assert fr.status_code == 400
     finally:
         client.__exit__(None, None, None)
+
+
+def test_pdf_session_direct_finalize(tmp_path: Path) -> None:
+    def _make_pdf_bytes_local(page_count: int = 1) -> bytes:
+        import fitz
+        doc = fitz.open()
+        for i in range(page_count):
+            page = doc.new_page()
+            page.insert_text((72, 72), f"Page {i + 1}")
+        data = doc.tobytes()
+        doc.close()
+        return data
+
+    client = _client(tmp_path)
+    try:
+        # Create a sample PDF bytes
+        pdf_bytes = _make_pdf_bytes_local(page_count=2)
+        
+        # Convert PDF to session
+        resp = client.post(
+            "/api/rename/pdf-to-session",
+            files={"file": ("test.pdf", pdf_bytes, "application/pdf")},
+            data={"dpi": "72"},
+        )
+        assert resp.status_code == 200
+        job_id = resp.json()["job_id"]
+        pages = resp.json()["pages"]
+        assert len(pages) == 2
+        assert pages[0]["name"].endswith(".jpg")
+        
+        # Finalize the PDF session directly
+        payload = {
+            "items": [
+                {"original": pages[0]["name"], "new_stem": "slide1"},
+                {"original": pages[1]["name"], "new_stem": "slide2"},
+            ],
+            "output_format": "original",
+        }
+        
+        fr = client.post(
+            f"/api/rename/pdf-session/{job_id}/finalize",
+            json=payload,
+        )
+        assert fr.status_code == 200
+        body = fr.json()
+        assert body["count"] == 2
+        assert body["download_url"].endswith(f"/{job_id}/download")
+        
+        # Download ZIP
+        dl = client.get(body["download_url"])
+        assert dl.status_code == 200
+        with zipfile.ZipFile(io.BytesIO(dl.content)) as zf:
+            assert zf.namelist() == ["slide1.jpg", "slide2.jpg"]
+            
+        # Download Excel
+        excel_dl = client.get(body["excel_download_url"])
+        assert excel_dl.status_code == 200
+        assert len(excel_dl.content) > 0
+        
+        # Cleanup
+        client.delete(f"/api/rename/pdf-session/{job_id}")
+        assert client.get(body["download_url"]).status_code == 404
+    finally:
+        client.__exit__(None, None, None)
+

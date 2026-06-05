@@ -14,6 +14,7 @@ import 'tool_placeholder.dart';
 enum QpicTool {
   autoCrop('Auto Crop', Icons.crop_rounded),
   manualCrop('Manual Crop', Icons.crop_free_rounded),
+  bilingualCrop('Bilingual Crop', Icons.translate_rounded),
   renameBatch('Rename Batch', Icons.drive_file_rename_outline_rounded),
   pdfEnhancer('PDF Enhancer', Icons.auto_awesome_rounded),
   tools('PDF Tools', Icons.build_rounded);
@@ -33,6 +34,8 @@ enum QpicTool {
         return 'Auto';
       case QpicTool.manualCrop:
         return 'Manual';
+      case QpicTool.bilingualCrop:
+        return 'Bilingual';
       case QpicTool.renameBatch:
         return 'Rename';
       case QpicTool.pdfEnhancer:

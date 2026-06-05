@@ -45,7 +45,11 @@ class AutoCropView extends StatelessWidget {
     this.fileName,
     this.errorText,
     this.busy = false,
+    this.title,
   });
+
+  /// The custom title of this view.
+  final String? title;
 
   /// Backing form state. The view never mutates anything other than this.
   final AutoCropController controller;
@@ -120,6 +124,7 @@ class AutoCropView extends StatelessWidget {
                 onClear: onClear,
                 busy: isBusy,
                 controller: controller,
+                title: title ?? 'Auto Crop',
               ),
               const SizedBox(height: 16),
               Expanded(
@@ -489,12 +494,14 @@ class _HeaderBar extends StatelessWidget {
     required this.onClear,
     required this.busy,
     required this.controller,
+    required this.title,
   });
 
   final QpicPalette? palette;
   final VoidCallback? onClear;
   final bool busy;
   final AutoCropController controller;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
@@ -508,7 +515,7 @@ class _HeaderBar extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(
-                'Auto Crop',
+                title,
                 key: const ValueKey<String>('auto-crop-title'),
                 style: TextStyle(
                   fontSize: 22,
@@ -551,6 +558,42 @@ class _HeaderBar extends StatelessWidget {
                   ? null
                   : (val) {
                       controller.batchMode = val;
+                    },
+              activeColor: brand,
+            ),
+          ],
+        ),
+        const SizedBox(width: 16),
+        // Google OCR toggle
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.g_translate_rounded,
+              size: 16,
+              color: controller.googleOcr
+                  ? brand
+                  : (palette?.muted ?? theme.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Google OCR',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: controller.googleOcr
+                    ? brand
+                    : (palette?.muted ?? theme.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Switch(
+              key: const ValueKey<String>('auto-crop-google-ocr-toggle'),
+              value: controller.googleOcr,
+              onChanged: busy
+                  ? null
+                  : (val) {
+                      controller.googleOcr = val;
                     },
               activeColor: brand,
             ),
@@ -1264,19 +1307,6 @@ class _ModeToggles extends StatelessWidget {
           palette: palette,
           theme: theme,
         ),
-        const SizedBox(height: 12),
-        _buildToggleItem(
-          key: const ValueKey<String>('auto-crop-bilingual-mode'),
-          icon: Icons.g_translate_rounded,
-          title: 'Bilingual Mode',
-          subtitle:
-              'Enable side-by-side bilingual question stitching and download options.',
-          value: controller.bilingualModeActive,
-          onChanged: (value) => controller.bilingualModeActive = value,
-          brandColor: brand,
-          palette: palette,
-          theme: theme,
-        ),
       ],
     );
   }
@@ -1438,27 +1468,73 @@ class _OutputConfig extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: _PrefixField(
-                fieldKey: const ValueKey<String>('auto-crop-question-prefix'),
-                label: 'Question prefix',
-                value: controller.questionPrefix,
-                onChanged: (value) => controller.questionPrefix = value,
+        if (controller.bilingualModeActive) ...<Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('auto-crop-english-question-prefix'),
+                  label: 'English Question prefix',
+                  value: controller.englishQuestionPrefix,
+                  onChanged: (value) => controller.englishQuestionPrefix = value,
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _PrefixField(
-                fieldKey: const ValueKey<String>('auto-crop-solution-prefix'),
-                label: 'Solution prefix',
-                value: controller.solutionPrefix,
-                onChanged: (value) => controller.solutionPrefix = value,
+              const SizedBox(width: 12),
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('auto-crop-english-solution-prefix'),
+                  label: 'English Solution prefix',
+                  value: controller.englishSolutionPrefix,
+                  onChanged: (value) => controller.englishSolutionPrefix = value,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('auto-crop-hindi-question-prefix'),
+                  label: 'Hindi Question prefix',
+                  value: controller.hindiQuestionPrefix,
+                  onChanged: (value) => controller.hindiQuestionPrefix = value,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('auto-crop-hindi-solution-prefix'),
+                  label: 'Hindi Solution prefix',
+                  value: controller.hindiSolutionPrefix,
+                  onChanged: (value) => controller.hindiSolutionPrefix = value,
+                ),
+              ),
+            ],
+          ),
+        ] else ...<Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('auto-crop-question-prefix'),
+                  label: 'Question prefix',
+                  value: controller.questionPrefix,
+                  onChanged: (value) => controller.questionPrefix = value,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _PrefixField(
+                  fieldKey: const ValueKey<String>('auto-crop-solution-prefix'),
+                  label: 'Solution prefix',
+                  value: controller.solutionPrefix,
+                  onChanged: (value) => controller.solutionPrefix = value,
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         _BoundedIntField(
           fieldKey: const ValueKey<String>('auto-crop-start-number'),

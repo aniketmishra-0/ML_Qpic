@@ -500,6 +500,7 @@ _JsonMap _genAnalyzedItem(math.Random r) => <String, dynamic>{
       'flagged': _b(r),
       'flag_reason': _nstr(r),
       'other_segments': r.nextBool() ? null : _segList(r),
+      'is_hindi': _nbool(r),
     };
 
 _JsonMap _genReviewNote(math.Random r) => <String, dynamic>{
@@ -548,6 +549,7 @@ _JsonMap _genFinalizeItem(math.Random r) => <String, dynamic>{
       'segments': _segList(r),
       'source': _pick(r, _sources),
       'align': _nbool(r),
+      'is_hindi': _nbool(r),
     };
 
 _JsonMap _genCropPreviewRequest(math.Random r) => <String, dynamic>{
@@ -563,6 +565,7 @@ _JsonMap _genCropPreviewRequest(math.Random r) => <String, dynamic>{
       'jpg_quality': _int(r, min: 1, max: 100),
       'bilingual_mode': _pick(r, const [null, 'english', 'hindi', 'bilingual_horizontal', 'bilingual_vertical', 'bilingual_separate']),
       'other_segments': r.nextBool() ? null : _segList(r),
+      'is_hindi': _nbool(r),
     };
 
 _JsonMap _genFinalizeRequest(math.Random r) => <String, dynamic>{
@@ -577,6 +580,10 @@ _JsonMap _genFinalizeRequest(math.Random r) => <String, dynamic>{
       'jpg_quality': _int(r, min: 1, max: 100),
       'answer_sheet': _b(r),
       'bilingual_mode': _pick(r, const [null, 'english', 'hindi', 'bilingual_horizontal', 'bilingual_vertical', 'bilingual_separate']),
+      'english_question_prefix': _str(r, min: 0, max: 10),
+      'english_solution_prefix': _str(r, min: 0, max: 10),
+      'hindi_question_prefix': _str(r, min: 0, max: 10),
+      'hindi_solution_prefix': _str(r, min: 0, max: 10),
     };
 
 _JsonMap _genHealthResponse(math.Random r) => <String, dynamic>{
@@ -633,6 +640,7 @@ _JsonMap _genRenameFinalizeResponse(math.Random r) => <String, dynamic>{
       'session_id': _str(r),
       'count': _int(r, max: 100000),
       'download_url': _str(r),
+      'excel_download_url': _nstr(r),
     };
 
 _JsonMap _genCompressResponse(math.Random r) => <String, dynamic>{
@@ -844,6 +852,7 @@ const Set<String> _kAnalyzedItem = {
   'flagged',
   'flag_reason',
   'other_segments',
+  'is_hindi',
 };
 
 const Set<String> _kReviewNote = {
@@ -890,6 +899,7 @@ const Set<String> _kFinalizeItem = {
   'segments',
   'source',
   'align',
+  'is_hindi',
 };
 
 const Set<String> _kCropPreviewRequest = {
@@ -905,6 +915,7 @@ const Set<String> _kCropPreviewRequest = {
   'jpg_quality',
   'bilingual_mode',
   'other_segments',
+  'is_hindi',
 };
 
 const Set<String> _kFinalizeRequest = {
@@ -919,6 +930,10 @@ const Set<String> _kFinalizeRequest = {
   'jpg_quality',
   'answer_sheet',
   'bilingual_mode',
+  'english_question_prefix',
+  'english_solution_prefix',
+  'hindi_question_prefix',
+  'hindi_solution_prefix',
 };
 
 const Set<String> _kHealthResponse = {
@@ -969,6 +984,7 @@ const Set<String> _kRenameFinalizeResponse = {
   'session_id',
   'count',
   'download_url',
+  'excel_download_url',
 };
 
 const Set<String> _kCompressResponse = {

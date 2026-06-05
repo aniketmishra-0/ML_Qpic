@@ -250,5 +250,65 @@ void main() {
       // Solution 1 has only 1 item of its type (the question is ignored), so next solution is still 1
       expect(nextAutoNumber(true, items, bilingualModeActive: true), '1');
     });
+
+    test('pairing logic with explicit isHindi flag', () {
+      // 1) English 1 drawn. Next English should be 2.
+      final items1 = <AnalyzedItem>[
+        AnalyzedItem(
+          qNum: '1',
+          isSolution: false,
+          segments: const [QuestionSegment(page: 1, yStartPct: 10, yEndPct: 30, xStartPct: 10, xEndPct: 40)],
+          isHindi: false,
+        ),
+      ];
+      expect(nextAutoNumber(false, items1, bilingualModeActive: true, isHindi: false), '2');
+
+      // Next Hindi should be 1 to pair with English 1.
+      expect(nextAutoNumber(false, items1, bilingualModeActive: true, isHindi: true), '1');
+
+      // 2) English 1 and English 2 drawn.
+      final items2 = <AnalyzedItem>[
+        AnalyzedItem(
+          qNum: '1',
+          isSolution: false,
+          segments: const [QuestionSegment(page: 1, yStartPct: 10, yEndPct: 30, xStartPct: 10, xEndPct: 40)],
+          isHindi: false,
+        ),
+        AnalyzedItem(
+          qNum: '2',
+          isSolution: false,
+          segments: const [QuestionSegment(page: 1, yStartPct: 10, yEndPct: 30, xStartPct: 10, xEndPct: 40)],
+          isHindi: false,
+        ),
+      ];
+      // Next English should be 3.
+      expect(nextAutoNumber(false, items2, bilingualModeActive: true, isHindi: false), '3');
+      // Next Hindi should be 1 (lowest unpaired).
+      expect(nextAutoNumber(false, items2, bilingualModeActive: true, isHindi: true), '1');
+
+      // 3) English 1, English 2, Hindi 1 drawn.
+      final items3 = <AnalyzedItem>[
+        AnalyzedItem(
+          qNum: '1',
+          isSolution: false,
+          segments: const [QuestionSegment(page: 1, yStartPct: 10, yEndPct: 30, xStartPct: 10, xEndPct: 40)],
+          isHindi: false,
+        ),
+        AnalyzedItem(
+          qNum: '2',
+          isSolution: false,
+          segments: const [QuestionSegment(page: 1, yStartPct: 10, yEndPct: 30, xStartPct: 10, xEndPct: 40)],
+          isHindi: false,
+        ),
+        AnalyzedItem(
+          qNum: '1',
+          isSolution: false,
+          segments: const [QuestionSegment(page: 1, yStartPct: 10, yEndPct: 30, xStartPct: 60, xEndPct: 90)],
+          isHindi: true,
+        ),
+      ];
+      // Next Hindi should be 2 (lowest unpaired).
+      expect(nextAutoNumber(false, items3, bilingualModeActive: true, isHindi: true), '2');
+    });
   });
 }

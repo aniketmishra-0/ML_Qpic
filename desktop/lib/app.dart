@@ -11,6 +11,7 @@ import 'core/theme_controller.dart';
 import 'features/auto_crop/auto_crop_controller.dart';
 import 'features/auto_crop/batch_queue_controller.dart';
 import 'features/auto_crop/auto_crop_view.dart';
+import 'features/bilingual_crop/bilingual_crop_view.dart';
 import 'features/manual_crop/manual_crop_controller.dart';
 import 'features/manual_crop/manual_crop_view.dart';
 import 'features/rename/rename_controller.dart';
@@ -112,6 +113,19 @@ class _QpicAppState extends State<QpicApp> {
   final ManualCropController _manualCropController =
       ManualCropController(filePickerService: const FilePickerService());
 
+  /// Backs the Bilingual Auto Crop controller.
+  final AutoCropController _bilingualAutoController = AutoCropController();
+
+  /// Backs the Bilingual Manual Crop controller.
+  final ManualCropController _bilingualManualController =
+      ManualCropController(filePickerService: const FilePickerService());
+
+  /// Backs the Bilingual Auto Crop review session.
+  final ReviewController _bilingualAutoReview = ReviewController();
+
+  /// Whether the Bilingual Smart Auto Crop Review Canvas is currently shown.
+  bool _bilingualAutoReviewOpen = false;
+
   /// Tracks the engine lifecycle so feature controllers can be (re)bound to the
   /// published Base_URL on ready and unbound when the engine stops.
   StreamSubscription<SidecarStatus>? _engineStatusSub;
@@ -133,6 +147,10 @@ class _QpicAppState extends State<QpicApp> {
     _autoCropController.applyDefaults(_controller);
     _autoCropController.setBatchQueue(_batchQueueController);
     _manualCropController.applyDefaults(_controller);
+    _bilingualAutoController.applyDefaults(_controller);
+    _bilingualAutoController.bilingualModeActive = true;
+    _bilingualManualController.applyDefaults(_controller);
+    _bilingualManualController.bilingualModeActive = true;
     // Kick off engine startup so the StartupGate shows the starting overlay
     // immediately and transitions to ready/failed as the manager progresses.
     final bootstrap = widget.sidecarBootstrap;
@@ -185,6 +203,27 @@ class _QpicAppState extends State<QpicApp> {
           downloadService: DownloadService(apiClient),
         );
       }
+      if (_bilingualAutoController.apiClient == null) {
+        final apiClient = ApiClient(baseUrl);
+        _bilingualAutoController.bindEngine(
+          apiClient: apiClient,
+          downloadService: DownloadService(apiClient),
+        );
+      }
+      if (_bilingualManualController.apiClient == null) {
+        final apiClient = ApiClient(baseUrl);
+        _bilingualManualController.bindEngine(
+          apiClient: apiClient,
+          downloadService: DownloadService(apiClient),
+        );
+      }
+      if (_bilingualAutoReview.apiClient == null) {
+        final apiClient = ApiClient(baseUrl);
+        _bilingualAutoReview.bindEngine(
+          apiClient: apiClient,
+          downloadService: DownloadService(apiClient),
+        );
+      }
     } else {
       if (_autoCropController.engineReady) {
         _autoCropController.unbindEngine();
@@ -198,6 +237,15 @@ class _QpicAppState extends State<QpicApp> {
       if (_autoCropReview.engineReady) {
         _autoCropReview.unbindEngine();
       }
+      if (_bilingualAutoController.engineReady) {
+        _bilingualAutoController.unbindEngine();
+      }
+      if (_bilingualManualController.engineReady) {
+        _bilingualManualController.unbindEngine();
+      }
+      if (_bilingualAutoReview.engineReady) {
+        _bilingualAutoReview.unbindEngine();
+      }
     }
   }
 
@@ -209,6 +257,9 @@ class _QpicAppState extends State<QpicApp> {
     _autoCropReview.dispose();
     _renameController.dispose();
     _manualCropController.dispose();
+    _bilingualAutoController.dispose();
+    _bilingualManualController.dispose();
+    _bilingualAutoReview.dispose();
     _zoomRegistry.dispose();
     if (_ownsController) {
       _controller.dispose();
@@ -279,11 +330,11 @@ class _QpicAppState extends State<QpicApp> {
   void _openAutoCropReview(AnalyzeResponse analysis) {
     _autoCropReview.loadFromAnalyze(analysis);
     // Auto-enable bilingual mode when the backend detected a bilingual layout
-    // (e.g. English left / Hindi right on the same page). Default to English
-    // only, which is the most common use case for exam prep.
+    // (e.g. English left / Hindi right on the same page). Default to
+    // bilingual_horizontal so both columns are cropped together.
     if (analysis.bilingualDetected) {
       _autoCropReview.bilingualModeActive = true;
-      _autoCropReview.bilingualMode = 'english';
+      _autoCropReview.bilingualMode = 'bilingual_horizontal';
     } else {
       _autoCropReview.bilingualModeActive =
           _autoCropController.bilingualModeActive;
@@ -329,6 +380,78 @@ class _QpicAppState extends State<QpicApp> {
     );
   }
 
+  Future<void> _pickBilingualAutoPdf() async {
+    if (_bilingualAutoController.batchMode) {
+      final pickedFiles = await _filePickerService.pickPdfs();
+      if (pickedFiles.isEmpty) return;
+      await _bilingualAutoController.batchQueue?.addFiles(pickedFiles);
+    } else {
+      final picked = await _filePickerService.pickPdf();
+      if (picked == null) return;
+      final bytes = await picked.readAsBytes();
+      _bilingualAutoController.setFile(bytes: bytes, filename: picked.name);
+    }
+  }
+
+  Future<void> _viewBilingualAutoPdf() async {
+    final ok = await _bilingualAutoController.loadPreview();
+    final pages = _bilingualAutoController.previewPages;
+    final apiClient = _bilingualAutoController.apiClient;
+    if (!ok || pages == null || apiClient == null) return;
+    final navigatorContext = _navigatorKey.currentContext;
+    if (navigatorContext == null) return;
+    await PdfPreviewDialog.open(
+        navigatorContext,
+        title: _bilingualAutoController.fileName ?? 'Preview',
+        pages: pages,
+        resolveUrl: (url) => apiClient.resolveUri(url).toString(),
+    );
+  }
+
+  Future<void> _submitBilingualAuto() async {
+    await _bilingualAutoController.submit();
+    final analysis = _bilingualAutoController.analyzeResult;
+    if (analysis != null) {
+      _openBilingualAutoReview(analysis);
+    }
+  }
+
+  void _openBilingualAutoReview(AnalyzeResponse analysis) {
+    _bilingualAutoReview.loadFromAnalyze(analysis);
+    _bilingualAutoReview.bilingualModeActive = true;
+    _bilingualAutoReview.bilingualMode = 'bilingual_horizontal';
+    _bilingualAutoReview.setPreviewOutput(
+      dpi: _bilingualAutoController.dpi,
+      padding: _bilingualAutoController.padding,
+      imageFormat: _bilingualAutoController.imageFormatValue,
+      jpgQuality: _bilingualAutoController.jpgQuality,
+    );
+    _bilingualAutoController.consumeAnalyzeResult();
+    setState(() => _bilingualAutoReviewOpen = true);
+  }
+
+  void _closeBilingualAutoReview() {
+    _bilingualAutoReview.reset();
+    setState(() => _bilingualAutoReviewOpen = false);
+  }
+
+  Future<void> _finalizeBilingualAutoReview() async {
+    await _bilingualAutoReview.finalize(
+      dpi: _bilingualAutoController.dpi,
+      padding: _bilingualAutoController.padding,
+      questionPrefix: _bilingualAutoController.questionPrefix,
+      solutionPrefix: _bilingualAutoController.solutionPrefix,
+      startNumber: _bilingualAutoController.startNumber,
+      imageFormat: _bilingualAutoController.imageFormatValue,
+      jpgQuality: _bilingualAutoController.jpgQuality,
+      answerSheet: _bilingualAutoController.answerSheet,
+      englishQuestionPrefix: _bilingualAutoController.englishQuestionPrefix,
+      englishSolutionPrefix: _bilingualAutoController.englishSolutionPrefix,
+      hindiQuestionPrefix: _bilingualAutoController.hindiQuestionPrefix,
+      hindiSolutionPrefix: _bilingualAutoController.hindiSolutionPrefix,
+    );
+  }
+
   /// Builds the view for a given tool tab. Auto Crop and Rename Batch render
   /// their real forms; the remaining tools fall back to placeholders until
   /// their own tasks land.
@@ -351,6 +474,10 @@ class _QpicAppState extends State<QpicApp> {
                 controller: _autoCropReview,
                 questionPrefix: _autoCropController.questionPrefix,
                 solutionPrefix: _autoCropController.solutionPrefix,
+                englishQuestionPrefix: _autoCropController.englishQuestionPrefix,
+                englishSolutionPrefix: _autoCropController.englishSolutionPrefix,
+                hindiQuestionPrefix: _autoCropController.hindiQuestionPrefix,
+                hindiSolutionPrefix: _autoCropController.hindiSolutionPrefix,
                 previewUrlResolver: apiClient != null
                     ? (url) => apiClient.resolveUri(url).toString()
                     : null,
@@ -358,6 +485,8 @@ class _QpicAppState extends State<QpicApp> {
                 onFinalize: _autoCropReview.engineReady
                     ? _finalizeAutoCropReview
                     : null,
+                initialUseAi: _autoCropController.useAi,
+                initialUseGoogleOcr: _autoCropController.googleOcr,
               );
             }
             final ready = _autoCropController.engineReady;
@@ -375,6 +504,67 @@ class _QpicAppState extends State<QpicApp> {
                       _autoCropController.hasFile &&
                       !_autoCropController.busy
                   ? _viewAutoCropPdf
+                  : null,
+            );
+          },
+        );
+      case QpicTool.bilingualCrop:
+        return AnimatedBuilder(
+          animation: Listenable.merge([
+            _bilingualAutoController,
+            _bilingualManualController,
+          ]),
+          builder: (context, _) {
+            if (_bilingualAutoReviewOpen) {
+              final apiClient = _bilingualAutoController.apiClient;
+              return ReviewScreen(
+                key: const ValueKey<String>('tool-view-bilingualAutoCropReview'),
+                controller: _bilingualAutoReview,
+                questionPrefix: _bilingualAutoController.questionPrefix,
+                solutionPrefix: _bilingualAutoController.solutionPrefix,
+                englishQuestionPrefix: _bilingualAutoController.englishQuestionPrefix,
+                englishSolutionPrefix: _bilingualAutoController.englishSolutionPrefix,
+                hindiQuestionPrefix: _bilingualAutoController.hindiQuestionPrefix,
+                hindiSolutionPrefix: _bilingualAutoController.hindiSolutionPrefix,
+                previewUrlResolver: apiClient != null
+                    ? (url) => apiClient.resolveUri(url).toString()
+                    : null,
+                onClose: _closeBilingualAutoReview,
+                onFinalize: _bilingualAutoReview.engineReady
+                    ? _finalizeBilingualAutoReview
+                    : null,
+                initialUseAi: _bilingualAutoController.useAi,
+                initialUseGoogleOcr: _bilingualAutoController.googleOcr,
+              );
+            }
+            final ready = _bilingualAutoController.engineReady;
+            final apiClient = _bilingualAutoController.apiClient;
+            return BilingualCropView(
+              key: const ValueKey<String>('tool-view-bilingualCrop'),
+              autoController: _bilingualAutoController,
+              manualController: _bilingualManualController,
+              onPickAutoFile: ready && !_bilingualAutoController.busy
+                  ? _pickBilingualAutoPdf
+                  : null,
+              onSubmitAuto: ready && !_bilingualAutoController.busy
+                  ? _submitBilingualAuto
+                  : null,
+              onClearAuto: !_bilingualAutoController.busy
+                  ? () => _bilingualAutoController.reset(_controller)
+                  : null,
+              onViewAuto: ready &&
+                      _bilingualAutoController.hasFile &&
+                      !_bilingualAutoController.busy
+                  ? _viewBilingualAutoPdf
+                  : null,
+              onPickManualFile: ready && !_bilingualManualController.busy
+                  ? () => _bilingualManualController.pickPdf()
+                  : null,
+              onClearManual: !_bilingualManualController.busy
+                  ? () => _bilingualManualController.reset(_controller)
+                  : null,
+              previewUrlResolver: apiClient != null
+                  ? (url) => apiClient.resolveUri(url).toString()
                   : null,
             );
           },

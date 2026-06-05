@@ -11,3 +11,5 @@ python-dotenv>=1.0.0
 httpx>=0.27.0
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
+openpyxl>=3.1.5
+google-cloud-vision>=2.11.0

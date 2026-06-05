@@ -72,22 +72,23 @@ class _RoutingAdapter implements HttpClientAdapter {
       return _json(failStatus, jsonEncode(<String, dynamic>{'detail': failDetail}));
     }
 
-    if (path.endsWith('/rename/pdf-to-images')) {
+    if (path.endsWith('/rename/pdf-to-session')) {
       return _json(
         200,
         jsonEncode(<String, dynamic>{
+          'job_id': 'job-pdf-1',
           'count': 2,
-          'images': <Map<String, dynamic>>[
+          'pages': <Map<String, dynamic>>[
             {
-              'name': 'doc_p1.png',
-              'data_url': 'data:image/png;base64,${base64Encode(<int>[1, 2, 3])}',
+              'name': 'doc_p1.jpg',
+              'page_url': '/api/rename/pdf-page/job-pdf-1/doc_p1.jpg',
               'width': 100,
               'height': 200,
               'size': 3,
             },
             {
-              'name': 'doc_p2.png',
-              'data_url': 'data:image/png;base64,${base64Encode(<int>[4, 5, 6, 7])}',
+              'name': 'doc_p2.jpg',
+              'page_url': '/api/rename/pdf-page/job-pdf-1/doc_p2.jpg',
               'width': 120,
               'height': 220,
               'size': 4,
@@ -95,6 +96,14 @@ class _RoutingAdapter implements HttpClientAdapter {
           ],
         }),
       );
+    }
+    if (path.contains('/rename/pdf-page/')) {
+      if (path.endsWith('doc_p1.jpg')) {
+        return _bytes(200, <int>[1, 2, 3]);
+      }
+      if (path.endsWith('doc_p2.jpg')) {
+        return _bytes(200, <int>[4, 5, 6, 7]);
+      }
     }
     if (path.endsWith('/rename/session')) {
       return _json(200, jsonEncode(<String, dynamic>{'session_id': 'sess-1'}));
@@ -112,12 +121,15 @@ class _RoutingAdapter implements HttpClientAdapter {
       );
     }
     if (path.endsWith('/finalize')) {
+      final isPdf = path.contains('/pdf-session/');
       return _json(
         200,
         jsonEncode(<String, dynamic>{
-          'session_id': 'sess-1',
+          'session_id': isPdf ? 'job-pdf-1' : 'sess-1',
           'count': 3,
-          'download_url': '/api/rename/session/sess-1/download',
+          'download_url': isPdf
+              ? '/api/rename/session/job-pdf-1/download'
+              : '/api/rename/session/sess-1/download',
         }),
       );
     }
@@ -145,6 +157,16 @@ class _RoutingAdapter implements HttpClientAdapter {
       status,
       headers: <String, List<String>>{
         Headers.contentTypeHeader: <String>['application/json'],
+      },
+    );
+  }
+
+  static ResponseBody _bytes(int status, List<int> bytes) {
+    return ResponseBody.fromBytes(
+      Uint8List.fromList(bytes),
+      status,
+      headers: <String, List<String>>{
+        Headers.contentTypeHeader: <String>['image/jpeg'],
       },
     );
   }
@@ -230,7 +252,7 @@ class _Harness {
 
 void main() {
   group('addPdfBytes — PDF to images (Req 12.3)', () {
-    test('calls /api/rename/pdf-to-images and adds one item per page', () async {
+    test('calls /api/rename/pdf-to-session and adds one item per page', () async {
       final h = _Harness();
       addTearDown(h.controller.dispose);
 
@@ -242,26 +264,58 @@ void main() {
       expect(ok, isTrue);
       // The PDF endpoint was hit with a multipart `file` part.
       final req = h.requests.singleWhere(
-        (r) => r.path.endsWith('/rename/pdf-to-images'),
+        (r) => r.path.endsWith('/rename/pdf-to-session'),
       );
       expect(req.method, 'POST');
       expect(req.fileFields, <String>['file']);
 
       // Two pages → two items, carrying the engine names + dimensions.
       expect(h.controller.itemCount, 2);
-      expect(h.controller.items[0].name, 'doc_p1.png');
+      expect(h.controller.items[0].name, 'doc_p1.jpg');
       expect(h.controller.items[0].fromPdf, isTrue);
       expect(h.controller.items[0].width, 100);
-      expect(h.controller.items[1].name, 'doc_p2.png');
+      expect(h.controller.items[1].name, 'doc_p2.jpg');
 
-      // Each page's data-url decodes to its upload bytes (no engine logic).
-      expect(h.controller.items[0].bytesForUpload(), <int>[1, 2, 3]);
-      expect(h.controller.items[1].bytesForUpload(), <int>[4, 5, 6, 7]);
+      // Verify that background downloading was skipped (pure PDF session).
+      expect(h.controller.items[0].bytesForUpload(), isEmpty);
+      expect(h.controller.items[1].bytesForUpload(), isEmpty);
+    });
+
+    test('rename on a pure PDF session runs direct finalize on the server (zero upload)', () async {
+      final h = _Harness();
+      addTearDown(h.controller.dispose);
+      
+      // Load PDF pages
+      await h.controller.addPdfBytes(
+        bytes: const <int>[9, 9, 9],
+        filename: 'doc.pdf',
+      );
+      
+      h.controller
+        ..pattern = 'Q#'
+        ..start = 5
+        ..padding = 3
+        ..downloadExcel = false
+        ..outputFormat = RenameOutputFormat.png;
+
+      final result = await h.controller.rename();
+
+      expect(result, isNotNull);
+      expect(result!.isSaved, isTrue);
+
+      // Verify that the chunked upload endpoints were completely bypassed!
+      // The requests should only be: POST /pdf-to-session, POST /pdf-session/.../finalize, and DELETE /pdf-session/...
+      final paths = h.requests.map((r) => '${r.method} ${r.path}').toList();
+      expect(paths.any((p) => p.contains('/files')), isFalse);
+      expect(paths.any((p) => p.contains('/session') && !p.contains('/pdf-session')), isFalse);
+
+      expect(paths, contains('POST /api/rename/pdf-session/job-pdf-1/finalize'));
+      expect(paths, contains('DELETE /api/rename/pdf-session/job-pdf-1'));
     });
 
     test('surfaces the engine detail on a PDF conversion error (Req 12.6)', () async {
       final h = _Harness(
-        failOn: '/rename/pdf-to-images',
+        failOn: '/rename/pdf-to-session',
         failStatus: 400,
         failDetail: 'Not a PDF: doc.pdf. Upload a .pdf file.',
       );

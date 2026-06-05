@@ -97,15 +97,16 @@ void main() {
 
       await tester.pumpWidget(_host(theme));
 
-      // All five tabs are present...
+      // All six tabs are present...
       expect(find.byKey(const ValueKey('tool-tab-autoCrop')), findsOneWidget);
       expect(find.byKey(const ValueKey('tool-tab-manualCrop')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tool-tab-bilingualCrop')), findsOneWidget);
       expect(find.byKey(const ValueKey('tool-tab-renameBatch')), findsOneWidget);
       expect(find.byKey(const ValueKey('tool-tab-pdfEnhancer')), findsOneWidget);
       expect(find.byKey(const ValueKey('tool-tab-tools')), findsOneWidget);
 
-      // ...and there are exactly five of them, matching the QpicTool enum.
-      expect(QpicTool.values, hasLength(5));
+      // ...and there are exactly six of them, matching the QpicTool enum.
+      expect(QpicTool.values, hasLength(6));
     });
 
     testWidgets('defaults to the Auto Crop tab on launch (Requirement 4.4)',
@@ -123,13 +124,17 @@ void main() {
       expect(stack.index, QpicTool.autoCrop.index);
       expect(stack.index, 0);
 
-      // Only the Auto Crop view is on stage; the other four are hidden.
+      // Only the Auto Crop view is on stage; the other five are hidden.
       expect(
         find.byKey(const ValueKey('tool-title-Auto Crop')),
         findsOneWidget,
       );
       expect(
         find.byKey(const ValueKey('tool-title-Manual Crop')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey('tool-title-Bilingual Crop')),
         findsNothing,
       );
       expect(
@@ -178,6 +183,20 @@ void main() {
         'tool-title-Manual Crop',
         const <String>[
           'tool-title-Auto Crop',
+          'tool-title-Bilingual Crop',
+          'tool-title-Rename Batch',
+          'tool-title-PDF Enhancer',
+          'tool-title-PDF Tools',
+        ],
+      );
+
+      await selectAndExpect(
+        'tool-tab-bilingualCrop',
+        QpicTool.bilingualCrop.index,
+        'tool-title-Bilingual Crop',
+        const <String>[
+          'tool-title-Auto Crop',
+          'tool-title-Manual Crop',
           'tool-title-Rename Batch',
           'tool-title-PDF Enhancer',
           'tool-title-PDF Tools',
@@ -191,6 +210,7 @@ void main() {
         const <String>[
           'tool-title-Auto Crop',
           'tool-title-Manual Crop',
+          'tool-title-Bilingual Crop',
           'tool-title-Rename Batch',
           'tool-title-PDF Tools',
         ],
@@ -203,6 +223,7 @@ void main() {
         const <String>[
           'tool-title-Auto Crop',
           'tool-title-Manual Crop',
+          'tool-title-Bilingual Crop',
           'tool-title-Rename Batch',
           'tool-title-PDF Enhancer',
         ],
@@ -214,6 +235,7 @@ void main() {
         'tool-title-Auto Crop',
         const <String>[
           'tool-title-Manual Crop',
+          'tool-title-Bilingual Crop',
           'tool-title-Rename Batch',
           'tool-title-PDF Enhancer',
           'tool-title-PDF Tools',

@@ -23,21 +23,26 @@ from ..config import Settings
 from ..dependencies import get_settings
 from ..models.schemas import (
     PdfImageItem,
+    PdfPageItem,
     PdfToImagesResponse,
+    PdfToSessionResponse,
+    PdfFinalizeRequest,
     RenameFinalizeResponse,
     RenamePlanItem,
     RenamePreviewResponse,
     RenameSessionResponse,
     RenameUploadResponse,
 )
-from ..services.pdf_service import pdf_to_images, validate_pdf
+from ..services.pdf_service import pdf_to_images, parallel_render_pdf_to_files, validate_pdf
 from ..services.rename_service import (
     ALLOWED_EXTENSIONS,
     OUTPUT_FORMATS,
     plan_renames,
+    plan_output_names,
     split_extension,
     write_rename_zip,
     write_rename_zip_from_paths,
+    write_rename_excel,
 )
 from ..utils.file_utils import create_job_dir, generate_job_id, get_job_dir, safe_cleanup_job
 from ..utils.image_utils import ensure_rgb
@@ -288,8 +293,19 @@ async def finalize_rename_session(
         explicit_stems = [str(s) for s in parsed]
 
     zip_path = session / RENAME_ZIP.format(job_id=session_id)
+    excel_path = session / f"qpic_renamed_{session_id}.xlsx"
     request_id = getattr(request.state, "request_id", None)
     try:
+        # Generate final filenames to ensure exact name alignment with the ZIP.
+        new_names = plan_output_names(
+            [name for name, _ in entries],
+            pattern=pattern,
+            start=start,
+            padding=padding,
+            explicit_stems=explicit_stems,
+            output_format=fmt,
+        )
+
         count = await asyncio.to_thread(
             write_rename_zip_from_paths,
             zip_path,
@@ -300,6 +316,13 @@ async def finalize_rename_session(
             explicit_stems=explicit_stems,
             output_format=fmt,
             jpg_quality=jpg_quality,
+        )
+
+        # Generate companion Excel sheet
+        await asyncio.to_thread(
+            write_rename_excel,
+            excel_path,
+            new_names,
         )
     except Exception as exc:
         logger.exception(
@@ -324,6 +347,7 @@ async def finalize_rename_session(
         session_id=session_id,
         count=count,
         download_url=f"/api/rename/session/{session_id}/download",
+        excel_download_url=f"/api/rename/session/{session_id}/download-excel",
     )
 
 
@@ -348,6 +372,29 @@ async def download_rename_session(
         str(zip_path),
         media_type="application/zip",
         filename="renamed_images.zip",
+    )
+
+
+@router.get("/rename/session/{session_id}/download-excel")
+async def download_rename_session_excel(
+    session_id: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> FileResponse:
+    """Stream the companion Excel sheet for a finalized session to the client."""
+
+    temp_root = _get_temp_root(request, settings)
+    session = _session_dir(session_id, temp_root)
+    excel_path = session / f"qpic_renamed_{session_id}.xlsx"
+    if not excel_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Nothing to download for this session.",
+        )
+    return FileResponse(
+        str(excel_path),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="renamed_images.xlsx",
     )
 
 
@@ -477,6 +524,217 @@ async def pdf_to_images_endpoint(
             await asyncio.to_thread(safe_cleanup_job, job_id, temp_root)
 
     return PdfToImagesResponse(count=len(items), images=items)
+
+
+@router.post("/rename/pdf-to-session", response_model=PdfToSessionResponse)
+async def pdf_to_session(
+    request: Request,
+    file: UploadFile = File(..., description="A PDF to convert into page images."),
+    dpi: Optional[int] = Form(None, description="Optional rasterization DPI."),
+    quality: Optional[int] = Form(None, description="Optional JPEG quality (1-100)."),
+    settings: Settings = Depends(get_settings),
+) -> PdfToSessionResponse:
+    """Convert an uploaded PDF to per-page JPEG files using parallel rendering.
+
+    Much faster than ``pdf-to-images`` for large PDFs: pages are rendered
+    in parallel threads, saved as JPEG (faster than PNG, smaller files),
+    and served via individual download URLs instead of inline base64.
+    """
+
+    name = file.filename or "document.pdf"
+    _, ext = split_extension(name)
+    if ext != "pdf":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Not a PDF: {name}. Upload a .pdf file.",
+        )
+
+    job_id = generate_job_id()
+    temp_root = _get_temp_root(request, settings)
+    job_dir = None
+    try:
+        job_dir = await asyncio.to_thread(create_job_dir, job_id, temp_root)
+        source_pdf_path = job_dir / "source.pdf"
+
+        max_bytes = settings.MAX_PDF_SIZE_MB * 1024 * 1024
+        from ..utils.file_utils import stream_upload_to_file
+        await stream_upload_to_file(file, source_pdf_path, max_bytes)
+
+        validate_pdf(source_pdf_path, settings)
+
+        stem, _ = split_extension(name)
+        stem = (stem or "page").strip() or "page"
+        render_dpi = dpi if dpi is not None else settings.PDF_RENDER_DPI
+        render_quality = quality if quality is not None else 75
+
+        pages_dir = job_dir / "pages"
+        await asyncio.to_thread(pages_dir.mkdir, exist_ok=True)
+
+        results = await asyncio.to_thread(
+            parallel_render_pdf_to_files,
+            source_pdf_path,
+            render_dpi,
+            pages_dir,
+            stem,
+            6,
+            render_quality,
+        )
+    except HTTPException:
+        if job_dir is not None:
+            await asyncio.to_thread(safe_cleanup_job, job_id, temp_root)
+        raise
+    except Exception as exc:
+        logger.exception("pdf_to_session_failed error=%s", str(exc))
+        if job_dir is not None:
+            await asyncio.to_thread(safe_cleanup_job, job_id, temp_root)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Couldn't convert that PDF to images.",
+        ) from exc
+
+    import urllib.parse
+    pages = [
+        PdfPageItem(
+            name=fname,
+            page_url=f"/api/rename/pdf-page/{job_id}/{urllib.parse.quote(fname)}",
+            width=w,
+            height=h,
+            size=sz,
+        )
+        for fname, w, h, sz in results
+    ]
+    return PdfToSessionResponse(job_id=job_id, count=len(pages), pages=pages)
+
+
+@router.get("/rename/pdf-page/{job_id}/{page_name}")
+async def serve_pdf_page(
+    job_id: str,
+    page_name: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> FileResponse:
+    """Serve a single rendered PDF page image from disk."""
+
+    temp_root = _get_temp_root(request, settings)
+    job_dir = get_job_dir(job_id, temp_root)
+    if job_dir is None or not job_dir.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown job.")
+    page_path = job_dir / "pages" / page_name
+    if not page_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Page not found.")
+    return FileResponse(str(page_path), media_type="image/jpeg")
+
+
+@router.post("/rename/pdf-session/{job_id}/finalize", response_model=RenameFinalizeResponse)
+async def finalize_pdf_session(
+    job_id: str,
+    payload: PdfFinalizeRequest,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> RenameFinalizeResponse:
+    """Finalize a PDF session directly by selecting, renaming, and packing pages already on disk.
+
+    Avoids downloading and re-uploading pages from the client.
+    """
+    temp_root = _get_temp_root(request, settings)
+    job_dir = get_job_dir(job_id, temp_root)
+    if job_dir is None or not job_dir.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Unknown or expired PDF session.",
+        )
+
+    pages_dir = job_dir / "pages"
+    if not pages_dir.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No rendered pages found in this session.",
+        )
+
+    # Build the entries list: (original_name, source_path)
+    entries: list[tuple[str, Path]] = []
+    explicit_stems: list[str] = []
+    for item in payload.items:
+        p_path = pages_dir / item.original
+        if not p_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Page not found in session: {item.original}",
+            )
+        entries.append((item.original, p_path))
+        explicit_stems.append(item.new_stem)
+
+    if not entries:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No files selected for finalize.",
+        )
+
+    fmt = (payload.output_format or "original").strip().lower()
+    if fmt not in OUTPUT_FORMATS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unsupported output format: {payload.output_format}.",
+        )
+
+    zip_path = job_dir / RENAME_ZIP.format(job_id=job_id)
+    excel_path = job_dir / f"qpic_renamed_{job_id}.xlsx"
+    try:
+        # Generate final filenames to ensure exact name alignment with the ZIP.
+        new_names = plan_output_names(
+            [name for name, _ in entries],
+            pattern="#",
+            start=1,
+            padding=0,
+            explicit_stems=explicit_stems,
+            output_format=fmt,
+        )
+
+        count = await asyncio.to_thread(
+            write_rename_zip_from_paths,
+            zip_path,
+            entries,
+            pattern="#",
+            start=1,
+            padding=0,
+            explicit_stems=explicit_stems,
+            output_format=fmt,
+            jpg_quality=payload.jpg_quality or 90,
+        )
+
+        # Generate companion Excel sheet
+        await asyncio.to_thread(
+            write_rename_excel,
+            excel_path,
+            new_names,
+        )
+    except Exception as exc:
+        logger.exception("finalize_pdf_session failed job_id=%s error=%s", job_id, str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create rename archive: {exc}",
+        ) from exc
+
+    return RenameFinalizeResponse(
+        session_id=job_id,
+        count=count,
+        download_url=f"/api/rename/session/{job_id}/download",
+        excel_download_url=f"/api/rename/session/{job_id}/download-excel",
+    )
+
+
+@router.delete("/rename/pdf-session/{job_id}")
+async def delete_pdf_session(
+    job_id: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Clean up a PDF-to-session job's files after the client is done."""
+
+    temp_root = _get_temp_root(request, settings)
+    await asyncio.to_thread(safe_cleanup_job, job_id, temp_root)
+    return {"ok": True}
+
 
 
 @router.post("/rename")

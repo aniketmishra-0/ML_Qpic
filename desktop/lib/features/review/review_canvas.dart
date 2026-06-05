@@ -57,6 +57,11 @@ class ReviewCanvas extends StatefulWidget {
     this.previewUrlResolver,
     this.questionPrefix = 'Q',
     this.solutionPrefix = 'S',
+    this.englishQuestionPrefix = 'EQ',
+    this.englishSolutionPrefix = 'ES',
+    this.hindiQuestionPrefix = 'HQ',
+    this.hindiSolutionPrefix = 'HS',
+    this.bilingualModeActive = false,
     this.wheelZoomSensitivity = 0.0015,
   });
 
@@ -71,6 +76,11 @@ class ReviewCanvas extends StatefulWidget {
   /// Box-label prefixes (web `reviewQPrefix` / `reviewSPrefix`).
   final String questionPrefix;
   final String solutionPrefix;
+  final String englishQuestionPrefix;
+  final String englishSolutionPrefix;
+  final String hindiQuestionPrefix;
+  final String hindiSolutionPrefix;
+  final bool bilingualModeActive;
 
   /// Trackpad/`Ctrl`+wheel zoom sensitivity (web `Math.exp(-deltaY * 0.0015)`).
   final double wheelZoomSensitivity;
@@ -646,6 +656,11 @@ class _ReviewCanvasState extends State<ReviewCanvas> {
                     selection: _selection,
                     questionPrefix: widget.questionPrefix,
                     solutionPrefix: widget.solutionPrefix,
+                    englishQuestionPrefix: widget.englishQuestionPrefix,
+                    englishSolutionPrefix: widget.englishSolutionPrefix,
+                    hindiQuestionPrefix: widget.hindiQuestionPrefix,
+                    hindiSolutionPrefix: widget.hindiSolutionPrefix,
+                    bilingualModeActive: widget.bilingualModeActive,
                   ),
                 ),
               ),

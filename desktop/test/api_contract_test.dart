@@ -686,6 +686,7 @@ const Set<String> _cropRequiredQuery = {
   'image_format',
   'jpg_quality',
   'use_ai',
+  'use_google_ocr',
   'answer_sheet',
   'layout_columns',
   'binarize',
@@ -708,6 +709,7 @@ const Set<String> _analyzeRequiredQuery = {
   'has_questions',
   'has_answers',
   'use_ai',
+  'use_google_ocr',
   'answer_sheet',
   'layout_columns',
   'binarize',
@@ -747,6 +749,10 @@ const Set<String> _finalizeBodyKeys = {
   'jpg_quality',
   'answer_sheet',
   'bilingual_mode',
+  'english_question_prefix',
+  'english_solution_prefix',
+  'hindi_question_prefix',
+  'hindi_solution_prefix',
 };
 const Set<String> _finalizeItemKeys = {
   'q_num',
@@ -754,6 +760,7 @@ const Set<String> _finalizeItemKeys = {
   'segments',
   'source',
   'align',
+  'is_hindi',
 };
 
 // CropPreviewRequest (app/models/schemas.py).
@@ -770,6 +777,7 @@ const Set<String> _cropPreviewBodyKeys = {
   'jpg_quality',
   'bilingual_mode',
   'other_segments',
+  'is_hindi',
 };
 const Set<String> _segmentKeys = {
   'page',

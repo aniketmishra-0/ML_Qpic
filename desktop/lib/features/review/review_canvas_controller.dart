@@ -76,6 +76,7 @@ class ReviewCanvasController extends ChangeNotifier {
   // ---- Draw-kind / numbering (web `drawKind` / `drawNum`) ----------------
 
   bool _drawAsSolution = false;
+  bool _drawAsHindi = false;
   String _pendingNumber = '';
   bool _bilingualModeActive = false;
 
@@ -136,6 +137,9 @@ class ReviewCanvasController extends ChangeNotifier {
 
   /// Whether the next drawn box is a solution (true) or a question (false).
   bool get drawAsSolution => _drawAsSolution;
+
+  /// Whether the next drawn box is Hindi (true) or English (false).
+  bool get drawAsHindi => _drawAsHindi;
 
   /// The user-entered number for the next drawn box, or '' to auto-number.
   String get pendingNumber => _pendingNumber;
@@ -307,6 +311,13 @@ class ReviewCanvasController extends ChangeNotifier {
   void setDrawAsSolution(bool value) {
     if (value == _drawAsSolution) return;
     _drawAsSolution = value;
+    _bump();
+  }
+
+  /// Selects whether the next drawn box is Hindi (true) or English (false).
+  void setDrawAsHindi(bool value) {
+    if (value == _drawAsHindi) return;
+    _drawAsHindi = value;
     _bump();
   }
 
@@ -491,6 +502,21 @@ class ReviewCanvasController extends ChangeNotifier {
     final int idx = _editingIndex;
     if (idx < 0 || idx >= _items.length) return;
     final AnalyzedItem it = _items[idx];
+
+    // Safeguard: Under bilingual mode, English (left) and Hindi (right) columns are separate.
+    // Accidental cross-column drags during re-select should not be merged as segments of the same item.
+    if (_bilingualModeActive && it.segments.isNotEmpty) {
+      final double firstCenter =
+          (it.segments.first.xStartPct + it.segments.first.xEndPct) / 2.0;
+      final double newCenter = (seg.xStartPct + seg.xEndPct) / 2.0;
+      final bool firstIsHindi = firstCenter > 50.0;
+      final bool newIsHindi = newCenter > 50.0;
+      if (firstIsHindi != newIsHindi) {
+        _addManualItem(seg);
+        return;
+      }
+    }
+
     final List<QuestionSegment> nextSegments =
         List<QuestionSegment>.of(it.segments)..add(seg);
     _items[idx] = _asManual(it, nextSegments);
@@ -516,6 +542,7 @@ class ReviewCanvasController extends ChangeNotifier {
         source: 'manual',
         flagged: false,
         flagReason: null,
+        isHindi: _bilingualModeActive ? _drawAsHindi : null,
       );
       _pendingNumber = '';
       _clearNoteFor(number, isSolution);
@@ -529,6 +556,7 @@ class ReviewCanvasController extends ChangeNotifier {
             isSolution,
             _items,
             bilingualModeActive: _bilingualModeActive,
+            isHindi: _drawAsHindi,
           );
     _items.add(
       AnalyzedItem(
@@ -538,6 +566,7 @@ class ReviewCanvasController extends ChangeNotifier {
         source: 'manual',
         flagged: false,
         flagReason: null,
+        isHindi: _bilingualModeActive ? _drawAsHindi : null,
       ),
     );
     _pendingNumber = '';
@@ -895,6 +924,47 @@ class ReviewCanvasController extends ChangeNotifier {
     }
 
     _selectedItemIndices.clear();
+    _bump();
+  }
+
+  /// Updates the qNum (question/solution number) of the item at [index].
+  void setItemQNum(int index, String newQNum) {
+    if (index < 0 || index >= _items.length) return;
+    final it = _items[index];
+    final trimmed = newQNum.trim();
+    if (trimmed == it.qNum) return;
+    _items[index] = AnalyzedItem(
+      qNum: trimmed,
+      isSolution: it.isSolution,
+      segments: it.segments,
+      source: it.source,
+      flagged: it.flagged,
+      flagReason: it.flagReason,
+      align: it.align,
+      otherSegments: it.otherSegments,
+      isHindi: it.isHindi,
+    );
+    _clearNoteFor(trimmed, it.isSolution);
+    _bump();
+  }
+
+  /// Updates the properties (number, type, language) of the item at [index].
+  void setItemProperties(int index, {required String qNum, required bool isSolution, bool? isHindi}) {
+    if (index < 0 || index >= _items.length) return;
+    final it = _items[index];
+    final trimmed = qNum.trim();
+    _items[index] = AnalyzedItem(
+      qNum: trimmed,
+      isSolution: isSolution,
+      segments: it.segments,
+      source: it.source,
+      flagged: it.flagged,
+      flagReason: it.flagReason,
+      align: it.align,
+      otherSegments: it.otherSegments,
+      isHindi: isHindi,
+    );
+    _clearNoteFor(trimmed, isSolution);
     _bump();
   }
 
